@@ -32,6 +32,12 @@ Antes de começar, leia:
 
 ### Integridade
 - Regra de negócio fica no banco: `NOT NULL`, `CHECK`, `UNIQUE`, FKs com `ON DELETE` pensado, e domínios fixos via `CHECK` ou enum (`gender` 'M'/'F', `meeting_day`, `type`).
+- **Exclusão lógica** em toda entidade de negócio (`deleted_at`, `deleted_by`):
+  - sem política de DELETE; exclusão e reativação por RPC;
+  - índices únicos parciais (`WHERE deleted_at IS NULL`);
+  - RLS, helpers, triggers e totais ignorando os excluídos.
+
+  As regras `DEL-` estão em `docs/migracao.md`.
 
 ### RLS
 - Ligue RLS em toda tabela nova, com uma policy por operação e `WITH CHECK` em insert e update.
@@ -65,7 +71,8 @@ Antes de começar, leia:
 ### Migração de dados
 - Os scripts precisam ser idempotentes (upsert por `legacy_id`), ter modo `--dry-run` e relatório de contagens.
 - A conexão com o MySQL de produção é **somente leitura**.
-- Credenciais só por variável de ambiente, nunca commitadas.
+- Credenciais só por variável de ambiente ou pelo `local.config` da raiz (ignorado pelo git), nunca commitadas.
+- Dumps e relatórios gerados vão para `data-migration/dumps/` e `data-migration/reports/`, que também são ignorados pelo git.
 - Siga o mapeamento e a ordem de carga do `CLAUDE.md`.
 
 ## Revisão de código

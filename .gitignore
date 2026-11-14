@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# apps-mci — .gitignore da raiz
+# Os submódulos (mci-connect, g12app-net) têm o próprio .gitignore;
+# este arquivo vale apenas para o repositório raiz.
+# ---------------------------------------------------------------------------
+
+# --- Configs e segredos locais ------------------------------------------------
+# local.config guarda as configurações e os segredos deste projeto na máquina
+# de cada pessoa. Nunca versionar.
+local.config
+local.config.*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# --- Migração de dados (dados pessoais, LGPD) --------------------------------
+# Dumps e relatórios gerados contêm dados de membros. Os scripts .sql em
+# data-migration/sql/ continuam versionados.
+data-migration/dumps/
+data-migration/reports/
+*.dump
+*.bak
+*.sql.gz
+*.sql.zip
+*.sql.gpg
+
+# --- Claude Code ----------------------------------------------------------------
+.claude/settings.local.json
+
+# --- C# / .NET ------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+TestResults/
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+coveragereport/
+*.coverage
+*.coveragexml
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+appsettings.Local.json
+appsettings.*.Local.json
+
+# --- Node / React / TypeScript -------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+build/
+out/
+coverage/
+.vite/
+.cache/
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Testes end-to-end (Playwright)
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# --- Editores e sistema operacional --------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~

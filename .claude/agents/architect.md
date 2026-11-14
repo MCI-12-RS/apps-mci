@@ -55,6 +55,7 @@ A profundidade fica assim: sessão principal → você (nível 1) → desenvolve
 Rode ao fim de toda implementação que você coordenou e sempre que houver mudança de schema, segurança ou concorrência:
 - Compare a implementação com o desenho e com os padrões abaixo.
 - Dê o veredito **APROVADO** ou **AJUSTES NECESSÁRIOS**, com os achados em `arquivo:linha` e o desenvolvedor responsável por cada um.
+- Se aprovar um passo técnico das fases 1, 3 ou 4 de `docs/migracao.md`, marque-o na seção Progresso, com a data e o resumo das fases atualizado.
 
 ## Padrões obrigatórios
 
@@ -70,6 +71,12 @@ Rode ao fim de toda implementação que você coordenou e sempre que houver muda
 
 ### Banco e segurança
 - Regra de negócio fica no banco: `NOT NULL`, `CHECK`, `UNIQUE`, FKs com `ON DELETE` correto, triggers e RPC.
+- **Exclusão lógica** em toda entidade de negócio (`deleted_at`, `deleted_by`):
+  - sem política de DELETE; exclusão e reativação por RPC;
+  - índices únicos parciais (`WHERE deleted_at IS NULL`);
+  - RLS, helpers, triggers e totais ignorando os excluídos.
+
+  As regras `DEL-` estão em `docs/migracao.md`.
 - RLS em toda tabela, com política por operação e `WITH CHECK` em insert e update.
 - Colunas sensíveis (`role_id`, `auth_user_id`, `leader_id` quando couber) são protegidas por trigger ou por RPC.
 - `SECURITY DEFINER` só quando for necessário, sempre com `SET search_path = public` e checando a permissão dentro da função.

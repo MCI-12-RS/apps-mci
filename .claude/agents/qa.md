@@ -57,7 +57,8 @@ Para saber o comportamento esperado de uma regra do legado, consulte os testes d
   - consolidado;
   - usuário sem permissão;
   - usuário de outro ministério;
-  - listas com mais de 1000 itens.
+  - listas com mais de 1000 itens;
+  - registro excluído (não aparece, não conta e libera a unicidade).
 - **Testes de caracterização**: antes de refatorar, congele o comportamento atual em testes e só então mude o código.
 
 ## Quando um teste falha por bug

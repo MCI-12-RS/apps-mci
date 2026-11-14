@@ -54,7 +54,11 @@ Os nomes e as etapas variam entre igrejas. **Nunca invente doutrina nem prática
 2. **Features novas** (Consolidação, Escolas e outras): faça discovery com perguntas objetivas ao usuário. Não preencha lacunas com suposições.
 3. **Especificação**: escreva ou atualize `docs/specs/<slug>.md` usando o modelo `docs/specs/_template.md`. A seção **Negócio** é sua.
 4. **Terminologia**: revise textos de tela, mensagens de erro e nomes de campos visíveis ao usuário.
-5. **Matriz de paridade**: quando uma feature for aceita (testes do QA passando), atualize o status na matriz do `CLAUDE.md`.
+5. **Matriz de paridade e progresso**: quando uma feature for aceita (testes do QA passando), atualize:
+   - o status na matriz do `CLAUDE.md`;
+   - o status das regras na seção 3 de `docs/migracao.md`;
+   - o passo `E2.xx` na seção Progresso do mesmo documento (com a data e o resumo das fases);
+   - os passos da Fase 0 quando uma decisão for tomada.
 
 ## Como escrever regras de negócio
 - Numere: `RN-01`, `RN-02`…
@@ -68,7 +72,8 @@ Os nomes e as etapas variam entre igrejas. **Nunca invente doutrina nem prática
   - pastor;
   - consolidado (quando existir);
   - usuário sem permissão;
-  - usuário de outro ministério.
+  - usuário de outro ministério;
+  - registro excluído (exclusão lógica).
 - Declare o que fica **fora de escopo**.
 - Liste as **perguntas em aberto**. Uma regra "a confirmar" não pode ir para implementação.
 

@@ -13,6 +13,7 @@ Regras de trabalho:
 - O legado é a **referência de comportamento e é somente leitura**. Não evolua o legado; mexa nele só se for necessário para a migração ou para resolver um incidente.
 - Ao portar uma regra, replique a **intenção** descrita aqui, não os detalhes de implementação do legado.
 - No novo, o front acessa o Supabase direto. **Toda regra que o legado impunha na API precisa ser imposta no banco** (RLS, constraints, triggers ou funções RPC `SECURITY DEFINER`), porque validação só na UI pode ser contornada.
+- Toda entidade de negócio usa **exclusão lógica** (`deleted_at`, `deleted_by`). A API não faz exclusão física, e registros excluídos não aparecem em nenhuma tela, contagem ou total. Ver as regras `DEL-` em `docs/migracao.md`.
 - Textos de UI em pt-BR. Identificadores de código em inglês; colunas em `snake_case`.
 
 ## Estrutura
@@ -22,6 +23,7 @@ Regras de trabalho:
 | `mci-connect/` | **Novo** (submódulo), criado no Lovable. Vite + React 18 + TypeScript + shadcn/ui + Tailwind + TanStack Query + react-hook-form/zod. Backend: Supabase (Postgres, Auth, RLS, Edge Functions em Deno). Deploy na Vercel (rewrite de SPA). | `main` |
 | `g12app-net/` | **Legado, em produção** (submódulo). .NET 8, ASP.NET Core API + EF Core com **MySQL** em produção (provider configurado para a versão 5.7). Front em CRA (React 18 + react-bootstrap) em `G12App.API/ClientApp`, servido pela própria API via SpaProxy. | `master` |
 
+- **Configs e segredos locais** ficam em `local.config`, na raiz, que é ignorado pelo git (ver `.gitignore`). Leia de lá quando precisar de credenciais (ex.: MySQL, service role do Supabase), mas nunca copie esses valores para arquivos versionados, specs, logs ou respostas.
 - Submódulos: faça o commit dentro do submódulo (no repositório dele) e depois atualize o ponteiro na raiz (`git add mci-connect && git commit`). Para clonar: `git clone --recurse-submodules`, ou `git submodule update --init` depois de um clone normal.
 - O `mci-connect` é sincronizado com o Lovable, e os commits feitos lá chegam na `main` (ex.: "Preceding changes"). Não reescreva o histórico da `main`.
 
@@ -80,7 +82,10 @@ Para `product-owner`, `code-reviewer` e `qa`, a restrição está na configuraç
    2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Achados de outro papel voltam no relatório dele.
    3. Aciona o `qa`. Bugs encontrados voltam ao desenvolvedor responsável, para uma nova rodada.
    4. Faz a revisão final e devolve um relatório consolidado.
-3. Sessão principal → `product-owner`: dá o aceite e atualiza a matriz de paridade.
+3. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
+   - a matriz de paridade deste arquivo;
+   - o status das regras na seção 3 de `docs/migracao.md`;
+   - o passo correspondente (`E2.xx`) na seção Progresso do mesmo documento.
 
 Para uma mudança pequena (bug pontual, texto, estilo): sessão principal → desenvolvedor (que aciona o `code-reviewer`) → `qa`.
 
@@ -290,7 +295,8 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 |---|---|---|
 | Login por e-mail ou celular | e-mail, CPF ou celular | ✅ |
 | Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 o escopo não inclui o cônjuge nem o cônjuge do G12; as roles semeadas não usam escopo |
-| CRUD de membros | sim | 🟡 sem soft delete e sem auditoria (`created_by`) |
+| CRUD de membros | sim | 🟡 sem auditoria (`created_by`) |
+| Exclusão lógica de membros, células e relatórios | exclusão física, apagando relatórios e participações em cascata | ❌ |
 | Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | nenhuma no banco | ❌ |
 | Cônjuge simétrico | trigger | ✅ |
 | Campos computados: árvore de liderança, G12, líder direto | só `g12_level`; o G12 é calculado no cliente, na tela de Células | 🟡 |
@@ -310,7 +316,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Árvore de ministérios (casais) | sim | ✅ |
 | Changelog (`/last-changes`) | não existe | baixa prioridade |
 
-Ao fechar um item, atualize esta tabela.
+Ao fechar um item, atualize esta tabela. As regras detalhadas de cada item estão na seção 3 de `docs/migracao.md`.
 
 ## Features futuras (não existem em nenhum dos dois)
 
@@ -326,49 +332,18 @@ Escolas com **turmas**, **material por turma** e a situação de cada aluno na t
 
 ## Migração de dados (legado → Supabase)
 
-A origem é o **MySQL de produção** do legado, com as tabelas `Members`, `Addresses`, `Cells`, `Reports` e `ReportMembers`. Pontos de atenção:
-- **IDs**: o legado usa `int` e o novo usa `uuid`. Guarde o id antigo (ex.: coluna `legacy_id`) para remontar as FKs e conferir a carga.
-- **Soft delete**: registros com `IsDeleted = 1` não podem entrar como ativos. Decida se serão descartados ou importados como inativos.
-- **Ordem de carga**:
-  1. Membros, ainda sem `leader_id` e `spouse_id`.
-  2. Um segundo passe preenchendo `leader_id` e `spouse_id`.
-  3. Células.
-  4. Relatórios.
-  5. Participantes.
-- **Triggers**: os de stats, cônjuge e `g12_level` disparam a cada linha. Desligue-os durante a carga (`session_replication_role = replica`) e rode um backfill no final.
-- **Senhas**: o legado guarda MD5 sem salt, que não dá para importar direto no Supabase Auth. Planeje um reset de senha ou um fluxo de primeiro acesso. Todo membro precisa de e-mail no Auth; para quem não tem, use o padrão `@mci12fakemail.com`.
+O plano completo está em **[`docs/migracao.md`](docs/migracao.md)**:
+- pré-requisitos no novo;
+- regras a replicar, com IDs (`AUT-`, `MEM-`, `HIE-`, `CEL-`, `REL-`, `DSH-`, `MIN-`, `DEL-`);
+- decisões (`D1`…`D10`);
+- mapeamento campo a campo;
+- contas, perfis e senhas;
+- roteiro de cutover.
 
-| Legado | Novo |
-|---|---|
-| `Member.Name`, `BirthDate`, `Email`, `CPF`, `Notes` | `name`, `birth_date`, `email`, `cpf`, `notes` |
-| `MobileNumber` / `PhoneNumber` | `mobile_whatsapp` / `phone` (só dígitos) |
-| `Gender` (0 = Male, 1 = Female) | `gender` 'M'/'F' |
-| `HomeAddress` (tabela `Addresses`) | colunas inline; `Address.Notes` → `complement`; `PostalCode` → `zip_code` (só dígitos) |
-| `LeadershipId` / `SpouseId` | `leader_id` / `spouse_id` |
-| `HasNoLeadership` | `has_leadership = NOT HasNoLeadership` (conferir junto com `leader_id`) |
-| Pastores (`MinistryLevel = 1`: sem líder e sem `HasNoLeadership`) | `is_pastor = true` |
-| `Baptized` / `BaptismDate` | `is_baptized` / `baptism_date` |
-| `Idle` | `is_active = NOT Idle` |
-| `Role` (AppUser / AppAdmin / AppSuperAdmin) | `role_id`; definir roles equivalentes (sugestão: Membro / Líder com escopo de ministério / Administrador) |
-| `Password` (MD5) | ver "Senhas" acima |
-| `Computed*`, `LeadershipTree`, `Total*` | recalculados pelos triggers ou pelo backfill |
-| `Cell.LeadId`, `HostId`, `TimothyId` | `leader_id`, `host_id`, `timothy_id` |
-| `Cell.WeekDay` (0 = domingo … 6 = sábado) | `meeting_day`: 'Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado' |
-| `Cell.Time` ('HH:mm') | `meeting_time` |
-| `Cell.CellType` (Evangelistic / Discipleship / Macrocell) | `type`: 'Evangelística' / 'Discipulado' / 'Macrocélula' |
-| `Cell.Place` | endereço inline |
-| `Report.Date` (datetime) | `date` + `time` |
-| `Report.Subject` | `theme` |
-| `Report.WeekCellSkipped` | `was_held = NOT WeekCellSkipped`; `Notes` vai para `reason_not_held` quando não houve célula e para `observations` nos outros casos |
-| `Report.Visitors` (nomes separados por barra vertical) | `visitors` (lista) |
-| `Report.Contribution` | `offering` |
-| `ReportMembers` | `cell_report_participants` |
-| `Report.LeadershipId`, `HostId`, `TimothyId`, `CellType`, `NumMembers`, `NumVisitors` | não têm coluna equivalente; crie antes de migrar se o histórico importar |
-
-Perguntas em aberto:
-- Os registros com soft delete serão migrados?
-- Como os papéis antigos viram roles no novo?
-- Qual vai ser a estratégia de senha?
+Use esses IDs nos specs e nos testes. Em resumo:
+- A origem é o **MySQL de produção** do legado (`Members`, `Addresses`, `Cells`, `Reports`, `ReportMembers`).
+- Carga ELT: cópia bruta para o schema `legacy` (fora da API) → SQL de transformação idempotente com `legacy_id` → backfill → validação.
+- **Senhas:** o legado guarda MD5 sem salt, que o Supabase Auth não importa. O plano é a migração transparente no primeiro login: uma Edge Function confere o MD5 guardado em `private.legacy_credentials` e grava a senha no Auth.
 
 ## Problemas conhecidos
 

@@ -46,6 +46,8 @@ git submodule update --init
 git submodule update --remote
 ```
 
+As configurações e os segredos locais do projeto (credenciais de banco, chaves do Supabase etc.) ficam em `local.config`, na raiz. Esse arquivo é ignorado pelo git e nunca deve ser commitado.
+
 Cada submódulo é um repositório independente. Para mudar o código de um deles:
 
 1. Entre na pasta, crie a branch, faça o commit e o push lá dentro.
@@ -106,6 +108,7 @@ O [`CLAUDE.md`](CLAUDE.md) é a referência técnica do projeto. Ele cobre:
 Ele também é lido automaticamente pelo Claude Code.
 
 Outros documentos e configurações:
+- [`docs/migracao.md`](docs/migracao.md): o plano de migração, com as regras do legado a replicar, a migração dos dados, as contas e senhas, e o roteiro de cutover.
 - `docs/specs/`: especificações das features (negócio, solução técnica, tarefas e testes), a partir do modelo `_template.md`.
 - `.claude/agents/`: o time de agentes do Claude Code (Product Owner, Architect, Backend, Frontend, Code Reviewer e QA). O fluxo de trabalho deles está descrito no `CLAUDE.md`. O ideal é abrir o Claude Code na raiz do repositório, porque os agentes trabalham nos dois projetos.
 
