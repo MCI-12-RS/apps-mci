@@ -1,0 +1,6 @@
+[submodule "mci-connect"]
+	path = mci-connect
+	url = https://github.com/MCI-12-RS/mci-connect
+[submodule "g12app-net"]
+	path = g12app-net
+	url = https://github.com/MCI-12-RS/g12app-net
