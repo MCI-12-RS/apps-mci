@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | ⬜ | Já |
+| 1. Preparação | 🔄 1 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -79,13 +79,13 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 ### Fase 1: Preparação (seção 2)
 
-- [ ] **E1.01** Preparar o banco novo (`gkhn…`). Hoje ele tem 24 das 33 migrations do repositório, com dados de teste. Passos:
+- [x] **E1.01** Preparar o banco novo (`gkhn…`). O banco foi zerado e recebeu as 34 migrations (2026-11-14, mci-connect#5). Passos:
   - aplicar o histórico **num banco zerado**, para provar que as migrations rodam do início ao fim;
   - resolver a definição dupla de `cell_reports`, a coluna `cells.name` (usada pela auditoria), os dois triggers de cônjuge e as políticas que se somam;
   - regenerar o `types.ts` a partir do banco.
 
   Escrever no banco exige autorização do usuário · _backend_
-- [ ] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_
+- [ ] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. ⚠️ **Urgente:** a versão antiga já está publicada no projeto novo e permite criar um Administrador sem login. Publicar a correção exige um token de acesso do Supabase (E1.12)
 - [ ] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
 - [ ] **E1.05** Remover a senha padrão `123456` · _frontend_
@@ -100,7 +100,9 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.14** Apontar o front para o projeto novo:
   - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
   - variáveis de ambiente na Vercel;
-  - Auth do projeto novo: Site URL, URLs de redirecionamento e as Edge Functions publicadas.
+  - Auth do projeto novo: Site URL, URLs de redirecionamento, **cadastro público desligado** e as Edge Functions publicadas.
+
+  Status: `.env` e `config.toml` no PR mci-connect#6; o resto depende do usuário e do E1.02.
 
   _frontend + usuário_
 
