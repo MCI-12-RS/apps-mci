@@ -102,7 +102,10 @@ Responsável: liderança da igreja, com o `product-owner`.
   - variáveis de ambiente na Vercel;
   - Auth do projeto novo: Site URL, URLs de redirecionamento, **cadastro público desligado** e as Edge Functions publicadas.
 
-  Status: `.env` e `config.toml` no PR mci-connect#6; o resto depende do usuário e do E1.02.
+  Status:
+  - As variáveis da Vercel já apontam para o `gkhn…` (integração Supabase ↔ Vercel), e a produção já usa o banco novo desde o deploy de `2adcb1a`.
+  - `.env` e `config.toml` estão no PR mci-connect#6.
+  - Faltam o Auth (Site URL, redirects, cadastro público) e as Edge Functions (E1.02).
 
   _frontend + usuário_
 
