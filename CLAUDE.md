@@ -26,7 +26,9 @@ Regras de trabalho:
 - **Configs e segredos locais** ficam em `local.config`, na raiz, que é ignorado pelo git (ver `.gitignore`). Leia de lá quando precisar de credenciais (ex.: MySQL, service role do Supabase), mas nunca copie esses valores para arquivos versionados, specs, logs ou respostas.
 - Submódulos: faça o commit dentro do submódulo (no repositório dele) e depois atualize o ponteiro na raiz (`git add mci-connect && git commit`). Para clonar: `git clone --recurse-submodules`, ou `git submodule update --init` depois de um clone normal.
 - **O Lovable foi abandonado em 2026-11-14.** O desenvolvimento do `mci-connect` segue com o Claude Code. A antiga branch `ai`, onde o Lovable trabalhava, foi incorporada à `main` (PR #4) e não é mais usada.
-- **Banco do novo:** projeto Supabase `clfgjnwtzasdsrgcxmmd` (o mesmo do `.env` e do `config.toml`). O projeto `gkhnjhmgeceoaqeynhrj` era o banco do Lovable, só com dados de teste: não use.
+- **Banco do novo:** projeto Supabase **`gkhnjhmgeceoaqeynhrj`**, criado para receber o sistema e a migração. As credenciais estão no `local.config`.
+  - O `clfgjnwtzasdsrgcxmmd` é o banco do Lovable, que está sendo abandonado. Não use, e não é preciso nada dele.
+  - Ele ainda aparece no `.env` e no `supabase/config.toml` do `mci-connect` até o passo E1.14.
 - **Git:** nunca faça commit direto na `main` (raiz e `mci-connect`) nem na `master` (legado), e não reescreva o histórico delas. Cada passo vai numa branch própria, com PR. O merge é sempre do usuário.
 
 ## Comandos
@@ -39,7 +41,7 @@ npm run build
 npm run lint
 npm test           # Vitest; hoje só existe src/test/example.test.ts
 ```
-- **Acesso ao banco:** as credenciais ficam no `local.config` (`SUPABASE_PROJECT_REF`, `SUPABASE_HOST`, `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_USER`, `SUPABASE_PASS`). Use o **Session pooler** (`aws-…pooler.supabase.com`, usuário `postgres.<ref>`): a conexão direta `db.<ref>.supabase.co` só tem IPv6 e não funciona nesta máquina. Antes de qualquer comando, confira que o `SUPABASE_PROJECT_REF` é o `clfgjnwtzasdsrgcxmmd`.
+- **Acesso ao banco:** as credenciais ficam no `local.config` (`SUPABASE_PROJECT_REF`, `SUPABASE_HOST`, `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_USER`, `SUPABASE_PASS`). Use o **Session pooler** (`aws-…pooler.supabase.com`, usuário `postgres.<ref>`): a conexão direta `db.<ref>.supabase.co` só tem IPv6 e não funciona nesta máquina. Antes de qualquer comando, confira que o `SUPABASE_PROJECT_REF` é o `gkhnjhmgeceoaqeynhrj`.
 - O project ref do Supabase fica em `supabase/config.toml`. O front lê do `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_PROJECT_ID`.
 - Depois de mudar o schema, regenere os tipos: `npx supabase gen types typescript --project-id <ref> > src/integrations/supabase/types.ts`.
 - As Edge Functions ficam em `supabase/functions/*` (Deno).

@@ -79,7 +79,12 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 ### Fase 1: Preparação (seção 2)
 
-- [ ] **E1.01** Reconciliar as migrations com o banco `clfg…` e regenerar o `types.ts`. Inclui: a definição dupla de `cell_reports`, `cells.name` (usada pela auditoria), os dois triggers de cônjuge e as políticas antigas que podem estar somando (`pg_policies`) · _backend_
+- [ ] **E1.01** Preparar o banco novo (`gkhn…`). Hoje ele tem 24 das 33 migrations do repositório, com dados de teste. Passos:
+  - aplicar o histórico **num banco zerado**, para provar que as migrations rodam do início ao fim;
+  - resolver a definição dupla de `cell_reports`, a coluna `cells.name` (usada pela auditoria), os dois triggers de cônjuge e as políticas que se somam;
+  - regenerar o `types.ts` a partir do banco.
+
+  Escrever no banco exige autorização do usuário · _backend_
 - [ ] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_
 - [ ] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
@@ -90,8 +95,14 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
 - [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
-- [ ] **E1.12** Definir e documentar o deploy: migrations (`supabase db push`) e Edge Functions (`supabase functions deploy`) no projeto `clfg…`, e o front na Vercel · _backend + usuário_
+- [ ] **E1.12** Definir e documentar o deploy: migrations (`supabase db push`) e Edge Functions (`supabase functions deploy`) no projeto `gkhn…`, e o front na Vercel · _backend + usuário_
 - [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
+- [ ] **E1.14** Apontar o front para o projeto novo:
+  - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
+  - variáveis de ambiente na Vercel;
+  - Auth do projeto novo: Site URL, URLs de redirecionamento e as Edge Functions publicadas.
+
+  _frontend + usuário_
 
 ### Fase 2: Paridade (seção 3)
 
@@ -161,7 +172,7 @@ Data marcada: _a definir_
 - [ ] **E7.03** Infraestrutura do legado desligada
 - [ ] **E7.04** Backup final criptografado guardado conforme a D8
 - [ ] **E7.05** Repositório `g12app-net` arquivado e submódulo removido
-- [ ] **E7.06** Projeto do Lovable e o banco dele (`gkhnjhmgeceoaqeynhrj`) desativados · _usuário_
+- [ ] **E7.06** Projeto do Lovable e o banco dele (`clfgjnwtzasdsrgcxmmd`) desativados · _usuário_
 
 ## 2. Pré-requisitos no novo
 
