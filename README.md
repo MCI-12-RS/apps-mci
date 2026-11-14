@@ -105,6 +105,10 @@ O [`CLAUDE.md`](CLAUDE.md) é a referência técnica do projeto. Ele cobre:
 
 Ele também é lido automaticamente pelo Claude Code.
 
+Outros documentos e configurações:
+- `docs/specs/`: especificações das features (negócio, solução técnica, tarefas e testes), a partir do modelo `_template.md`.
+- `.claude/agents/`: o time de agentes do Claude Code (Product Owner, Architect, Backend, Frontend, Code Reviewer e QA). O fluxo de trabalho deles está descrito no `CLAUDE.md`. O ideal é abrir o Claude Code na raiz do repositório, porque os agentes trabalham nos dois projetos.
+
 ## Contribuindo
 
 - Funcionalidades novas e correções de produto vão para o `mci-connect`. O legado só recebe o mínimo necessário para a migração.

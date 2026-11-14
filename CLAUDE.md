@@ -48,6 +48,47 @@ docker compose up mysql           # MySQL 5.7 local (perfis opcionais: mssql, po
 ```
 O comando das migrations EF está em `migration-command.txt`. A configuração sensível fica em `appsettings*.json` (`ConnectionStrings:*`, `JWTSettings:SecretKey`, `AdminUser`). Não copie esses valores para lugar nenhum.
 
+## Time de agentes (`.claude/agents/`)
+
+O Claude Code encontra os agentes subindo a partir do diretório atual, então abrir dentro de um submódulo também funciona. Mesmo assim, prefira abrir na **raiz** (`apps-mci/`), porque os agentes trabalham nos dois projetos.
+
+| Agente | Papel |
+|---|---|
+| `product-owner` | Negócio e Visão G12: requisitos, regras (RN) com critérios de aceite, paridade com o legado, terminologia |
+| `architect` | Revisa as RNs, desenha a solução, quebra em tarefas e faz a revisão final (padrões, escala, segurança, race conditions) |
+| `backend-developer` | Migrations, RLS, RPC, triggers, Edge Functions e scripts de migração de dados MySQL → Supabase |
+| `frontend-developer` | Telas, formulários, listagens e integração do `mci-connect` com o Supabase |
+| `code-reviewer` | Revisão rápida do diff, devolvendo os achados ao desenvolvedor responsável |
+| `qa` | Testes unitários (Vitest), de banco (pgTAP) e de comportamento (Playwright) amarrados às RNs |
+
+**Quem aciona quem.** Um subagente pode acionar outros, até 3 níveis abaixo da sessão principal. Esse é o padrão do Claude Code, controlado pela variável `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. Não a defina como `1`, senão o fluxo abaixo para de funcionar.
+
+| Agente | Pode acionar |
+|---|---|
+| Sessão principal | `product-owner` e `architect` (e qualquer agente, para tarefas avulsas) |
+| `architect` | `backend-developer`, `frontend-developer` e `qa` |
+| `backend-developer`, `frontend-developer` | só o `code-reviewer` |
+| `product-owner`, `code-reviewer`, `qa` | ninguém; devolvem o resultado para quem chamou |
+
+Para `product-owner`, `code-reviewer` e `qa`, a restrição está na configuração: eles não têm a ferramenta `Agent`. Para os desenvolvedores, ela está nas instruções.
+
+**Fluxo de uma feature.**
+
+1. Sessão principal → `product-owner`: cria ou atualiza `docs/specs/<slug>.md` (modelo em `docs/specs/_template.md`), seção Negócio. As perguntas em aberto vão para o usuário; RN "a confirmar" não segue adiante.
+2. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas" e coordena a implementação:
+   1. Aciona o `backend-developer` (primeiro, se houver schema ou RPC) e o `frontend-developer`. Tarefas independentes rodam em paralelo.
+   2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Achados de outro papel voltam no relatório dele.
+   3. Aciona o `qa`. Bugs encontrados voltam ao desenvolvedor responsável, para uma nova rodada.
+   4. Faz a revisão final e devolve um relatório consolidado.
+3. Sessão principal → `product-owner`: dá o aceite e atualiza a matriz de paridade.
+
+Para uma mudança pequena (bug pontual, texto, estilo): sessão principal → desenvolvedor (que aciona o `code-reviewer`) → `qa`.
+
+Cada agente começa sem o histórico da conversa e só sabe o que quem o chamou passou no prompt. Por isso:
+- passe sempre o caminho do spec e os números das tarefas;
+- os specs em `docs/specs/` funcionam como a memória compartilhada entre os agentes;
+- a sessão principal só vê o relatório final de cada agente que ela acionou, então esse relatório precisa trazer arquivos alterados, achados pendentes e resultados de testes.
+
 ## Glossário do domínio
 
 - **Membro / Pessoa**: qualquer pessoa cadastrada. Tem no máximo um **líder** (`LeadershipId` / `leader_id`) e um **cônjuge**.
