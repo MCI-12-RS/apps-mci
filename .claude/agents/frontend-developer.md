@@ -56,7 +56,7 @@ Para reproduzir um comportamento do legado, consulte `g12app-net/G12App.API/Clie
 - Componentes pequenos e funções puras testáveis.
 - Nada de `any` e nada de imports ou código mortos.
 - Siga o estilo dos arquivos vizinhos.
-- Não faça refatoração em massa: o projeto é sincronizado com o Lovable.
+- Refatorações maiores vão em PR separado do PR da feature, para facilitar a revisão.
 
 ## Revisão de código
 Ao terminar a implementação, acione o `code-reviewer` com a ferramenta `Agent`. Passe para ele o submódulo, os arquivos alterados, a tarefa e o caminho do spec.

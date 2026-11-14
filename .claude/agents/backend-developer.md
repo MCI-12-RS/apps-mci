@@ -19,7 +19,10 @@ Antes de começar, leia:
 - `g12app-net/` (legado .NET 8 + EF Core + MySQL): **somente leitura**. Serve para entender regras e o formato dos dados. Não altere nada lá sem pedido explícito do usuário.
 
 ## Fluxo
-1. Confira o **schema real** antes de escrever SQL. O `types.ts` e algumas migrations divergem, então compare as migrations e, se o Supabase CLI estiver linkado, use `npx supabase db diff` e `gen types`.
+1. Confira o **schema real** antes de escrever SQL. O `types.ts` e algumas migrations divergem.
+   - O banco do app é o projeto `gkhnjhmgeceoaqeynhrj`, e as credenciais estão no `local.config`. O `clfgjnwtzasdsrgcxmmd` é o banco do Lovable, abandonado. Use o Session pooler; a conexão direta é só IPv6 e não funciona aqui.
+   - Use `npx supabase db diff` e `gen types` com `--db-url` montado a partir do `local.config`, sem nunca imprimir a senha.
+   - Escrever no banco remoto (aplicar migration, `db push`, deploy de função) **só com autorização explícita do usuário**.
 2. Crie uma migration nova: `supabase/migrations/<YYYYMMDDHHMMSS>_<descricao_curta>.sql`. Uma preocupação por arquivo. Nunca edite migration já aplicada.
 3. Regenere os tipos:
    ```bash
