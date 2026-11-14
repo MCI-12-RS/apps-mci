@@ -79,7 +79,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 ### Fase 1: Preparação (seção 2)
 
-- [ ] **E1.01** Reconciliar as migrations com o banco remoto (definição dupla de `cell_reports`) e regenerar o `types.ts` · _backend_
+- [ ] **E1.01** Reconciliar as migrations com o banco `clfg…` e regenerar o `types.ts`. Inclui: a definição dupla de `cell_reports`, `cells.name` (usada pela auditoria), os dois triggers de cônjuge e as políticas antigas que podem estar somando (`pg_policies`) · _backend_
 - [ ] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_
 - [ ] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
@@ -88,7 +88,10 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
-- [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração · _infra_
+- [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
+- [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
+- [ ] **E1.12** Definir e documentar o deploy: migrations (`supabase db push`) e Edge Functions (`supabase functions deploy`) no projeto `clfg…`, e o front na Vercel · _backend + usuário_
+- [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
 
 ### Fase 2: Paridade (seção 3)
 
@@ -96,7 +99,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 
 - [ ] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos
 - [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5
-- [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha · AUT-06, 6.4
+- [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12
 - [ ] **E2.06** Hierarquia e totais · HIE-01 a HIE-04 · depende de D2
@@ -104,10 +107,10 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4
 - [ ] **E2.09** Situação do relatório por célula · CEL-05
 - [ ] **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07
-- [ ] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3
+- [ ] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3. Inclui: trocar o trigger de semana única por índice único, validar a semana atual só no lançamento e corrigir a data sugerida no formulário
 - [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13
 - [ ] **E2.13** Exportação dos relatórios para Excel · REL-14
-- [ ] **E2.14** Dashboard, incluindo a correção do mapa de dias da semana · DSH-01 a DSH-06
+- [ ] **E2.14** Dashboard, incluindo a correção do mapa de dias da semana e da dupla contagem no ranking G12 · DSH-01 a DSH-06
 - [ ] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02
 - [ ] **E2.16** Aceite geral da paridade: matriz do `CLAUDE.md` toda em ✅ · _product-owner_
 
@@ -158,6 +161,7 @@ Data marcada: _a definir_
 - [ ] **E7.03** Infraestrutura do legado desligada
 - [ ] **E7.04** Backup final criptografado guardado conforme a D8
 - [ ] **E7.05** Repositório `g12app-net` arquivado e submódulo removido
+- [ ] **E7.06** Projeto do Lovable e o banco dele (`gkhnjhmgeceoaqeynhrj`) desativados · _usuário_
 
 ## 2. Pré-requisitos no novo
 
@@ -171,6 +175,10 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - `members`: impedir que `edit_own_data` altere `role_id`, `auth_user_id`, `leader_id` e as demais colunas restritas (regra AUT-05).
   - `get-user-email`: parar de devolver o e-mail de qualquer CPF ou celular. Ele será substituído pela função de login da seção 6.3.
   - Remover a senha padrão `123456`.
+  - `change-member-password`: checar o escopo e o perfil do alvo.
+  - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis.
+  - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
+  - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`).
   - Confirmar se o domínio `mci12fakemail.com` pertence à igreja. Quem controlar esse domínio recebe os e-mails das contas fictícias, inclusive os de redefinição de senha. Ver decisão D7.
   - Configurar SMTP próprio no Supabase Auth. O envio padrão tem limite baixo e não serve para produção.
 - **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar.
@@ -192,11 +200,11 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 |---|---|---|---|---|
 | AUT-01 | Login com e-mail ou celular e senha. | `App/Services/AuthService.cs` | ✅ (aceita também CPF) | Função de login (6.3) |
 | AUT-02 | Três perfis: **básico** (vê o escopo, edita o próprio cadastro, lança relatórios), **administrador** (mais o CRUD de membros, células e relatórios no escopo) e **administrador geral** (tudo, sem escopo). | `Domain/Model/Constants.cs`, `[Authorize(Roles)]` nos controllers, `UI/components/NavMenu` | 🟡 os perfis equivalentes ainda não existem | `role_permissions` + RLS (6.5) |
-| AUT-03 | **Escopo de visibilidade e escrita.** O usuário vê e altera as subárvores de si mesmo, do cônjuge, do seu G12 e do cônjuge do seu G12, além dessas próprias pessoas. Uma célula ou relatório está no escopo se o líder, o timóteo ou o anfitrião estiver. | `Domain/Extensions/QueryingExtensions.cs` (`ApplyMinistryFilter`) | 🟡 não inclui os cônjuges; relatórios ignoram o anfitrião; as permissões de escrita (`edit_member`, `create_cell` etc.) valem para a igreja toda; pastores ficam sem escopo | RLS (`is_in_same_ministry` e políticas de escrita) |
+| AUT-03 | **Escopo de visibilidade e escrita.** O usuário vê e altera as subárvores de si mesmo, do cônjuge, do seu G12 e do cônjuge do seu G12, além dessas próprias pessoas. Uma célula ou relatório está no escopo se o líder, o timóteo ou o anfitrião estiver. | `Domain/Extensions/QueryingExtensions.cs` (`ApplyMinistryFilter`) | 🟡 Já inclui o cônjuge do G12 e a subárvore dele. Ainda faltam: o cônjuge do próprio usuário; o anfitrião nos relatórios; escopo nas escritas (`edit_member`, `edit_cell_report`, `submit_any_visible_report` etc. valem para a igreja toda); e os pastores. Além disso, o SELECT expõe a linha inteira dos líderes de membros visíveis. | RLS (`is_in_same_ministry` e políticas de escrita) |
 | AUT-04 | O administrador geral vê e altera tudo. | `UserExtensions.IsSuperAdmin` | ✅ `view_all_church` | RLS |
-| AUT-05 | O perfil básico edita só o próprio cadastro e não altera líder, "não tem liderança", batismo, inativo nem perfil. | `UI/pages/Members/details.js` (`canEdit` e campos desabilitados) | ❌ `edit_own_data` libera todas as colunas | Trigger em `members` |
-| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | ❌ não existe troca de senha de terceiros | Edge Function com a Admin API (6.4) |
-| AUT-07 | Só o administrador geral altera o perfil de alguém, e ninguém altera o próprio perfil. | `DomainToDTOMappingProfile.cs` (`Role`), `UI/pages/Members/details.js` | ❌ | Trigger em `members` |
+| AUT-05 | O perfil básico edita só o próprio cadastro e não altera líder, "não tem liderança", batismo, inativo nem perfil. | `UI/pages/Members/details.js` (`canEdit` e campos desabilitados) | 🟡 Só na UI: o bloco ministerial some sem `edit_member`. No banco, `edit_own_data` ainda libera todas as colunas. | Trigger em `members` |
+| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | 🟡 A função `change-member-password` existe, mas não checa o escopo nem o perfil do alvo. O próprio membro não troca a senha sem uma permissão especial. | Edge Function com a Admin API (6.4) |
+| AUT-07 | Só o administrador geral altera o perfil de alguém, e ninguém altera o próprio perfil. | `DomainToDTOMappingProfile.cs` (`Role`), `UI/pages/Members/details.js` | 🟡 Só na UI (`assign_role`). Quem tem `assign_role` troca o próprio perfil, e `create-user-admin` aceita qualquer `role_id`. | Trigger em `members` |
 
 ### 3.2 Membros (MEM)
 
@@ -213,7 +221,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | MEM-09 | Data de batismo só existe para quem é batizado. | `UI/pages/Members/details.js` | 🟡 só na tela | CHECK |
 | MEM-10 | O vínculo de cônjuge é simétrico. | `App/Services/MemberService.cs` (`UpdateSpouse`) | ✅ trigger | — |
 | MEM-11 | Exclusão lógica de membros, conforme a seção 3.8. | Repositórios (`IsDeleted`) | ❌ exclusão física; `leader_id ON DELETE SET NULL` e participações `ON DELETE CASCADE` | Ver 3.8 |
-| MEM-12 | Auditoria: quem criou, quem alterou e quando. | `App/Services/EntityChangeTrackingService.cs` | 🟡 só as datas | Colunas + trigger |
+| MEM-12 | Auditoria: quem criou, quem alterou e quando. | `App/Services/EntityChangeTrackingService.cs` | 🟡 Tabela `events`, alimentada por triggers. Cadastros feitos via `create-user-admin` ficam sem autor. | Colunas + trigger |
 | MEM-13 | Filtros da listagem: nome, liderança (qualquer nível), bairro, cidade, ativo/inativo, possui liderança, batizado, nível ministerial, vínculo celular e período de cadastro. | `Domain/Querying/Filters/MemberFilter.cs`; `UI/pages/Members/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | MEM-14 | Vínculo celular: **líder**, **timóteo** ou **anfitrião** (tem célula nesse papel); **participante** (esteve em relatório nos últimos 30 dias); **sem vínculo** (nenhum dos anteriores). | `QueryingExtensions.cs` (`CellLink`) | 🟡 só no dashboard, com 28 dias | View ou RPC |
 | MEM-15 | No cadastro de membro novo, o líder já vem preenchido com o usuário logado. | `UI/pages/Members/details.js` (`GetMemberPickerId`) | ❌ | UI |
@@ -234,7 +242,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (❓ D4) | NOT NULL |
 | CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | 🟡 têm valor padrão, mas aceitam nulo | NOT NULL + CHECK |
 | CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | 🟡 texto livre | CHECK ou enum |
-| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | 🟡 global; no novo, líder e timóteo também editam a própria célula | RLS |
+| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | 🟡 Vale para a igreja toda. A UI exige `edit_cell`, mas o RLS ainda deixa líder e timóteo editarem a própria célula. | RLS |
 | CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ❌ | Função SQL |
 | CEL-06 | Filtros: líder, G12, logradouro, bairro, cidade, tipo, dia da semana, situação do relatório e período de cadastro. | `Domain/Querying/Filters/CellFilter.cs`; `UI/pages/Cells/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | CEL-07 | O detalhe da célula mostra os 3 últimos relatórios e dá acesso à lista completa. | `CellController.GetLastReportsByCellId`; `UI/pages/Cells/details.js` | ❌ | UI |
@@ -250,9 +258,9 @@ Definição da situação do relatório (CEL-05):
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| REL-01 | A data não pode ser futura. | `App/Services/ReportApp.cs` | ❌ | RPC |
-| REL-02 | Só é possível lançar relatório da **semana atual** (domingo 00:00 a sábado 23:59:59, horário de Brasília). | `ReportApp.cs` | ❌ | RPC |
-| REL-03 | **Um relatório por célula por semana.** Mensagem: "O relatório para esta semana já foi enviado (#id)". | `ReportApp.cs` | ❌ | Índice único `(cell_id, semana)` |
+| REL-01 | A data não pode ser futura. | `App/Services/ReportApp.cs` | 🟡 O trigger só barra semanas futuras: dentro da semana atual, aceita datas até o sábado. | RPC |
+| REL-02 | Só é possível lançar relatório da **semana atual** (domingo 00:00 a sábado 23:59:59, horário de Brasília). | `ReportApp.cs` | 🟡 O trigger `enforce_cell_report_current_week` também dispara quando a data é editada, o que impede editar relatórios antigos. O legado só valida no lançamento. | RPC, ou trigger só no INSERT |
+| REL-03 | **Um relatório por célula por semana.** Mensagem: "O relatório para esta semana já foi enviado (#id)". | `ReportApp.cs` | 🟡 Existe um trigger, mas ele consulta antes de inserir (race condition) e a mensagem não traz o `#id`. | Índice único `(cell_id, semana)` |
 | REL-04 | O relatório não pode ser de antes do dia e do horário da célula naquela semana. | `ReportApp.cs` | ❌ | RPC |
 | REL-05 | Quando a célula aconteceu: data, horário e tema obrigatórios. | `Domain/Validators/ReportDTOValidator.cs`; `UI/pages/Report/details.js` | 🟡 só data e horário | CHECK |
 | REL-06 | "Não houve célula": a justificativa é obrigatória, e a data registrada é o dia e horário previstos da célula na semana. | `UI/pages/Report/details.js` | 🟡 | CHECK + RPC |
@@ -260,8 +268,8 @@ Definição da situação do relatório (CEL-05):
 | REL-08 | Visitantes são nomes livres, e só os nomes preenchidos contam. | `ReportService.cs` | ✅ | RPC |
 | REL-09 | O relatório guarda um snapshot de líder, anfitrião, timóteo e tipo da célula no momento do lançamento. | `Domain/Model/Report.cs` | ❌ | Colunas + RPC |
 | REL-10 | Relatório e participantes são gravados juntos (tudo ou nada). | Transação do EF | ❌ chamadas separadas | RPC |
-| REL-11 | Quem lança: qualquer usuário com a célula no escopo (❓ D3). Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 líder ou timóteo da célula, ou quem tem `edit_cell` | RLS / RPC |
-| REL-12 | Oferta em reais, maior ou igual a zero. | `Report.Contribution` | ✅ | CHECK |
+| REL-11 | Quem lança: qualquer usuário com a célula no escopo (❓ D3). Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 Há permissões próprias (`submit_*`, `edit_cell_report`, `delete_cell_report`), mas sem escopo. `submit_any_visible_report` não confere se a célula está visível. | RLS / RPC |
+| REL-12 | Oferta em reais, maior ou igual a zero. | `Report.Contribution` | 🟡 Só no zod; não há CHECK no banco. | CHECK |
 | REL-13 | Listagem com filtros (líder, G12, período) e atalhos para esta semana, a passada e a retrasada. | `UI/pages/Report/index.js`, `UI/components/NavMenu` | ❌ | RPC + UI |
 | REL-14 | **Exportação para Excel**, uma linha por célula no período, ordenada por G12. Colunas: Célula #, G12, Líder, Endereço, Bairro, Situação, Data/Hora, Oferta, Nº de participantes, Nº de visitantes e Observações. Situação: "Relatório não entregue.", "Não houve célula." ou "Célula realizada.". | `App/Services/ExportService.cs`, `ColumnFormatter.cs` | ❌ | Edge Function ou geração no cliente |
 | REL-15 | No formulário, a célula é escolhida pelo nome do líder. Depois de escolhida, a tela mostra líder, timóteo, anfitrião, G12, tipo e endereço, só para leitura. | `UI/pages/Report/details.js` | 🟡 | UI |
@@ -359,7 +367,7 @@ MySQL de produção (somente leitura)
 ```
 
 - O schema `legacy` **não** pode estar entre os schemas expostos pela API (Settings → API → Exposed schemas).
-- As verificações estruturais (ciclos, árvore) rodam no Postgres, porque o MySQL 5.7 não tem CTE recursiva.
+- As verificações de saneamento rodam no Postgres, sobre a cópia, para não pesar no banco de produção do legado (MySQL 8.4).
 - A service role só existe no ambiente de quem opera a migração, nunca no front.
 
 ### 5.3 Preparação do schema de destino

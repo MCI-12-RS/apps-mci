@@ -8,8 +8,8 @@ Este repositório reúne, como submódulos Git, a versão que está em produçã
 
 | Pasta | Papel | Stack | Branch |
 |---|---|---|---|
-| [`mci-connect/`](https://github.com/MCI-12-RS/mci-connect) | **Nova versão**, em desenvolvimento | React 18 + TypeScript + Vite + shadcn/ui + Tailwind, criada no Lovable · Supabase (Postgres, Auth, RLS, Edge Functions) · deploy na Vercel | `main` |
-| [`g12app-net/`](https://github.com/MCI-12-RS/g12app-net) | **Legado**, em produção até ser descontinuado | .NET 8 (ASP.NET Core + EF Core) · MySQL · front em React (CRA + react-bootstrap) | `master` |
+| [`mci-connect/`](https://github.com/MCI-12-RS/mci-connect) | **Nova versão**, em desenvolvimento | React 18 + TypeScript + Vite + shadcn/ui + Tailwind, criada originalmente no Lovable · Supabase (Postgres, Auth, RLS, Edge Functions) · deploy na Vercel | `main` |
+| [`g12app-net/`](https://github.com/MCI-12-RS/g12app-net) | **Legado**, em produção até ser descontinuado | .NET 8 (ASP.NET Core + EF Core) · MySQL 8.4 · front em React (CRA + react-bootstrap) | `master` |
 
 ## Funcionalidades
 
@@ -117,4 +117,5 @@ Outros documentos e configurações:
 - Funcionalidades novas e correções de produto vão para o `mci-connect`. O legado só recebe o mínimo necessário para a migração.
 - No `mci-connect`, regras de negócio precisam ser aplicadas no banco (RLS, constraints, triggers ou RPC), não só na interface.
 - Não edite migrations que já foram aplicadas; crie uma nova.
-- O `mci-connect` é sincronizado com o Lovable. Evite reescrever o histórico da `main`.
+- O Lovable não é mais usado: o desenvolvimento segue com o Claude Code.
+- Nada vai direto para a `main`. Cada mudança vai numa branch própria, com PR revisado antes do merge.

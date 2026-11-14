@@ -20,12 +20,14 @@ Regras de trabalho:
 
 | Caminho | O quê | Branch |
 |---|---|---|
-| `mci-connect/` | **Novo** (submódulo), criado no Lovable. Vite + React 18 + TypeScript + shadcn/ui + Tailwind + TanStack Query + react-hook-form/zod. Backend: Supabase (Postgres, Auth, RLS, Edge Functions em Deno). Deploy na Vercel (rewrite de SPA). | `main` |
-| `g12app-net/` | **Legado, em produção** (submódulo). .NET 8, ASP.NET Core API + EF Core com **MySQL** em produção (provider configurado para a versão 5.7). Front em CRA (React 18 + react-bootstrap) em `G12App.API/ClientApp`, servido pela própria API via SpaProxy. | `master` |
+| `mci-connect/` | **Novo** (submódulo), criado originalmente no Lovable. Vite + React 18 + TypeScript + shadcn/ui + Tailwind + TanStack Query + react-hook-form/zod. Backend: Supabase (Postgres, Auth, RLS, Edge Functions em Deno). Deploy na Vercel (rewrite de SPA). | `main` |
+| `g12app-net/` | **Legado, em produção** (submódulo). .NET 8, ASP.NET Core API + EF Core. Em produção usa **MySQL 8.4**, num banco gerenciado (DigitalOcean); o provider do EF está configurado para a versão 5.7. Front em CRA (React 18 + react-bootstrap) em `G12App.API/ClientApp`, servido pela própria API via SpaProxy. | `master` |
 
 - **Configs e segredos locais** ficam em `local.config`, na raiz, que é ignorado pelo git (ver `.gitignore`). Leia de lá quando precisar de credenciais (ex.: MySQL, service role do Supabase), mas nunca copie esses valores para arquivos versionados, specs, logs ou respostas.
 - Submódulos: faça o commit dentro do submódulo (no repositório dele) e depois atualize o ponteiro na raiz (`git add mci-connect && git commit`). Para clonar: `git clone --recurse-submodules`, ou `git submodule update --init` depois de um clone normal.
-- O `mci-connect` é sincronizado com o Lovable, e os commits feitos lá chegam na `main` (ex.: "Preceding changes"). Não reescreva o histórico da `main`.
+- **O Lovable foi abandonado em 2026-11-14.** O desenvolvimento do `mci-connect` segue com o Claude Code. A antiga branch `ai`, onde o Lovable trabalhava, foi incorporada à `main` (PR #4) e não é mais usada.
+- **Banco do novo:** projeto Supabase `clfgjnwtzasdsrgcxmmd` (o mesmo do `.env` e do `config.toml`). O projeto `gkhnjhmgeceoaqeynhrj` era o banco do Lovable, só com dados de teste: não use.
+- **Git:** nunca faça commit direto na `main` (raiz e `mci-connect`) nem na `master` (legado), e não reescreva o histórico delas. Cada passo vai numa branch própria, com PR. O merge é sempre do usuário.
 
 ## Comandos
 
@@ -37,6 +39,7 @@ npm run build
 npm run lint
 npm test           # Vitest; hoje só existe src/test/example.test.ts
 ```
+- **Acesso ao banco:** as credenciais ficam no `local.config` (`SUPABASE_PROJECT_REF`, `SUPABASE_HOST`, `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_USER`, `SUPABASE_PASS`). Use o **Session pooler** (`aws-…pooler.supabase.com`, usuário `postgres.<ref>`): a conexão direta `db.<ref>.supabase.co` só tem IPv6 e não funciona nesta máquina. Antes de qualquer comando, confira que o `SUPABASE_PROJECT_REF` é o `clfgjnwtzasdsrgcxmmd`.
 - O project ref do Supabase fica em `supabase/config.toml`. O front lê do `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_PROJECT_ID`.
 - Depois de mudar o schema, regenere os tipos: `npx supabase gen types typescript --project-id <ref> > src/integrations/supabase/types.ts`.
 - As Edge Functions ficam em `supabase/functions/*` (Deno).
@@ -227,13 +230,22 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `meeting_time`, endereço inline e `is_active`.
 - `cell_reports`: `cell_id`, `date`, `time`, `was_held`, `reason_not_held`, `theme`, `observations`, `visitors` (lista de nomes) e `offering`.
 - `cell_report_participants`: `report_id`, `member_id`.
-- `roles` e `role_permissions`, com permissões do enum `permission_action`:
-  - Permissões: `view_dashboard`, `view_members`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `manage_roles`, `view_roles`, `view_all_church`, `view_own_ministry`, `edit_own_data`.
-  - Roles semeadas: Administrador (`is_system`), Líder e Membro.
+- `roles` (`is_system`; `is_default`, com no máximo uma role padrão) e `role_permissions`, com permissões do enum `permission_action` (24 valores):
+  - Originais: `view_dashboard`, `view_members`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `manage_roles`, `view_roles`, `view_all_church`, `view_own_ministry`, `edit_own_data`.
+  - Vindas do merge da `ai`: `view_own_reports`, `view_all_reports`, `submit_own_cell_report`, `submit_any_visible_report`, `assign_role`, `view_sensitive_data`, `change_member_password`, `view_own_ministry_dashboard`, `edit_cell_report`, `delete_cell_report`, `view_audit_log`.
+  - Roles semeadas: Administrador (`is_system`), Líder e Membro. Das permissões novas, as migrations só concedem `view_audit_log`, e só a quem tem `manage_roles`. As demais dependem de configuração na tela de Funções.
+- `events` (auditoria): `occurred_at`, `actor_user_id`, `actor_label`, `action`, `entity`, `entity_id`, `entity_label`, `description`, `changed_fields`, `metadata`, `success`, `error_reason`. Tem só política de SELECT (`view_audit_log`).
+- Confirmar no banco real (E1.01): `male_cells` e `female_cells` existem? `cells.name` foi removida? Qual definição de `cell_reports` / `cell_report_participants` valeu?
 
 ### Lógica no banco
 - `compute_g12_level` (BEFORE INSERT ou UPDATE de `leader_id` / `is_pastor`): pastor → 0; com líder → nível do líder + 1; sem líder → 0. **Não propaga** para os descendentes.
-- `sync_spouse_trigger`: mantém o vínculo de cônjuge simétrico.
+- Cônjuge: **dois triggers** mantêm o vínculo simétrico, `sync_spouse_trigger` (antigo) e `sync_spouse_relationship` (novo, que também proíbe casar consigo). Eles usam proteções diferentes contra recursão e precisam ser consolidados.
+- Relatórios:
+  - `enforce_unique_weekly_cell_report` (BEFORE INSERT/UPDATE de `cell_id`, `date`): um relatório por célula por semana, de domingo a sábado. Consulta antes de gravar, então há risco de race condition.
+  - `enforce_cell_report_current_week` (BEFORE INSERT/UPDATE de `date`): só a semana atual, em `America/Sao_Paulo`. Também dispara na edição.
+- Auditoria:
+  - Triggers AFTER em `members`, `cells`, `cell_reports` e participantes chamam `_log_event` (`SECURITY DEFINER`). Os erros são engolidos com WARNING.
+  - `log_auth_event` pode ser chamada por `anon` e `authenticated`: o próprio front registra login, falha de login e logout.
 - `refresh_member_stats_v2` (triggers em `members` e `cells`): recalcula toda a cadeia de ancestrais.
   - `total_disciples`: descendentes ativos.
   - `male_cells` / `female_cells`: células ativas lideradas na subárvore, separadas pelo gênero do líder.
@@ -242,20 +254,32 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `user_has_permission(uid, perm)`.
   - `is_admin`: quem tem `manage_roles`.
   - `get_ministry_root`: o ancestral com `g12_level = 1`.
-  - `is_in_same_ministry`.
+  - `is_in_same_ministry` (v2): o mesmo G12, incluindo o cônjuge do G12 e a subárvore dele.
+  - `is_leader_of_visible_member`: a política de SELECT de `members` também mostra os líderes de membros visíveis, com a linha inteira.
   - `can_manage_own_cell`: é líder ou timóteo da célula.
 - O que cada permissão libera:
   - `view_members` e `view_all_church`: veem a igreja inteira.
   - `view_own_ministry`: vê só o próprio ministério (mesmo G12).
   - `edit_own_data`: edita o próprio cadastro e as células/relatórios em que é líder ou timóteo.
+  - Relatórios:
+    - inserir: `edit_cell` ou `submit_any_visible_report` (em qualquer célula, sem checar visibilidade), ou `submit_own_cell_report` na própria célula;
+    - editar: `edit_cell_report`; excluir: `delete_cell_report`. Ambos sem escopo.
+  - `view_sensitive_data` e `view_own_ministry_dashboard`: só a UI respeita. A API devolve todas as colunas.
 - No front, `hasPermission` retorna `true` para tudo quando a role é `is_system`. O RLS **não** tem esse atalho.
 
 ### Edge Functions
 - `create-user-admin`: cria o usuário no Auth (com service role) e a linha em `members`. É usada no cadastro de membro.
 - `get-user-email`: converte CPF ou celular no e-mail correspondente, para o login.
+- `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
 
 ### Front
-- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries` e `/roles`. O menu é filtrado por permissão (`AppSidebar.tsx`). Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
+- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries`, `/roles` e `/events` (Auditoria, só com `view_audit_log`). O menu é filtrado por permissão (`AppSidebar.tsx`). Todo usuário logado tem "Editar meus dados". Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
+- `MemberForm`, tudo só na UI:
+  - campos sensíveis escondidos sem `view_sensitive_data`;
+  - seletor de função só com `assign_role`, com a role padrão pré-selecionada;
+  - bloco ministerial só com `edit_member`;
+  - botão "Alterar senha".
+- `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Relatório e participantes ainda são gravados em chamadas separadas.
 - Login por e-mail, CPF ou celular.
 - Membro sem e-mail recebe um e-mail fictício `<nome>_<hash>@mci12fakemail.com`, porque o Auth exige e-mail. A UI esconde esses e-mails.
 - Se a senha não for informada, a padrão é `123456`.
@@ -275,11 +299,14 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
     - `20260326193800`: `visitors jsonb` e PK composta.
     - `20260327024528`: `text[]` e coluna `id`.
   - O `types.ts` segue a segunda definição.
-  - O `types.ts` ainda tem `cells.name`, que foi removida em `20260326040000`.
-  - Faltam `instagram`, `avatar_url`, `male_cells` e `female_cells` no `types.ts`; o código contorna com `as any` ou tipos estendidos.
+  - O `types.ts` ainda tem `cells.name`, que foi removida em `20260326040000`, e os triggers de auditoria também usam essa coluna. Se ela não existir no banco, a auditoria de células, relatórios e participantes falha sem avisar.
+  - Faltam `male_cells` e `female_cells` no `types.ts`; o código contorna com `as any`.
+  - A migration `20260426202511` repete a `20260326050000`, sinal de que o banco do Lovable não rodou as migrations manuais.
   - Antes de escrever uma migration, **confira o schema real no Supabase** e regenere os tipos.
 - Algumas migrations têm nome em UUID (geradas pelo Lovable) e outras têm nome legível (manuais). Nunca edite uma migration já aplicada; crie uma nova.
-- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente (Members, Cells, "sem vínculo" do dashboard) **cortam os dados sem avisar** acima disso. Prefira `count`, paginação, views ou RPC.
+- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. Isso acontece em Members, Cells, CellReports, no seletor de células do `CellReportForm` e no Dashboard (ranking G12 e "sem vínculo"). Prefira `count`, paginação, views ou RPC.
+- As políticas da `20260326193800` nunca foram removidas. Se essa migration rodou, elas se somam às novas, por exemplo `edit_cell` com `FOR ALL` em participantes. Confira em `pg_policies` (E1.01).
+- O trigger de semana atual também barra a carga dos relatórios antigos do legado. Na migração, os triggers são desligados (`session_replication_role = replica`).
 - `gender` usa 'M'/'F', mas as funções de stats também aceitam 'Masculino'/'Feminino'. Padronize em 'M'/'F'. Células de líder sem gênero ficam fora de `total_cells`.
 - `meeting_day` é salvo como 'Segunda', 'Terça'…, mas o `WEEK_DAYS_MAP` do `Dashboard.tsx` usa 'Segunda-feira'… Com isso, células de segunda a sexta nunca entram em "células sem relatório". É um bug.
 - `has_leadership` no novo quer dizer "tem líder", o inverso de `HasNoLeadership` no legado.
@@ -294,8 +321,9 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Feature ou regra do legado | No novo | Status |
 |---|---|---|
 | Login por e-mail ou celular | e-mail, CPF ou celular | ✅ |
-| Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 o escopo não inclui o cônjuge nem o cônjuge do G12; as roles semeadas não usam escopo |
-| CRUD de membros | sim | 🟡 sem auditoria (`created_by`) |
+| Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 já inclui o cônjuge do G12. Faltam o cônjuge do próprio usuário, o anfitrião nos relatórios, o escopo nas escritas e os pastores; as roles semeadas não usam escopo |
+| CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
+| Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
 | Exclusão lógica de membros, células e relatórios | exclusão física, apagando relatórios e participações em cascata | ❌ |
 | Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | nenhuma no banco | ❌ |
 | Cônjuge simétrico | trigger | ✅ |
@@ -307,7 +335,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Filtros de células: G12, endereço, tipo, dia, situação do relatório, data de cadastro | só busca por texto | ❌ |
 | Situação do relatório por célula (em dia, pendente, atrasado de 1 a 4+ semanas) | não existe | ❌ |
 | Lançamento de relatório | sim | 🟡 |
-| Regras do relatório: semana atual, sem data futura, um por semana, depois do horário da célula, justificativa quando não houve | nenhuma | ❌ |
+| Regras do relatório: semana atual, sem data futura, um por semana, depois do horário da célula, justificativa quando não houve | triggers de semana atual e de semana única | 🟡 aceita data futura dentro da semana, ignora o horário da célula, tem race condition e bloqueia a edição de relatórios antigos |
 | Líder, timóteo e anfitrião como participantes automáticos | não existe | ❌ |
 | Snapshot de líder, anfitrião, timóteo e tipo no relatório | não existe | ❌ |
 | Relatórios por período e atalhos para a semana atual, passada e retrasada | só busca por texto | ❌ |
@@ -355,3 +383,10 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - Senha padrão `123456`.
 - O bug do `WEEK_DAYS_MAP` no Dashboard (descrito acima).
 - A busca de `Members` coloca o texto digitado direto no `.or(...)` do PostgREST, então vírgulas e parênteses quebram o filtro.
+- `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
+- A política de SELECT de `members` devolve a linha inteira (CPF, e-mail, telefone, endereço) de qualquer líder de um membro visível, inclusive pastores. Além disso, é cara: roda um laço por linha.
+- `_log_event` só tem `REVOKE ... FROM PUBLIC`. Se `anon` ou `authenticated` tiverem grant direto, qualquer um consegue forjar eventos de auditoria; confira com `has_function_privilege`. `log_auth_event` é aberta a `anon`, sem limite de volume.
+- `view_sensitive_data` e `view_own_ministry_dashboard` só existem na UI.
+- O ranking G12 do Dashboard soma `total_cells` de todos os nós da subárvore, mas esse total já é acumulado. Resultado: dupla contagem.
+- A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
+- Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.

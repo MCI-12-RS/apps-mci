@@ -64,7 +64,7 @@ Rode ao fim de toda implementação que você coordenou e sempre que houver muda
   - componentes de página e formulário cuidam de UI;
   - o acesso a dados fica em hooks (`src/hooks/use-<entidade>.ts`) ou serviços;
   - regra de domínio pura (cálculo de semana, situação do relatório, máscaras, CPF) fica em `src/lib/<dominio>/`, sem React e sem Supabase, para ser testável.
-- O código atual chama o Supabase direto nas páginas. Corrija aos poucos, sempre que mexer no arquivo. Não faça reescrita em massa, porque o projeto é sincronizado com o Lovable.
+- O código atual chama o Supabase direto nas páginas. Corrija aos poucos, sempre que mexer no arquivo. Refatorações maiores vão em PR separado do PR da feature, para manter a revisão fácil.
 - **Sem strings mágicas** de domínio espalhadas: dias da semana, tipos de célula, gênero e permissões vivem num módulo único. Exemplo do problema: `'Segunda'` × `'Segunda-feira'`.
 - **Tipos** gerados do Supabase. Nada de `any`. Tipos desatualizados se resolvem regenerando, não com cast.
 - Funções pequenas, nomes que revelam a intenção e nada de duplicação.

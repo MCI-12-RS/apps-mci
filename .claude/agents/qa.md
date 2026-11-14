@@ -32,7 +32,7 @@ Para saber o comportamento esperado de uma regra do legado, consulte os testes d
 
 ### 3. Comportamento / E2E (Playwright)
 - Um teste por critério de aceite dos fluxos principais.
-- Atenção: o `playwright.config.ts` importa `lovable-agent-playwright-config`, que **não está** no `package.json`. Antes de rodar, combine com o usuário se instala o pacote ou se cria uma configuração própria. Não troque isso por conta própria.
+- Atenção: o `playwright.config.ts` ainda usa a configuração do Lovable (`lovable-agent-playwright-config`), que **não está** no `package.json`. Trocá-la por uma configuração própria é o passo E1.11 de `docs/migracao.md`. Até esse passo ser concluído, não rode o Playwright.
 
 ## Padrões
 - **Rastreabilidade**: toda RN tem pelo menos um teste. Exemplo de nomes:
