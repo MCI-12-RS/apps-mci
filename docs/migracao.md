@@ -92,11 +92,14 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
+  - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
 - [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
 - [x] **E1.12** Definir e documentar o deploy: workflows manuais "Deploy: banco (Supabase)" e "Deploy: promote (Vercel)". O *auto-assign* de domínios foi desligado na Vercel, e o fluxo foi validado de ponta a ponta (2026-11-15, mci-connect#9). Ver "Deploy de produção" no `CLAUDE.md`
 - [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
+  - Em andamento (mci-connect#10, migration já aplicada em produção): auditoria só gravada pelos triggers, `log_auth_event` restrita, SELECT de `members` sem os dados dos líderes de fora (nomes via `member_names`), funções do RLS fechadas para `anon`. O autor nos cadastros já veio com o E1.02.
+  - Movido para o E1.08: impor `view_sensitive_data` no banco. O legado não restringia dados de contato, e a mudança exige trocar todas as leituras de `members` por view/RPC.
 - [x] **E1.14** Apontar o front para o projeto novo (2026-11-14, mci-connect#6):
   - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
   - variáveis de ambiente na Vercel;
