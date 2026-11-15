@@ -397,9 +397,8 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - O bug do `WEEK_DAYS_MAP` no Dashboard (descrito acima).
 - A busca de `Members` coloca o texto digitado direto no `.or(...)` do PostgREST, então vírgulas e parênteses quebram o filtro.
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
-- A política de SELECT de `members` devolve a linha inteira (CPF, e-mail, telefone, endereço) de qualquer líder de um membro visível, inclusive pastores. Além disso, é cara: roda um laço por linha.
-- `_log_event` só tem `REVOKE ... FROM PUBLIC`. Se `anon` ou `authenticated` tiverem grant direto, qualquer um consegue forjar eventos de auditoria; confira com `has_function_privilege`. `log_auth_event` é aberta a `anon`, sem limite de volume.
-- `view_sensitive_data` e `view_own_ministry_dashboard` só existem na UI.
+- As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
+- `view_sensitive_data` e `view_own_ministry_dashboard` só existem na UI. A primeira será imposta no banco junto com o E1.08.
 - O ranking G12 do Dashboard soma `total_cells` de todos os nós da subárvore, mas esse total já é acumulado. Resultado: dupla contagem.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
 - Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.
