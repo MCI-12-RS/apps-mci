@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | ⬜ | Já |
+| 1. Preparação | 🔄 3 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -79,13 +79,13 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 ### Fase 1: Preparação (seção 2)
 
-- [ ] **E1.01** Preparar o banco novo (`gkhn…`). Hoje ele tem 24 das 33 migrations do repositório, com dados de teste. Passos:
+- [x] **E1.01** Preparar o banco novo (`gkhn…`). O banco foi zerado e recebeu as 34 migrations (2026-11-14, mci-connect#5). Passos:
   - aplicar o histórico **num banco zerado**, para provar que as migrations rodam do início ao fim;
   - resolver a definição dupla de `cell_reports`, a coluna `cells.name` (usada pela auditoria), os dois triggers de cônjuge e as políticas que se somam;
   - regenerar o `types.ts` a partir do banco.
 
   Escrever no banco exige autorização do usuário · _backend_
-- [ ] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_
+- [x] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. Valida o perfil atribuído, grava o membro com a sessão de quem chama (o autor vai para a auditoria) e desfaz a conta se o cadastro falhar. Publicada em produção (2026-11-14, mci-connect#7)
 - [ ] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
 - [ ] **E1.05** Remover a senha padrão `123456` · _frontend_
@@ -97,10 +97,22 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
 - [ ] **E1.12** Definir e documentar o deploy: migrations (`supabase db push`) e Edge Functions (`supabase functions deploy`) no projeto `gkhn…`, e o front na Vercel · _backend + usuário_
 - [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
-- [ ] **E1.14** Apontar o front para o projeto novo:
+- [x] **E1.14** Apontar o front para o projeto novo (2026-11-14, mci-connect#6):
   - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
   - variáveis de ambiente na Vercel;
-  - Auth do projeto novo: Site URL, URLs de redirecionamento e as Edge Functions publicadas.
+  - Auth do projeto novo: Site URL, URLs de redirecionamento, **cadastro público desligado** e as Edge Functions publicadas.
+
+  Resultado:
+  - **Vercel:** as variáveis já apontavam para o `gkhn…` (integração Supabase ↔ Vercel), e a produção usa o banco novo.
+  - **Repositório:** `.env` e `config.toml` atualizados (mci-connect#6).
+  - **Auth**, configurado pela API de gestão:
+    - Site URL `https://connect.mci12rs.com.br`;
+    - redirects dos dois domínios, dos previews e do `localhost:8080`;
+    - cadastro público desligado.
+  - **Edge Functions:**
+    - `create-user-admin` corrigida e publicada (E1.02);
+    - `get-user-email` segue a versão antiga até o E1.04;
+    - `change-member-password` não está publicada (E2.03).
 
   _frontend + usuário_
 

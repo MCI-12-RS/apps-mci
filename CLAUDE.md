@@ -23,11 +23,14 @@ Regras de trabalho:
 | `mci-connect/` | **Novo** (submódulo), criado originalmente no Lovable. Vite + React 18 + TypeScript + shadcn/ui + Tailwind + TanStack Query + react-hook-form/zod. Backend: Supabase (Postgres, Auth, RLS, Edge Functions em Deno). Deploy na Vercel (rewrite de SPA). | `main` |
 | `g12app-net/` | **Legado, em produção** (submódulo). .NET 8, ASP.NET Core API + EF Core. Em produção usa **MySQL 8.4**, num banco gerenciado (DigitalOcean); o provider do EF está configurado para a versão 5.7. Front em CRA (React 18 + react-bootstrap) em `G12App.API/ClientApp`, servido pela própria API via SpaProxy. | `master` |
 
-- **Configs e segredos locais** ficam em `local.config`, na raiz, que é ignorado pelo git (ver `.gitignore`). Leia de lá quando precisar de credenciais (ex.: MySQL, service role do Supabase), mas nunca copie esses valores para arquivos versionados, specs, logs ou respostas.
+- **Configs e segredos locais** ficam em `local.config`, na raiz, que é ignorado pelo git (ver `.gitignore`). Leia de lá quando precisar de credenciais (ex.: MySQL, chave secreta do Supabase), mas nunca copie esses valores para arquivos versionados, specs, logs ou respostas.
+  - A única exceção é a chave pública (`SUPABASE_PUBLISHABLE_KEY`, `sb_publishable_…`): ela é pública por natureza e fica no `.env` do `mci-connect`.
+  - Ao rodar a Supabase CLI, **não exporte** as variáveis do `local.config` para o ambiente. A CLI lê qualquer `SUPABASE_*` como configuração dela, e o `SUPABASE_DB`, por exemplo, quebra a seção `[db]`. Monte a URL do banco num subshell e passe por `--db-url`.
 - Submódulos: faça o commit dentro do submódulo (no repositório dele) e depois atualize o ponteiro na raiz (`git add mci-connect && git commit`). Para clonar: `git clone --recurse-submodules`, ou `git submodule update --init` depois de um clone normal.
 - **O Lovable foi abandonado em 2026-11-14.** O desenvolvimento do `mci-connect` segue com o Claude Code. A antiga branch `ai`, onde o Lovable trabalhava, foi incorporada à `main` (PR #4) e não é mais usada.
 - **Banco do novo:** projeto Supabase **`gkhnjhmgeceoaqeynhrj`**, criado para receber o sistema e a migração. As credenciais estão no `local.config`.
   - O `clfgjnwtzasdsrgcxmmd` é o banco do Lovable, que está sendo abandonado. Não use, e não é preciso nada dele.
+  - **Vercel:** as variáveis `VITE_SUPABASE_*`, `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*` e `POSTGRES_*` da Vercel são gerenciadas pela integração Supabase ↔ Vercel e apontam para o `gkhn…`. Não edite à mão. Elas valem só para produção; os previews usam o `.env`. As credenciais da API da Vercel estão no `local.config` (`VERCEL_PROJECT_ID`, `VERCEL_API_KEY`).
   - Ele ainda aparece no `.env` e no `supabase/config.toml` do `mci-connect` até o passo E1.14.
 - **Git:** nunca faça commit direto na `main` (raiz e `mci-connect`) nem na `master` (legado), e não reescreva o histórico delas. Cada passo vai numa branch própria, com PR. O merge é sempre do usuário.
 
