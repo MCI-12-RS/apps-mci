@@ -31,6 +31,14 @@ Regras de trabalho:
 - **Banco do novo:** projeto Supabase **`gkhnjhmgeceoaqeynhrj`**, criado para receber o sistema e a migração. As credenciais estão no `local.config`.
   - O `clfgjnwtzasdsrgcxmmd` é o banco do Lovable, que está sendo abandonado. Não use, e não é preciso nada dele.
   - **Vercel:** as variáveis `VITE_SUPABASE_*`, `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*` e `POSTGRES_*` da Vercel são gerenciadas pela integração Supabase ↔ Vercel e apontam para o `gkhn…`. Não edite à mão. Elas valem só para produção; os previews usam o `.env`. As credenciais da API da Vercel estão no `local.config` (`VERCEL_PROJECT_ID`, `VERCEL_API_KEY`).
+  - **Deploy de produção** (Actions do `mci-connect`; nada vai ao ar sozinho):
+    1. **"Deploy: banco (Supabase)"** mostra o plano no resumo da execução e aplica as migrations (`supabase db push`). Depois publica as Edge Functions da lista `EDGE_FUNCTIONS` do workflow. A opção "somente plano" só faz o *dry run*.
+    2. **"Deploy: promote (Vercel)"** recusa se o banco tiver migrations pendentes. Se estiver em dia, promove para `connect.mci12rs.com.br` o deploy de produção da Vercel do commit escolhido.
+    - O *auto-assign* de domínios está **desligado** na Vercel: o merge na `main` gera o build, mas o domínio só muda pelo promote.
+    - Uma Edge Function nova só vai para produção se for adicionada à lista do workflow. A `change-member-password` está de fora até o E2.03.
+    - O plano gratuito do GitHub não permite aprovação manual (revisor obrigatório) nos environments; por isso são dois workflows.
+    - O plano Hobby da Vercel não faz deploy de repositório privado de organização. Se o `mci-connect` virar privado, os deploys param.
+  - **Visibilidade:** o `mci-connect` é **público**, e o `apps-mci` e o `g12app-net` são privados. Nos PRs e commits do `mci-connect`, descreva o que foi corrigido sem detalhar falhas ainda abertas; esses detalhes ficam aqui, no `apps-mci`.
   - Ele ainda aparece no `.env` e no `supabase/config.toml` do `mci-connect` até o passo E1.14.
 - **Git:** nunca faça commit direto na `main` (raiz e `mci-connect`) nem na `master` (legado), e não reescreva o histórico delas. Cada passo vai numa branch própria, com PR. O merge é sempre do usuário.
 
