@@ -1,6 +1,6 @@
 # E1.08: Paginação, contagem e máscara de dados sensíveis no servidor
 
-> Status: em refinamento. O desenho está pronto, mas RN-06, RN-08 e RN-11 dependem das perguntas D-1 a D-5.
+> Status: aprovado em 2026-11-15 (decisões D-1 a D-5 respondidas pelo usuário). Implementação em 5 PRs, começando pelo PR 1.
 > Slug: `e1-08-paginacao-servidor` · Paridade com o legado: parcial. É um passo técnico da fase 1 e antecipa a MEM-14 e parte da DSH.
 
 ## Negócio
@@ -37,14 +37,14 @@ O escopo de visibilidade não muda: cada pessoa continua vendo exatamente o que 
 | RN-01 | **Paginação no servidor** em Membros, Células e Relatórios.<br>- Página padrão de 25 itens; o usuário escolhe 10, 25, 50 ou 100.<br>- A tela mostra o total exato e a página atual.<br>- Mudar a busca ou o tamanho da página volta para a página 1.<br>- Página, tamanho e busca ficam na URL. | E1.08; legado com 10 ou 20 por página e total (`UI/components/Grid`) · D-5 |
 | RN-02 | **Nada é cortado.** Listas, totais, cards do dashboard e a árvore consideram todos os registros visíveis, mesmo acima de 1000. | E1.08 |
 | RN-03 | **Ordem estável**, com desempate por `id`:<br>- Membros: por nome.<br>- Células: da cadastrada mais recentemente para a mais antiga.<br>- Relatórios: da data mais recente para a mais antiga.<br>Sem mudança nos dados, navegar pelas páginas não repete nem pula registros. | ordem atual do novo |
-| RN-04 | **Busca no servidor.**<br>- Ignora maiúsculas e acentos.<br>- Cada palavra digitada precisa aparecer, em qualquer campo pesquisável.<br>- Qualquer caractere conta como texto: vírgula, parênteses, `%`, `_` e aspas não quebram nem alteram o filtro.<br>- Limite: 100 caracteres e 5 palavras.<br><br>Campos pesquisáveis:<br>- Membros: nome, e-mail e CPF (com ou sem pontuação).<br>- Células: nomes do líder, do timóteo, do anfitrião e dos líderes de cada um, além de rua e bairro.<br>- Relatórios: nome do líder da célula e tema. | busca atual do novo + correção de `Members.tsx` · D-5 |
+| RN-04 | **Busca no servidor.**<br>- Ignora maiúsculas e acentos.<br>- Cada palavra digitada precisa aparecer, em qualquer campo pesquisável.<br>- Nenhum caractere quebra o filtro: vírgula, parênteses, `%`, `_` e aspas contam como texto. Só a pontuação nas pontas de cada palavra é ignorada ("(Silva)" busca "silva").<br>- Limite: 100 caracteres e 5 palavras.<br><br>Campos pesquisáveis:<br>- Membros: nome, e-mail e CPF (com ou sem pontuação).<br>- Células: nomes do líder, do timóteo, do anfitrião e dos líderes de cada um, além de rua e bairro.<br>- Relatórios: nome do líder da célula e tema. | busca atual do novo + correção de `Members.tsx` · D-5 |
 | RN-05 | **Escopo inalterado.** Os membros, células, relatórios e participantes que cada usuário vê (em listas, totais, seletores, dashboard e árvore) são exatamente os que as políticas de RLS atuais liberam. | RLS atual (E1.13) |
 | RN-06 | **Nomes de referência.** Numa linha visível aparecem, mesmo que a pessoa esteja fora do escopo de quem consulta, apenas os nomes de:<br>- o líder do membro;<br>- o líder, o timóteo, o anfitrião e o G12 da célula;<br>- o líder da célula do relatório;<br>- os participantes do relatório. | mesma regra da `member_names` (E1.13) · **D-4** |
-| RN-07 | **Seletores com busca no servidor**, no máximo 20 opções por busca:<br>- líder e cônjuge: membros visíveis, ativos ou não, exceto o próprio membro;<br>- participantes: membros visíveis e ativos;<br>- célula do relatório: células visíveis e ativas.<br><br>Com mais resultados, mostram "Mostrando 20 resultados. Refine a busca.". Abertos sem texto, mostram os 20 primeiros em ordem alfabética (para células, pelo nome do líder). | seletores atuais; legado com 10 · D-5 |
+| RN-07 | **Seletores com busca e paginação no servidor**, 20 opções por página:<br>- líder e cônjuge: membros visíveis, ativos ou não, exceto o próprio membro;<br>- participantes: membros visíveis e ativos;<br>- célula do relatório: células visíveis e ativas.<br><br>Abertos sem texto, mostram as 20 primeiras opções em ordem alfabética (para células, pelo nome do líder). Havendo mais, a lista carrega as 20 seguintes ao chegar ao fim (rolagem) ou pelo item "Carregar mais", até acabar. Mudar o texto da busca recomeça da primeira página. | seletores atuais; legado com 10 · D-5 |
 | RN-08 | **Dashboard calculado no banco**, no escopo do usuário. A semana vai de domingo a sábado, e "hoje" e "agora" seguem o horário de Brasília (`America/Sao_Paulo`), independentemente do relógio do navegador. Os cards e as definições são os atuais, com quatro correções:<br>(a) células de segunda a sexta entram em "Células sem relatório";<br>(b) o ranking G12 conta as células da subárvore uma vez só;<br>(c) "Sem vínculo celular" segue a MEM-14: participação nos últimos **30** dias (hoje são 28), em qualquer célula ou relatório, não só nos visíveis;<br>(d) "Células sem relatório" considera qualquer relatório da célula na semana, visível ou não. | DSH-02, DSH-03, MEM-14, problemas conhecidos · **D-3** |
 | RN-09 | **Acesso ao dashboard.** Só quem tem `view_dashboard` ou `view_own_ministry_dashboard` recebe os números. Os demais recebem um erro de permissão, e a tela mostra "Você não tem acesso ao dashboard.". | regra atual do menu (`AppSidebar.tsx`) |
 | RN-10 | **Árvore de ministérios sem N+1.**<br>- Abrir um nó faz uma única consulta para todos os filhos, já com as contagens.<br>- Cada nó é um casal, com o homem primeiro.<br>- Só aparecem membros ativos, inclusive o cônjuge exibido.<br>- A contagem do nó é o número de discípulos diretos ativos e visíveis do casal.<br>- As raízes continuam sendo os pastores ativos visíveis. | MIN-01, MIN-03; MIN-02 fica para o E2.15 |
-| RN-11 | **Máscara de dados sensíveis.** CPF, e-mail, celular, telefone e endereço (rua, número, complemento, bairro, cidade, UF e CEP) de um membro só saem do banco para:<br>(a) o próprio membro;<br>(b) quem tem `view_sensitive_data`, para os membros que já vê.<br><br>Para os demais, esses campos vêm nulos, inclusive em leitura direta da API, e a tela mostra "•••••" ou esconde o campo. | pedido do E1.13 · **D-1, D-2** |
+| RN-11 | **Máscara de dados sensíveis.** CPF, e-mail, celular, telefone, rua, número, complemento e CEP de um membro só saem do banco para:<br>(a) o próprio membro;<br>(b) quem tem `view_sensitive_data`, para os membros que já vê.<br><br>Para os demais, esses campos vêm nulos, inclusive em leitura direta da API, e a tela mostra "•••••" ou esconde o campo. Bairro, cidade e UF **não** são sensíveis: saem para todos que veem o membro. | pedido do E1.13 · **D-1, D-2** |
 | RN-12 | **Quem não vê, não altera.**<br>- Ao salvar um membro cujos dados sensíveis o usuário não vê, esses campos ficam como estavam, mesmo que a requisição traga outros valores.<br>- No cadastro de um membro novo, quem tem `create_member` preenche todos os campos. | consequência da RN-11 (a tela já esconde esses campos) |
 | RN-13 | **A busca não revela dado mascarado.** Quem não vê o CPF ou o e-mail de um membro não o encontra buscando por esses valores. | consequência da RN-11 |
 | RN-14 | **O administrador mantém o acesso.** As roles `is_system` passam a ter `view_sensitive_data` no banco, como a tela já considera hoje. | `AuthContext.hasPermission` (atalho de `is_system`) |
@@ -65,7 +65,7 @@ O escopo de visibilidade não muda: cada pessoa continua vendo exatamente o que 
 - **RN-04**
   - Dado o membro "João da Silva", visível para o usuário
   - Quando ele busca "joao silva", "SILVA joão" ou "João (Silva)"
-  - Então "João da Silva" aparece nas três buscas. Uma busca por `a,b)` ou por `%` não gera erro e devolve só os registros que contêm esse texto.
+  - Então "João da Silva" aparece nas três buscas. Uma busca por `a,b)` ou por `%` não gera erro e devolve só os registros que contêm `a,b` ou `%`.
 - **RN-05**
   - Dados os usuários P1 a P5 na massa de teste
   - Quando cada um lê as listas, os seletores, o dashboard e a árvore
@@ -76,8 +76,8 @@ O escopo de visibilidade não muda: cada pessoa continua vendo exatamente o que 
   - Então a linha mostra o nome do anfitrião, mas o cadastro do anfitrião não aparece em Membros.
 - **RN-07**
   - Dado um usuário com 300 membros ativos visíveis
-  - Quando ele abre o seletor de participantes e digita "ma"
-  - Então vê no máximo 20 opções, com o aviso "Mostrando 20 resultados. Refine a busca." se houver mais de 20.
+  - Quando ele abre o seletor de participantes e digita "ma", e 45 deles combinam com a busca
+  - Então vê as 20 primeiras opções; ao rolar até o fim, a lista ganha mais 20 e depois as 5 restantes, sem repetir nenhuma; ao trocar o texto, volta para as 20 primeiras do novo resultado.
 - **RN-08**
   - Dada uma célula ativa de segunda-feira às 20:00, sem relatório na semana
   - Quando o dashboard é consultado na segunda às 19:59 e às 20:00 (horário de Brasília)
@@ -131,14 +131,14 @@ O escopo de visibilidade não muda: cada pessoa continua vendo exatamente o que 
   - se célula inativa conta como vínculo celular;
   - a regra extra do legado para "sem vínculo" (`TotalCells = 0`).
 
-### Perguntas em aberto
-| # | Pergunta | Opções | Recomendação |
-|---|---|---|---|
-| D-1 | Quem vê os dados sensíveis? Hoje a lista de Membros mostra celular e e-mail também para quem tem `view_own_ministry` (`Members.tsx:39`), enquanto o formulário só os mostra com `view_sensitive_data` (`MemberForm.tsx:70`). | (a) Só `view_sensitive_data`, mais o próprio cadastro. (b) Também quem tem `view_own_ministry`: a migration concede `view_sensitive_data` às roles que têm `view_own_ministry`. | **(a).** A role que precisar recebe a permissão na tela de Funções. Com (a), os líderes de ministério deixam de ver o celular dos discípulos até a role deles ganhar a permissão. |
-| D-2 | Bairro, cidade e UF também são sensíveis? | (a) Sim, o endereço inteiro. (b) Não: mascarar só rua, número, complemento e CEP. | **(a)**, como foi pedido. Consequência: no E2.07, o filtro por bairro ou cidade só encontra membros cujos dados o usuário vê. O endereço da célula, que muitas vezes é a casa do anfitrião, continua visível para quem vê a célula. |
-| D-3 | Aceita as mudanças nos números do dashboard (RN-08, itens a a d)? | Sim, ou manter os números de hoje. | **Sim.** Os itens (a) e (b) são bugs conhecidos, e o (c) é a regra MEM-14. |
-| D-4 | Mostrar o nome de pessoas fora do escopo nas linhas visíveis (RN-06)? | Sim, só o nome. Ou não, deixando em branco como acontece hoje por acidente nos *embeds*. | **Sim**, com a mesma regra da `member_names`. |
-| D-5 | Padrões de tela: 25 por página (opções 10/25/50/100), seletores com 20 opções e busca por todas as palavras, ignorando acentos. | O legado usa 10 membros, 20 células ou relatórios, seletores com 10 opções e mínimo de 2 letras. | **Os propostos.** |
+### Decisões (respondidas pelo usuário em 2026-11-15)
+| # | Pergunta | Decisão |
+|---|---|---|
+| D-1 | Quem vê os dados sensíveis? Hoje a lista de Membros mostra celular e e-mail também para quem tem `view_own_ministry` (`Members.tsx:39`), enquanto o formulário só os mostra com `view_sensitive_data` (`MemberForm.tsx:70`). | **(a) Só quem tem `view_sensitive_data`, mais o próprio cadastro.** A role que precisar recebe a permissão na tela de Funções. Os líderes de ministério deixam de ver o celular dos discípulos até a role deles ganhar a permissão. |
+| D-2 | Bairro, cidade e UF também são sensíveis? | **Não.** A máscara cobre só rua, número, complemento e CEP (além de CPF, e-mail e telefones). Bairro, cidade e UF saem para quem vê o membro, então o filtro por bairro e cidade do E2.07 alcança todos os membros do escopo. |
+| D-3 | Aceita as mudanças nos números do dashboard (RN-08, itens a a d)? | **Sim.** Os itens (a) e (b) são bugs conhecidos, e o (c) é a regra MEM-14. |
+| D-4 | Mostrar o nome de pessoas fora do escopo nas linhas visíveis (RN-06)? | **Sim**, só o nome, com a mesma regra da `member_names`. |
+| D-5 | Padrões de tela: 25 por página (opções 10/25/50/100), seletores com 20 opções e busca por todas as palavras, ignorando acentos. | **Sim, e com paginação também nos seletores**: em vez do limite fixo com o aviso "refine a busca", os seletores carregam 20 opções por vez, até o fim do resultado (RN-07). |
 
 ## Solução técnica
 _Seção do `architect`._
@@ -171,7 +171,7 @@ As listas usam o PostgREST sobre as views, com `.range()`, `count: 'exact'` e fi
 Sobre `select('*')`: todas as leituras de `members` no front passam para `members_view` (PRs 1 a 4). Só depois disso o PR 5 revoga o SELECT das colunas sensíveis da tabela. A ordem de deploy está em "Implantação".
 
 ### Achados da revisão (regras e código atuais)
-1. **Inconsistência na tela** sobre quem vê dados sensíveis (lista × formulário). Vai para a decisão D-1.
+1. **Inconsistência na tela** sobre quem vê dados sensíveis (lista × formulário). Resolvida pela D-1 (a): as duas telas seguem `sensitive_visible`.
 2. **A role Administrador semeada pelas migrations não tem `view_sensitive_data`** (nem `view_all_church`) em `role_permissions`. Quem esconde isso é o atalho `is_system` do `AuthContext`, que o banco não conhece. Num banco montado do zero, a máscara tiraria os dados do administrador; por isso há o backfill da RN-14.
    - *Conferido em produção (2026-11-15):* lá o Administrador já tem as 24 permissões, concedidas à mão ao criar a primeira conta. O backfill não muda nada em produção, mas garante o mesmo resultado num banco novo.
 3. **`view_own_reports` não tem efeito além da própria célula.** A política de SELECT de `cell_reports` consulta `cells` dentro de um `EXISTS`, e essa subconsulta passa pelo RLS de `cells`. Quem tem só `view_own_reports` não enxerga as células do ministério, então o ramo nunca é verdadeiro.
@@ -265,6 +265,7 @@ CREATE OR REPLACE VIEW public.members_view
 WITH (security_barrier = true, security_invoker = false) AS
 SELECT
   m.id, m.name, m.gender, m.birth_date, m.instagram, m.avatar_url, m.notes,
+  m.neighborhood, m.city, m.state,   -- não sensíveis (D-2)
   m.is_pastor, m.has_leadership, m.leader_id, l.name AS leader_name, m.spouse_id,
   m.is_baptized, m.baptism_date, m.is_active, m.g12_level,
   m.total_disciples, m.total_cells, m.male_cells, m.female_cells,
@@ -279,9 +280,6 @@ SELECT
   CASE WHEN s.sensitive_visible THEN m.street          END AS street,
   CASE WHEN s.sensitive_visible THEN m.number          END AS number,
   CASE WHEN s.sensitive_visible THEN m.complement      END AS complement,
-  CASE WHEN s.sensitive_visible THEN m.neighborhood    END AS neighborhood,
-  CASE WHEN s.sensitive_visible THEN m.city            END AS city,
-  CASE WHEN s.sensitive_visible THEN m.state           END AS state,
   CASE WHEN s.sensitive_visible THEN m.zip_code        END AS zip_code,
   -- Vínculo celular (MEM-14), calculado sobre todas as células e relatórios
   -- (E2.01: só os não excluídos)
@@ -334,9 +332,7 @@ GRANT SELECT ON public.members_view TO authenticated;
     NEW.email := OLD.email;               NEW.cpf := OLD.cpf;
     NEW.mobile_whatsapp := OLD.mobile_whatsapp; NEW.phone := OLD.phone;
     NEW.street := OLD.street;             NEW.number := OLD.number;
-    NEW.complement := OLD.complement;     NEW.neighborhood := OLD.neighborhood;
-    NEW.city := OLD.city;                 NEW.state := OLD.state;
-    NEW.zip_code := OLD.zip_code;
+    NEW.complement := OLD.complement;     NEW.zip_code := OLD.zip_code;
   END IF;
 ```
 O valor enviado é ignorado em silêncio, sem erro, como já acontece com as colunas calculadas (regra 3). Assim, um cliente que envia a linha inteira não apaga nada. O INSERT não é afetado.
@@ -347,7 +343,6 @@ INSERT INTO public.role_permissions (role_id, permission)
 SELECT r.id, 'view_sensitive_data'::public.permission_action
   FROM public.roles r WHERE r.is_system
 ON CONFLICT (role_id, permission) DO NOTHING;
--- D-1 opção (b): acrescentar as roles que têm view_own_ministry.
 ```
 
 **7. Índices:**
@@ -355,6 +350,11 @@ ON CONFLICT (role_id, permission) DO NOTHING;
 CREATE INDEX IF NOT EXISTS members_leader_id_idx ON public.members (leader_id);
 CREATE INDEX IF NOT EXISTS members_spouse_id_idx ON public.members (spouse_id);
 CREATE INDEX IF NOT EXISTS members_name_id_idx   ON public.members (name, id);
+-- Usados pelo vínculo celular da members_view (vieram do PR 2 para o PR 1):
+CREATE INDEX IF NOT EXISTS cells_leader_id_idx  ON public.cells (leader_id);
+CREATE INDEX IF NOT EXISTS cells_timothy_id_idx ON public.cells (timothy_id);
+CREATE INDEX IF NOT EXISTS cells_host_id_idx    ON public.cells (host_id);
+CREATE INDEX IF NOT EXISTS cell_reports_date_id_idx ON public.cell_reports (date DESC, id);
 ```
 Hoje as tabelas são pequenas, então `CREATE INDEX` sem `CONCURRENTLY` não trava nada de forma perceptível.
 
@@ -415,11 +415,8 @@ WHERE (
 
 **Índices:**
 ```sql
-CREATE INDEX IF NOT EXISTS cells_leader_id_idx  ON public.cells (leader_id);
-CREATE INDEX IF NOT EXISTS cells_timothy_id_idx ON public.cells (timothy_id);
-CREATE INDEX IF NOT EXISTS cells_host_id_idx    ON public.cells (host_id);
+-- cells(leader_id|timothy_id|host_id) e cell_reports(date DESC, id) já vêm do PR 1.
 CREATE INDEX IF NOT EXISTS cell_reports_cell_id_date_idx ON public.cell_reports (cell_id, date DESC);
-CREATE INDEX IF NOT EXISTS cell_reports_date_id_idx      ON public.cell_reports (date DESC, id);
 CREATE INDEX IF NOT EXISTS cell_report_participants_member_id_idx ON public.cell_report_participants (member_id);
 -- (report_id, member_id) já é a PK. E2.01 troca por índices parciais WHERE deleted_at IS NULL onde couber.
 ```
@@ -487,7 +484,7 @@ RETURNS TABLE (
 ```sql
 REVOKE SELECT ON TABLE public.members FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
-              is_pastor, has_leadership, leader_id, spouse_id, is_baptized, baptism_date,
+              neighborhood, city, state, is_pastor, has_leadership, leader_id, spouse_id, is_baptized, baptism_date,
               is_active, g12_level, total_disciples, total_cells, male_cells, female_cells,
               role_id, auth_user_id, created_at, updated_at)
   ON public.members TO authenticated;
@@ -518,7 +515,7 @@ GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
 | RN-04 | Coluna `search_text`, com `unaccent` e valores já mascarados | `src/lib/search.ts`: normaliza, escapa `\ % _`, remove `*`, divide em palavras e tira a pontuação de termos numéricos |
 | RN-05 | O `WHERE` de cada view espelha a política de SELECT; as RPCs leem só das views | — |
 | RN-06 | *Joins* de nome nas views (só o `name`) | Exibe |
-| RN-07 | Views + `limit(21)` | Hooks de opções e o aviso de "refine a busca" |
+| RN-07 | Views + `range` de 21 linhas por página (a 21ª só indica que há mais) | Hooks de opções com `useInfiniteQuery`; carregar mais ao rolar até o fim |
 | RN-08 | `dashboard_*`, `sp_now`, `week_start`, `weekday_index`, `cells_view.last_report_date` e os flags de vínculo da `members_view` | Exibe; o rótulo da semana vem da RPC |
 | RN-09 | Checagem em `dashboard_*` (42501) | Mensagem de acesso negado |
 | RN-10 | `ministry_tree_nodes` | `Ministries.tsx`, uma chamada por expansão |
@@ -531,7 +528,7 @@ GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
 **Views** (todas só com SELECT para `authenticated`; `anon` sem acesso):
 | View | Colunas além das da tabela | Ordem padrão (no hook) |
 |---|---|---|
-| `members_view` | `leader_name`, `sensitive_visible`, `is_cell_leader`, `is_cell_timothy`, `is_cell_host`, `attended_last_30_days`, `search_text`. As 11 colunas sensíveis vêm mascaradas. | `name, id` |
+| `members_view` | `leader_name`, `sensitive_visible`, `is_cell_leader`, `is_cell_timothy`, `is_cell_host`, `attended_last_30_days`, `search_text`. As 8 colunas sensíveis vêm mascaradas. | `name, id` |
 | `cells_view` | `meeting_weekday`, `leader_name`, `leader_gender`, `leader_g12_level`, `timothy_name`, `host_name`, `g12_leader_id`, `g12_leader_name`, `last_report_date`, `search_text` | `created_at DESC, id` |
 | `cell_reports_view` | `week_start`, `visitors_count`, `participants_count`, `cell_*` (tipo, ativa, líder e nome do líder, timóteo, anfitrião, endereço, dia e horário), `search_text` | `date DESC, time DESC, id` |
 | `cell_report_participants_view` | `report_id`, `member_id`, `member_name` | `member_name` |
@@ -545,17 +542,14 @@ GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
 Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
 
 **Front** (`mci-connect/src`):
-- `integrations/supabase/database.ts`
-  - Usa o `MergeDeep` do pacote `type-fest`, que entra como devDependency, sobre o `types.ts` gerado.
-  - Marca como não nulas as colunas que a tabela garante (`id`, `name`, `is_active`, `g12_level` etc.), porque o gerador de tipos declara toda coluna de view como anulável. É o padrão da documentação do Supabase.
-  - `client.ts` passa a usar `createClient<Database>`.
+- Tipos: o front usa direto o `types.ts` gerado. O gerador declara toda coluna de view como anulável, mas o projeto compila com `strictNullChecks: false`, então isso não atrapalha. *Decidido na implementação do PR 1:* sem `type-fest` nem `database.ts`; se o modo estrito for ligado um dia, criar o `database.ts` com as colunas não nulas.
 - `lib/pagination.ts`: `PAGE_SIZES = [10, 25, 50, 100]`, `DEFAULT_PAGE_SIZE = 25`, `toRange(page, size)` e `lastPage(total, size)`.
 - `lib/search.ts`: `toSearchPatterns(input): string[]`, com os padrões `%termo%` já escapados, até 5 palavras.
 - `lib/members/fields.ts`:
   - `SENSITIVE_MEMBER_FIELDS`, `PERSONAL_MEMBER_FIELDS` e `MINISTRY_MEMBER_FIELDS`;
   - `toMemberWritePayload(form, { sensitiveVisible, canEditMinistry })`: lista branca, com strings vazias convertidas em `null`.
 - `lib/cells/weekdays.ts`: `WEEKDAYS`, de 'Domingo' a 'Sábado', com o índice. Substitui `DAYS_OF_WEEK`, `DAYS_MAP` e `WEEK_DAYS_MAP`.
-- `lib/selectors.ts`: `OPTIONS_LIMIT = 20`. A consulta pede 21 para saber se há mais.
+- `lib/selectors.ts`: `OPTIONS_PAGE_SIZE = 20`. Cada página pede 21 linhas para saber se há mais; a 21ª não é exibida.
 - Hooks:
   - listas: `use-members-list.ts`, `use-cells-list.ts` e `use-cell-reports-list.ts`, todos com `{ page, pageSize, search }` e retorno `{ rows, total }`, usando `placeholderData: keepPreviousData`;
   - seletores: `use-member-options.ts` e `use-cell-options.ts`;
@@ -570,10 +564,10 @@ Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
 | `MemberForm.tsx` | Recebe a linha da tabela e grava a linha inteira | Recebe a linha da `members_view`. Grava `toMemberWritePayload`. Mostra ou esconde os campos sensíveis por `sensitive_visible`. |
 | `AuthContext.tsx` | `members.select('*')` do próprio usuário | `members_view` com `.eq('auth_user_id', uid)`; o próprio cadastro vem sem máscara |
 | `Cells.tsx` | Carrega todos os membros (para calcular o G12), todas as células com *embeds* e filtra no cliente | `cells_view` paginada; nomes e G12 vêm da view |
-| `CellForm.tsx` | Lê o endereço do anfitrião em `members` | Lê o endereço em `members_view`. Se `sensitive_visible` for falso, não preenche e avisa "Endereço do anfitrião indisponível". |
+| `CellForm.tsx` | Lê o endereço do anfitrião em `members` | Lê o endereço em `members_view`. Se `sensitive_visible` for falso, preenche só bairro, cidade e UF e avisa "Rua, número e CEP do anfitrião indisponíveis". |
 | `CellReports.tsx` | Todos os relatórios, com *embeds* e `count` | `cell_reports_view` paginada |
-| `CellReportForm.tsx` | Todas as células ativas e todos os membros ativos; participantes lidos da tabela | Seletores com `cells_view` e `members_view`, com busca e limite de 21. Ao editar, os participantes (com nome) vêm de `cell_report_participants_view`. A gravação continua igual (E2.11). |
-| `AsyncMemberSelect.tsx` | `members` com `ilike` em `name`, limite de 20 | `members_view` com `search_text`, limite de 21. Continua usando `member_names` para o valor selecionado. |
+| `CellReportForm.tsx` | Todas as células ativas e todos os membros ativos; participantes lidos da tabela | Seletores com `cells_view` e `members_view`, com busca e paginação de 20 em 20. Ao editar, os participantes (com nome) vêm de `cell_report_participants_view`. A gravação continua igual (E2.11). |
+| `AsyncMemberSelect.tsx` | `members` com `ilike` em `name`, limite de 20 | `members_view` com `search_text`, paginada de 20 em 20 ao rolar. Continua usando `member_names` para o valor selecionado. |
 | `Dashboard.tsx` | Cerca de 12 consultas e cargas completas | `dashboard_summary`, `dashboard_cells_by_type` e `dashboard_g12_ranking` |
 | `Ministries.tsx` | `select('*')` + uma contagem por nó (N+1) | `ministry_tree_nodes`, uma chamada por expansão |
 
@@ -611,7 +605,7 @@ Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
    - O G12 por relatório **não** entra neste passo (ver E2.12).
 7. **Paginação por *offset*.** Se os dados mudarem entre uma página e outra, um item pode repetir ou sumir. É aceitável numa tela administrativa. Com o total reduzido, uma página além do fim retorna 416 (PGRST103), e o hook volta para a última página válida.
 8. **Normalização da busca.** O `unaccent` do banco e a normalização NFD do front podem divergir em caracteres raros (ligaduras, por exemplo). O impacto é baixo.
-9. **Tipos de views anuláveis.** O `database.ts` precisa ser atualizado quando uma view ganhar uma coluna obrigatória. Se não for, o TypeScript acusa o `null` na tela; não há falha silenciosa.
+9. **Tipos de views anuláveis.** Hoje sem efeito (`strictNullChecks: false`). Se o modo estrito for ligado, as colunas de view passam a exigir tratamento de `null` ou um `database.ts` com as colunas não nulas.
 10. **Login depende da `members_view`.** Se a view quebrar, o `AuthContext` fica sem membro e sem permissões. Mitigação: um teste e2e de *smoke* de login a cada PR.
 11. **Banco local para os testes de banco.** Já existe outra stack do Supabase rodando nesta máquina, nas portas padrão. Para rodar o pgTAP, o `mci-connect` precisa de portas próprias no `config.toml` local ou da outra stack parada.
 12. **Máscara e funções.** Se alguém tirar `view_sensitive_data` da role Administrador na tela de Funções, o administrador deixa de ver os dados, porque a tela passa a seguir o banco via `sensitive_visible`. É o comportamento correto, mas vale avisar a liderança.
@@ -670,10 +664,10 @@ Cada PR é independente e entra na ordem abaixo. Dentro de um PR, o backend vai 
 |---|---|---|---|---|---|
 | **PR 1: fundação de leitura + Membros** | | | | | |
 | 1 | backend-developer | Migration da fundação: utilitários de data, `unaccent`, funções `viewer_*`, `members_view`, grants, regra 6 do trigger, backfill da RN-14 e índices de `members`. Regenerar o `types.ts`. | `supabase/migrations/<ts>_e108_read_foundation.sql`, `src/integrations/supabase/types.ts` | 02, 03, 04, 05, 06, 11, 12, 13, 14 | — |
-| 2 | frontend-developer | Infra do front: `type-fest`, `database.ts` e `client.ts`; `lib/pagination.ts`, `lib/search.ts` e `lib/members/fields.ts`, com testes Vitest; `use-debounced-value.ts`; `ListPagination.tsx`. | `package.json`, `src/integrations/supabase/{database,client}.ts`, `src/lib/**`, `src/hooks/use-debounced-value.ts`, `src/components/ListPagination.tsx` | 01, 03, 04, 12 | só `database.ts` depende de 1; o resto roda **em paralelo** com 1 |
+| 2 | frontend-developer | Infra do front: `lib/pagination.ts`, `lib/search.ts` e `lib/members/fields.ts`, com testes Vitest; `use-debounced-value.ts`; `ListPagination.tsx`. | `src/lib/**`, `src/hooks/use-debounced-value.ts`, `src/components/ListPagination.tsx` | 01, 03, 04, 12 | roda **em paralelo** com 1 |
 | 3 | frontend-developer | Membros: `use-members-list.ts`; `Members.tsx` paginada, com URL, total, busca por `search_text` e sem `.or()`; `MemberForm` com `toMemberWritePayload` e `sensitive_visible`; `AuthContext` lendo a `members_view`. | `src/hooks/use-members-list.ts`, `src/pages/Members.tsx`, `src/components/MemberForm.tsx`, `src/contexts/AuthContext.tsx` | 01, 02, 03, 04, 06, 11, 12, 13 | 1, 2 |
 | **PR 2: Células e Relatórios** | | | | | |
-| 4 | backend-developer | Migration: `cells_view`, `cell_reports_view` e `cell_report_participants_view`, com grants e os índices de `cells`, `cell_reports` e participantes. Regenerar os tipos e acrescentar as colunas obrigatórias no `database.ts`. | `supabase/migrations/<ts>_e108_cells_reports_views.sql`, `src/integrations/supabase/{types,database}.ts` | 02, 03, 04, 05, 06 | PR 1 |
+| 4 | backend-developer | Migration: `cells_view`, `cell_reports_view` e `cell_report_participants_view`, com grants e os índices de `cells`, `cell_reports` e participantes. Regenerar os tipos. | `supabase/migrations/<ts>_e108_cells_reports_views.sql`, `src/integrations/supabase/types.ts` | 02, 03, 04, 05, 06 | PR 1 |
 | 5 | frontend-developer | `use-cells-list.ts` e `use-cell-reports-list.ts`. `Cells.tsx` paginada, sem a carga de todos os membros e sem a `findG12`. `CellReports.tsx` paginada. `CellForm` lendo o endereço do anfitrião na `members_view`. `CellReportForm` recebendo a linha da view e lendo os participantes na `cell_report_participants_view`. | `src/hooks/use-cells-list.ts`, `src/hooks/use-cell-reports-list.ts`, `src/pages/Cells.tsx`, `src/pages/CellReports.tsx`, `src/components/CellForm.tsx`, `src/components/CellReportForm.tsx` | 01 a 06, 11 | 4 |
 | **PR 3: Dashboard** | | | | | |
 | 6 | backend-developer | Migration: `dashboard_summary`, `dashboard_cells_by_type` e `dashboard_g12_ranking`, com a checagem da RN-09 e os grants. Regenerar os tipos. | `supabase/migrations/<ts>_e108_dashboard_rpcs.sql`, `types.ts` | 02, 05, 08, 09 | PR 2 |
@@ -711,7 +705,7 @@ Cada PR é independente e entra na ordem abaixo. Dentro de um PR, o backend vai 
 9. **Tarefa 8:** os casos da RN-10 passam, e a função é uma só chamada por nível.
 10. **Tarefa 9:**
     - Expandir um nó gera uma requisição.
-    - Os seletores mostram até 20 opções e o aviso.
+    - Os seletores mostram 20 opções por vez e carregam as seguintes ao rolar, sem repetir.
     - Não resta nenhuma lista de dias da semana fora de `lib/cells/weekdays.ts`.
 11. **Tarefa 10:**
     - Como `authenticated`, `select cpf` e `select *` em `members` dão 42501.
