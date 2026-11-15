@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | 🔄 3 de 14 | Já |
+| 1. Preparação | 🔄 5 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -86,7 +86,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 
   Escrever no banco exige autorização do usuário · _backend_
 - [x] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. Valida o perfil atribuído, grava o membro com a sessão de quem chama (o autor vai para a auditoria) e desfaz a conta se o cadastro falhar. Publicada em produção (2026-11-14, mci-connect#7)
-- [ ] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_
+- [x] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_. Também fecha a escalada de privilégio via INSERT com o próprio `auth_user_id`, e agora as colunas calculadas são do servidor (2026-11-14, mci-connect#8)
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
 - [ ] **E1.05** Remover a senha padrão `123456` · _frontend_
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
@@ -95,7 +95,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
 - [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
-- [ ] **E1.12** Definir e documentar o deploy: migrations (`supabase db push`) e Edge Functions (`supabase functions deploy`) no projeto `gkhn…`, e o front na Vercel · _backend + usuário_
+- [x] **E1.12** Definir e documentar o deploy: workflows manuais "Deploy: banco (Supabase)" e "Deploy: promote (Vercel)". O *auto-assign* de domínios foi desligado na Vercel, e o fluxo foi validado de ponta a ponta (2026-11-15, mci-connect#9). Ver "Deploy de produção" no `CLAUDE.md`
 - [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
 - [x] **E1.14** Apontar o front para o projeto novo (2026-11-14, mci-connect#6):
   - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
