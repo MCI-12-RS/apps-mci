@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | 🔄 5 de 14 | Já |
+| 1. Preparação | 🔄 8 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -88,17 +88,20 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [x] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. Valida o perfil atribuído, grava o membro com a sessão de quem chama (o autor vai para a auditoria) e desfaz a conta se o cadastro falhar. Publicada em produção (2026-11-14, mci-connect#7)
 - [x] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_. Também fecha a escalada de privilégio via INSERT com o próprio `auth_user_id`, e agora as colunas calculadas são do servidor (2026-11-14, mci-connect#8)
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
-- [ ] **E1.05** Remover a senha padrão `123456` · _frontend_
+- [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
+  - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
+  - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
+  - Faltam: PR 2 (Células e Relatórios), PR 3 (Dashboard), PR 4 (Ministérios e seletores com paginação) e PR 5 (GRANT por coluna em `members`, só depois dos PRs 2 a 4 em produção).
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
-- [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
+- [x] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_. Também saíram os lockfiles do bun; o Playwright ganhou configuração própria e um teste de login (`npm run test:e2e`) (2026-11-15, mci-connect#11)
 - [x] **E1.12** Definir e documentar o deploy: workflows manuais "Deploy: banco (Supabase)" e "Deploy: promote (Vercel)". O *auto-assign* de domínios foi desligado na Vercel, e o fluxo foi validado de ponta a ponta (2026-11-15, mci-connect#9). Ver "Deploy de produção" no `CLAUDE.md`
-- [ ] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
-  - Em andamento (mci-connect#10, migration já aplicada em produção): auditoria só gravada pelos triggers, `log_auth_event` restrita, SELECT de `members` sem os dados dos líderes de fora (nomes via `member_names`), funções do RLS fechadas para `anon`. O autor nos cadastros já veio com o E1.02.
+- [x] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
+  - Concluído (2026-11-15, mci-connect#10; banco pelo workflow "Deploy: banco", front pelo "Deploy: promote"): auditoria só gravada pelos triggers, `log_auth_event` restrita, SELECT de `members` sem os dados dos líderes de fora (nomes via `member_names`), funções do RLS fechadas para `anon`. O autor nos cadastros já veio com o E1.02.
   - Movido para o E1.08: impor `view_sensitive_data` no banco. O legado não restringia dados de contato, e a mudança exige trocar todas as leituras de `members` por view/RPC.
 - [x] **E1.14** Apontar o front para o projeto novo (2026-11-14, mci-connect#6):
   - `.env` e `supabase/config.toml` com o `gkhn…` e a chave pública dele;
@@ -200,7 +203,6 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - `create-user-admin`: exigir JWT e checar a permissão de quem chama. Hoje qualquer um cria contas com qualquer perfil.
   - `members`: impedir que `edit_own_data` altere `role_id`, `auth_user_id`, `leader_id` e as demais colunas restritas (regra AUT-05).
   - `get-user-email`: parar de devolver o e-mail de qualquer CPF ou celular. Ele será substituído pela função de login da seção 6.3.
-  - Remover a senha padrão `123456`.
   - `change-member-password`: checar o escopo e o perfil do alvo.
   - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
@@ -366,6 +368,7 @@ Pontos de atenção para o `architect`:
 | D8 | Retenção do banco legado depois do desligamento | — | Backup criptografado por um prazo definido pela igreja (ex.: 12 meses) e depois descarte |
 | D9 | Quem é pastor | Lista dos membros sem líder e sem "não tem liderança" | Revisão manual pela liderança antes do primeiro ensaio |
 | D10 | Excluir um membro que tem discípulos ou células ativas (DEL-08) | Bloquear até reatribuir; permitir e deixar os discípulos sem líder; ou passar os discípulos automaticamente para o líder de quem foi excluído | Bloquear até reatribuir, com uma mensagem que diga o que falta |
+| D11 | Senha inicial de quem é cadastrado pelo app | Manter `123456` como padrão, ou exigir uma senha no cadastro (como no legado) | ✅ **Decidido em 2026-11-15:** manter `123456` como senha inicial padrão. |
 
 ## 5. Migração dos dados
 
