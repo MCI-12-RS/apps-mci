@@ -295,7 +295,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Relatório e participantes ainda são gravados em chamadas separadas.
 - Login por e-mail, CPF ou celular.
 - Membro sem e-mail recebe um e-mail fictício `<nome>_<hash>@mci12fakemail.com`, porque o Auth exige e-mail. A UI esconde esses e-mails.
-- Se a senha não for informada, a padrão é `123456`.
+- Se a senha não for informada no cadastro, a inicial é `123456`. Isso é uma decisão (D11 em `docs/migracao.md`), não um problema.
 - O CEP preenche o endereço via ViaCEP. A célula puxa o endereço do anfitrião.
 - Dashboard:
   - Membros: total, ativos, batizados, inativos, não batizados e sem líder.
@@ -393,7 +393,6 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - `create-user-admin` roda com `verify_jwt = false` e service role, e **não verifica quem está chamando**. Qualquer pessoa com a URL consegue criar usuários com qualquer `role_id`, inclusive Administrador. Exija JWT e cheque `create_member` (e quem pode atribuir cada role).
 - A policy de UPDATE em `members` para `edit_own_data` não restringe colunas: o usuário consegue alterar o próprio `role_id` ou `leader_id`, o que é escalada de privilégio. Restrinja via trigger ou RPC.
 - `get-user-email` devolve o e-mail de qualquer CPF ou celular para quem chamar (enumeração de dados pessoais).
-- Senha padrão `123456`.
 - O bug do `WEEK_DAYS_MAP` no Dashboard (descrito acima).
 - A busca de `Members` coloca o texto digitado direto no `.or(...)` do PostgREST, então vírgulas e parênteses quebram o filtro.
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.

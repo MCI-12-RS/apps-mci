@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | 🔄 5 de 14 | Já |
+| 1. Preparação | 🔄 6 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -88,7 +88,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [x] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. Valida o perfil atribuído, grava o membro com a sessão de quem chama (o autor vai para a auditoria) e desfaz a conta se o cadastro falhar. Publicada em produção (2026-11-14, mci-connect#7)
 - [x] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_. Também fecha a escalada de privilégio via INSERT com o próprio `auth_user_id`, e agora as colunas calculadas são do servidor (2026-11-14, mci-connect#8)
 - [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_
-- [ ] **E1.05** Remover a senha padrão `123456` · _frontend_
+- [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
@@ -197,7 +197,6 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - `create-user-admin`: exigir JWT e checar a permissão de quem chama. Hoje qualquer um cria contas com qualquer perfil.
   - `members`: impedir que `edit_own_data` altere `role_id`, `auth_user_id`, `leader_id` e as demais colunas restritas (regra AUT-05).
   - `get-user-email`: parar de devolver o e-mail de qualquer CPF ou celular. Ele será substituído pela função de login da seção 6.3.
-  - Remover a senha padrão `123456`.
   - `change-member-password`: checar o escopo e o perfil do alvo.
   - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
@@ -363,6 +362,7 @@ Pontos de atenção para o `architect`:
 | D8 | Retenção do banco legado depois do desligamento | — | Backup criptografado por um prazo definido pela igreja (ex.: 12 meses) e depois descarte |
 | D9 | Quem é pastor | Lista dos membros sem líder e sem "não tem liderança" | Revisão manual pela liderança antes do primeiro ensaio |
 | D10 | Excluir um membro que tem discípulos ou células ativas (DEL-08) | Bloquear até reatribuir; permitir e deixar os discípulos sem líder; ou passar os discípulos automaticamente para o líder de quem foi excluído | Bloquear até reatribuir, com uma mensagem que diga o que falta |
+| D11 | Senha inicial de quem é cadastrado pelo app | Manter `123456` como padrão, ou exigir uma senha no cadastro (como no legado) | ✅ **Decidido em 2026-11-15:** manter `123456` como senha inicial padrão. |
 
 ## 5. Migração dos dados
 
