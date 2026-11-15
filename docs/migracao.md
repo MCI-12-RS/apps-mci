@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | 🔄 1 de 10 | Já |
-| 1. Preparação | 🔄 7 de 14 | Já |
+| 1. Preparação | 🔄 8 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -92,10 +92,13 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
+  - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
+  - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
+  - Faltam: PR 2 (Células e Relatórios), PR 3 (Dashboard), PR 4 (Ministérios e seletores com paginação) e PR 5 (GRANT por coluna em `members`, só depois dos PRs 2 a 4 em produção).
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
-- [ ] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_
+- [x] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_. Também saíram os lockfiles do bun; o Playwright ganhou configuração própria e um teste de login (`npm run test:e2e`) (2026-11-15, mci-connect#11)
 - [x] **E1.12** Definir e documentar o deploy: workflows manuais "Deploy: banco (Supabase)" e "Deploy: promote (Vercel)". O *auto-assign* de domínios foi desligado na Vercel, e o fluxo foi validado de ponta a ponta (2026-11-15, mci-connect#9). Ver "Deploy de produção" no `CLAUDE.md`
 - [x] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
   - Concluído (2026-11-15, mci-connect#10; banco pelo workflow "Deploy: banco", front pelo "Deploy: promote"): auditoria só gravada pelos triggers, `log_auth_event` restrita, SELECT de `members` sem os dados dos líderes de fora (nomes via `member_names`), funções do RLS fechadas para `anon`. O autor nos cadastros já veio com o E1.02.

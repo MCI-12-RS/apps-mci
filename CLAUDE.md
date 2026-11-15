@@ -39,18 +39,18 @@ Regras de trabalho:
     - O plano gratuito do GitHub não permite aprovação manual (revisor obrigatório) nos environments; por isso são dois workflows.
     - O plano Hobby da Vercel não faz deploy de repositório privado de organização. Se o `mci-connect` virar privado, os deploys param.
   - **Visibilidade:** o `mci-connect` é **público**, e o `apps-mci` e o `g12app-net` são privados. Nos PRs e commits do `mci-connect`, descreva o que foi corrigido sem detalhar falhas ainda abertas; esses detalhes ficam aqui, no `apps-mci`.
-  - Ele ainda aparece no `.env` e no `supabase/config.toml` do `mci-connect` até o passo E1.14.
 - **Git:** nunca faça commit direto na `main` (raiz e `mci-connect`) nem na `master` (legado), e não reescreva o histórico delas. Cada passo vai numa branch própria, com PR. O merge é sempre do usuário.
 
 ## Comandos
 
 ### Novo (`mci-connect/`)
 ```bash
-npm install        # também há bun.lock(b); os scripts usam npm
+npm install
 npm run dev        # Vite em http://localhost:8080
 npm run build
 npm run lint
-npm test           # Vitest; hoje só existe src/test/example.test.ts
+npm test           # Vitest (src/**/*.test.ts)
+npm run test:e2e   # Playwright (e2e/)
 ```
 - **Acesso ao banco:** as credenciais ficam no `local.config` (`SUPABASE_PROJECT_REF`, `SUPABASE_HOST`, `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_USER`, `SUPABASE_PASS`). Use o **Session pooler** (`aws-…pooler.supabase.com`, usuário `postgres.<ref>`): a conexão direta `db.<ref>.supabase.co` só tem IPv6 e não funciona nesta máquina. Antes de qualquer comando, confira que o `SUPABASE_PROJECT_REF` é o `gkhnjhmgeceoaqeynhrj`.
 - O project ref do Supabase fica em `supabase/config.toml`. O front lê do `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_PROJECT_ID`.
@@ -277,7 +277,8 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Relatórios:
     - inserir: `edit_cell` ou `submit_any_visible_report` (em qualquer célula, sem checar visibilidade), ou `submit_own_cell_report` na própria célula;
     - editar: `edit_cell_report`; excluir: `delete_cell_report`. Ambos sem escopo.
-  - `view_sensitive_data` e `view_own_ministry_dashboard`: só a UI respeita. A API devolve todas as colunas.
+  - `view_sensitive_data`: imposta na `members_view` (E1.08). A tabela `members` ainda devolve as colunas sensíveis até o PR 5 do E1.08.
+  - `view_own_ministry_dashboard`: só a UI respeita.
 - No front, `hasPermission` retorna `true` para tudo quando a role é `is_system`. O RLS **não** tem esse atalho.
 
 ### Edge Functions
@@ -304,7 +305,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Sem vínculo celular (janela de 4 semanas).
   - Estatísticas da semana.
 - Ministérios: árvore de casais a partir dos pastores (`is_pastor`), expandindo sob demanda.
-- As listagens carregam tudo no cliente e filtram por texto, sem paginação.
+- Membros é paginada no servidor pela `members_view` (busca sem acento, total exato, estado na URL). Células, Relatórios, Dashboard e Ministérios ainda carregam tudo no cliente; mudam nos PRs 2 a 4 do E1.08 (`docs/specs/e1-08-paginacao-servidor.md`).
 
 ### Armadilhas do novo
 - **As migrations e o `types.ts` divergem.**
@@ -317,7 +318,9 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - A migration `20260426202511` repete a `20260326050000`, sinal de que o banco do Lovable não rodou as migrations manuais.
   - Antes de escrever uma migration, **confira o schema real no Supabase** e regenere os tipos.
 - Algumas migrations têm nome em UUID (geradas pelo Lovable) e outras têm nome legível (manuais). Nunca edite uma migration já aplicada; crie uma nova.
-- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. Isso acontece em Members, Cells, CellReports, no seletor de células do `CellReportForm` e no Dashboard (ranking G12 e "sem vínculo"). Prefira `count`, paginação, views ou RPC.
+- **`members_view` é *security definer* de propósito** (o advisor do Supabase acusa `security_definer_view`; não troque para `security_invoker`, que desliga a máscara). O `WHERE` dela espelha a política de SELECT de `members`: mudou uma, mude a outra (o teste de paridade do E1.08 confere). As colunas sensíveis estão listadas em três lugares: a view, a regra 6 de `enforce_member_write_rules` e `src/lib/members/fields.ts`.
+- As funções chamadas por uma view rodam com os privilégios de quem consulta: as funções usadas pelas views precisam de `GRANT EXECUTE ... TO authenticated`.
+- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. Isso ainda acontece em Cells, CellReports, no seletor de células do `CellReportForm` e no Dashboard (ranking G12 e "sem vínculo"). Prefira `count`, paginação, views ou RPC.
 - As políticas da `20260326193800` nunca foram removidas. Se essa migration rodou, elas se somam às novas, por exemplo `edit_cell` com `FOR ALL` em participantes. Confira em `pg_policies` (E1.01).
 - O trigger de semana atual também barra a carga dos relatórios antigos do legado. Na migração, os triggers são desligados (`session_replication_role = replica`).
 - `gender` usa 'M'/'F', mas as funções de stats também aceitam 'Masculino'/'Feminino'. Padronize em 'M'/'F'. Células de líder sem gênero ficam fora de `total_cells`.
@@ -394,10 +397,9 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - A policy de UPDATE em `members` para `edit_own_data` não restringe colunas: o usuário consegue alterar o próprio `role_id` ou `leader_id`, o que é escalada de privilégio. Restrinja via trigger ou RPC.
 - `get-user-email` devolve o e-mail de qualquer CPF ou celular para quem chamar (enumeração de dados pessoais).
 - O bug do `WEEK_DAYS_MAP` no Dashboard (descrito acima).
-- A busca de `Members` coloca o texto digitado direto no `.or(...)` do PostgREST, então vírgulas e parênteses quebram o filtro.
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
 - As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
-- `view_sensitive_data` e `view_own_ministry_dashboard` só existem na UI. A primeira será imposta no banco junto com o E1.08.
+- `view_sensitive_data` já vale na `members_view`, mas a tabela `members` ainda devolve CPF, e-mail, telefones e endereço a quem a lê direto pela API (o `AsyncMemberSelect` e outras telas ainda leem a tabela). Fecha no PR 5 do E1.08, com GRANT por coluna, depois que todas as leituras passarem para as views. `view_own_ministry_dashboard` só existe na UI.
 - O ranking G12 do Dashboard soma `total_cells` de todos os nós da subárvore, mas esse total já é acumulado. Resultado: dupla contagem.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
 - Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.
