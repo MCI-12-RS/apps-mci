@@ -14,11 +14,22 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
 - **U5:** quem tem a permissão de gestão lança a presença.
 - **U6:** o aluno pode ser reprovado na turma e, nesse caso, não recebe a certificação.
 
-### Decisões do usuário (2026-11-22), citadas como D-ESC-1…4
+### Decisões do usuário (2026-11-22), citadas como D-ESC-1…8
 - **D-ESC-1, cronograma:** o spec é escrito agora e o código fica para depois. A implementação continua depois da fase 7 do `docs/migracao.md`.
 - **D-ESC-2, aprovação só manual:** o gestor marca Aprovado ou Reprovado. A presença é informativa: a tela mostra a frequência, mas não decide nada.
 - **D-ESC-3, escopo da v1:** entram pré-requisitos entre escolas, certificação manual (carga histórica), falta justificada e reposição (a reposição conta como presença) e o professor da turma lançando a chamada.
 - **D-ESC-4, visibilidade:** as certificações seguem o mesmo escopo de Membros. Turmas e chamada completas ficam só com os gestores e os professores da turma. O aluno vê só o que é dele.
+- **D-ESC-5, aulas:**
+  - A escola tem uma lista de X aulas numeradas, com título opcional (por exemplo, o nome da lição).
+  - A turma copia essa lista ao ser criada.
+  - Cada aula da turma pode ter uma data, dentro do período da turma.
+  - Não se lança a chamada de uma aula futura.
+- **D-ESC-6, só membros são alunos:** quem ainda não é membro (por exemplo, um novo convertido no Pré-Encontro) precisa ser cadastrado em Membros antes da matrícula. Quando a Consolidação existir, os consolidados também poderão ser alunos.
+- **D-ESC-7, refazer:**
+  - O reprovado pode ser matriculado em outra turma da mesma escola.
+  - Quem já concluiu a escola também pode refazê-la. Nesse caso, ele continua com **uma única** certificação daquela escola.
+  - Todas as matrículas ficam no histórico.
+- **D-ESC-8, material:** o material da turma é **só um texto descritivo** (por exemplo, quais livros comprar). Não há arquivos para baixar nem links externos.
 
 **Resultado desta etapa:** um PR no `apps-mci` com o spec (Negócio, Solução técnica e Tarefas) e os ponteiros no `CLAUDE.md` e no `docs/migracao.md`. Nada muda no `mci-connect` nem no banco.
 
@@ -27,27 +38,36 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
 1. **Branch.** Se o plano ainda não foi mergeado, continuar na `docs/plano-escolas`. Se já foi, criar a `docs/spec-escolas` a partir da `origin/main`. Não incluir o ponteiro do submódulo `mci-connect` no commit.
 2. **O `product-owner` escreve a seção Negócio** de `docs/specs/escolas.md`, a partir do rascunho em `escolas-pesquisa-po.md`, com estes ajustes:
    - Status "em refinamento" e Paridade "não".
-   - Uma seção "Decisões" com D-ESC-1…4.
+   - Uma seção "Decisões" com D-ESC-1…8.
    - **ESC-20 reescrita:** a aprovação é manual e não há frequência mínima. A tela mostra presenças, faltas e o % de cada aluno.
+   - **ESC-13 e ESC-22 reescritas (D-ESC-7):**
+     - Reprovados e concluintes podem se matricular de novo na mesma escola.
+     - Continua valendo a proposta de no máximo uma matrícula "Em andamento" por membro e escola.
+     - Ao aprovar uma nova turma de quem já tem a certificação, a certificação existente é mantida (ESC-24).
+     - Ao desfazer a aprovação que gerou a certificação (ESC-26):
+       - se houver outra matrícula aprovada na mesma escola, a certificação passa a apontar para ela;
+       - se não houver, a certificação recebe exclusão lógica.
+   - **RN nova, ESC-36, material da turma (D-ESC-8):** texto livre na turma, com os livros e o que precisa ser comprado. Os alunos da turma também veem esse texto.
    - Passam a "definida pelo usuário (2026-11-22)":
+     - **ESC-03, ESC-08 e ESC-17 (D-ESC-5):** lista de aulas com título, data por aula e nenhuma chamada de aula futura.
      - **ESC-04:** os pré-requisitos bloqueiam a matrícula e não podem formar ciclo.
+     - **ESC-11 (D-ESC-6):** só membros são alunos.
      - **ESC-16:** o professor lança a chamada da própria turma.
      - **ESC-18:** a falta justificada continua sendo falta, e a reposição conta como presença.
      - **ESC-27:** certificação manual.
      - **ESC-30:** mesmo escopo de Membros.
    - Uma seção curta "Pesquisa de domínio", com as fontes. O catálogo sugerido vai marcado como sugestão para a liderança. O catálogo é **dado**: o gestor cadastra as escolas, e isso não muda o schema.
-   - As perguntas que continuam abertas, por prioridade:
-     - P-01: catálogo e granularidade (CD por nível ou por livro; UV inteira ou separada);
-     - P-02: aulas com título; datas por aula;
-     - P-05: refazer a escola;
-     - P-11: ciclo da turma (encerrar e reabrir);
-     - P-12: Encontro e Pré-Encontro com novos convertidos que ainda não são membros;
-     - P-13: membro inativo;
-     - P-15: desfazer uma aprovação;
-     - P-16: excluir com dependentes;
-     - P-17: dados da turma (nome ou código, dia, horário, local);
-     - P-18: **material por turma** (está no `CLAUDE.md`, mas ficou fora da v1);
-     - P-20: rede G12 ou M12.
+   - Respondidas em 2026-11-22: P-02 (D-ESC-5), P-05 (D-ESC-7), P-12 na parte dos não membros (D-ESC-6) e P-18 (D-ESC-8).
+   - As perguntas que continuam abertas, por prioridade. Cada uma traz a proposta do plano, que vale até a resposta da liderança:
+     - **P-01, catálogo e granularidade:** a CD é por nível ou por livro? A UV é uma escola só ou separada? Encontro e Reencontro são escolas? Proposta: é dado cadastrado pelo gestor, então não bloqueia o schema.
+     - **P-11, ciclo da turma:** proposta de encerrar e reabrir. A turma encerrada não aceita matrícula, chamada nem mudança de situação.
+     - **P-03, data de conclusão:** proposta de usar o dia em que o gestor aprovou. A alternativa é o fim da turma.
+     - **P-07, escopo da gestão:** proposta de valer para a igreja toda. A alternativa é cada ministério cuidar das suas turmas.
+     - **P-13, membro inativo:** proposta de não poder ser matriculado.
+     - **P-15, desfazer uma aprovação:** proposta conforme o ajuste da ESC-26 acima.
+     - **P-16, excluir com dependentes:** proposta de bloquear com uma mensagem.
+     - **P-17, dados da turma:** proposta de nome livre (ex.: "2027.1"). Dia, horário e local são opcionais.
+     - **P-20, rede G12 ou M12:** muda só os nomes do catálogo.
 3. **O `architect` escreve "Solução técnica" e "Tarefas".** É só desenho, sem acionar os desenvolvedores. Ele parte do esboço abaixo e confere o schema real e o spec do E1.08.
 4. **Ponteiros:**
    - `CLAUDE.md`: em "Features futuras > Escolas", trocar "o modelo ainda não está definido…" por um resumo de 3 a 4 linhas e o link do spec. No glossário, acrescentar Escola, Turma, Aula, Chamada e Certificação.
@@ -78,7 +98,7 @@ Todas têm `id uuid`, `created_at` e `updated_at` (via `update_updated_at_column
 | `schools` | `name`, `description`, `is_active` | índice único parcial em `search_normalize(name)` `WHERE deleted_at IS NULL` |
 | `school_lessons` (modelo de aulas) | `school_id`, `position`, `title` | único em `(school_id, position)`; X é a quantidade de linhas; exclusão física, por ser configuração |
 | `school_prerequisites` | `school_id`, `required_school_id` | PK composta; `CHECK` contra autorreferência; ciclo bloqueado na RPC |
-| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
+| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `materials` (texto: livros etc., D-ESC-8), `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
 | `school_class_teachers` | `class_id`, `member_id` | tabela de ligação; exclusão física |
 | `school_class_lessons` | `class_id`, `position`, `title`, `lesson_date` | copiadas da escola quando a turma é criada (ESC-08); a data fica dentro do período |
 | `school_enrollments` (matrículas) | `class_id`, `school_id` (copiado, imutável), `member_id`, `status` (`in_progress`, `approved`, `failed`), `status_reason`, `status_changed_at`, `status_changed_by` | único parcial em `(class_id, member_id)`; único parcial em `(member_id, school_id) WHERE status = 'in_progress'` |
@@ -124,6 +144,7 @@ classDiagram
         +text name
         +date start_date
         +date end_date
+        +text materials
         +timestamptz closed_at
         +timestamptz deleted_at
         +uuid deleted_by
@@ -213,9 +234,12 @@ classDiagram
 ```
 
 Leitura do diagrama:
-- **Membro ↔ escola concluída (N:N, U1):** a ligação é `member_certifications`, com no máximo uma certificação não excluída por membro e escola.
+- **Membro ↔ escola concluída (N:N, U1):**
+  - A ligação é `member_certifications`, com no máximo uma certificação não excluída por membro e escola.
+  - Quem refaz uma escola (D-ESC-7) acumula matrículas aprovadas, mas não certificações.
 - **Membro ↔ turma (N:N, U2):** a ligação é `school_enrollments`, com no máximo uma matrícula não excluída por membro e turma.
 - **Matrícula em andamento:** no máximo uma por membro e escola. É por isso que `school_id` é copiado para a matrícula.
+- **Material (D-ESC-8):** é só o texto `school_classes.materials`. Não há tabela de arquivos nem de links.
 - **Presença (U4):** é a ligação entre matrícula e aula da turma. Se não há linha, a presença está "Não lançada".
 - **Origem da certificação:**
   - `source = enrollment`: tem `enrollment_id` e foi gerada ao aprovar a matrícula.
@@ -247,11 +271,19 @@ As RPCs são `SECURITY DEFINER`, com mensagens em pt-BR e erros `42501`/`22023`.
     - se está ativo e não excluído;
     - se já está na turma;
     - se tem outra matrícula em andamento na mesma escola;
-    - se já tem a certificação;
     - se cumpre os pré-requisitos.
+
+    Já ter a certificação **não** impede a matrícula, porque quem concluiu pode refazer a escola (D-ESC-7).
   - `remove_enrollment` faz exclusão lógica.
 - **Chamada:** `save_attendance(class_lesson_id, entries jsonb)` grava a aula inteira numa só operação. Confere se quem grava é gestor ou professor, se a turma está aberta e se a aula já aconteceu (`sp_today()`).
-- **Situação:** `set_enrollment_status` grava a situação e a certificação juntas. Desfazer uma aprovação aplica exclusão lógica à certificação gerada por aquela matrícula.
+- **Situação:** `set_enrollment_status` grava a situação e a certificação juntas.
+  - Ao aprovar:
+    - se o membro ainda não tem a certificação daquela escola, ela é criada;
+    - se já tem, a certificação existente é mantida, com a data original.
+  - Ao desfazer a aprovação que gerou a certificação:
+    - se houver outra matrícula aprovada na mesma escola, a certificação passa a apontar para ela;
+    - se não houver, a certificação recebe exclusão lógica.
+  - Concorrência: a ordem das operações e os bloqueios para duas aprovações simultâneas ficam com o architect. O índice único parcial é a última garantia.
 - **Certificação manual:** `grant_certification` e `revoke_certification`.
 
 ### Leitura por views

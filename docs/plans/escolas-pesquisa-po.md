@@ -468,13 +468,13 @@ As marcadas com ✅ foram respondidas pelo usuário em 2026-11-22. As respostas 
    - Quais escolas a igreja tem hoje, com os nomes oficiais, o número de aulas e a ordem?
    - Na Capacitação Destino, a escola (e a certificação) é cada **nível** (3), cada **módulo ou livro** (6) ou a **Capacitação inteira** (1)?
    - A Universidade da Vida é uma escola só, ou Pré-Encontro, Encontro e Pós-Encontro ficam separados?
-2. **P-02 Aulas.**
+2. ✅ **P-02 Aulas.** Resposta (D-ESC-5): lista de aulas com título opcional, copiada para a turma, com data opcional por aula. Não se lança chamada de aula futura.
    - A escola tem só um número X de aulas ou uma lista com título e ordem?
    - A turma tem uma data para cada aula ou só o período?
    - A chamada é por **reunião** ou por **lição**? Na CD, uma reunião costuma cobrir 2 lições.
 3. ✅ **P-03 Aprovação.** Resposta: só manual.
    - Continua em aberto: a data de conclusão é o fim da turma ou o dia em que o gestor aprovou?
-4. **P-05 Refazer.**
+4. ✅ **P-05 Refazer.** Resposta (D-ESC-7): o reprovado e quem já concluiu podem refazer, e cada membro mantém uma única certificação por escola.
    - O reprovado pode refazer a escola em outra turma?
    - O membro pode estar em duas turmas da mesma escola ao mesmo tempo?
    - Quem já concluiu pode refazer? Se puder, continua com uma certificação ou fica com duas?
@@ -486,7 +486,7 @@ As marcadas com ✅ foram respondidas pelo usuário em 2026-11-22. As respostas 
 8. **P-11 Ciclo da turma.**
    - A turma tem status (planejada, em andamento, encerrada), e a encerrada trava a chamada?
    - Precisa das situações "Desistente" ou "Cancelada"?
-9. **P-12 Encontro, Reencontro e não membros.**
+9. **P-12 Encontro, Reencontro e não membros.** Parte respondida (D-ESC-6): só membros são alunos, e quem ainda não é membro é cadastrado antes. Ainda em aberto: Encontro e Reencontro são escolas (ver P-01)?
    - Encontro e Reencontro são "escolas", com certificação?
    - Os novos convertidos da UV e do Pré-Encontro ainda não são membros. Isso faz Escolas depender da Consolidação?
    - Visitantes podem ser alunos?
@@ -503,7 +503,7 @@ As marcadas com ✅ foram respondidas pelo usuário em 2026-11-22. As respostas 
 - **P-15** Desfazer uma aprovação apaga a certificação?
 - **P-16** Excluir escola ou turma que já tem turmas, alunos ou aprovados.
 - **P-17** Dados da turma: nome ou código (ex.: "2027.1"), dia e horário, local, presencial ou online, vagas. Até quando se aceita matrícula?
-- **P-18** O material por turma entra na primeira versão? Arquivos ou links?
+- ✅ **P-18** Material por turma. Resposta (D-ESC-8): só um texto descritivo (por exemplo, livros a comprar), sem arquivos nem links.
 
 **Podem esperar:**
 - **P-19** Termo de tela: "Certificação" no lugar de "badge"?
