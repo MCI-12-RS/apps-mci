@@ -83,7 +83,146 @@ Todas têm `id uuid`, `created_at` e `updated_at` (via `update_updated_at_column
 | `school_class_lessons` | `class_id`, `position`, `title`, `lesson_date` | copiadas da escola quando a turma é criada (ESC-08); a data fica dentro do período |
 | `school_enrollments` (matrículas) | `class_id`, `school_id` (copiado, imutável), `member_id`, `status` (`in_progress`, `approved`, `failed`), `status_reason`, `status_changed_at`, `status_changed_by` | único parcial em `(class_id, member_id)`; único parcial em `(member_id, school_id) WHERE status = 'in_progress'` |
 | `school_attendance` | `enrollment_id`, `class_lesson_id`, `status` (`present`, `absent`, `makeup`), `justification` | PK `(enrollment_id, class_lesson_id)`; sem linha, a presença fica "Não lançada" |
-| `member_certifications` | `member_id`, `school_id`, `enrollment_id` (nulo quando manual), `source` (`class`, `manual`), `completed_on`, `notes`, `granted_by` | único parcial em `(member_id, school_id)`; `completed_on <= sp_today()` |
+| `member_certifications` | `member_id`, `school_id`, `enrollment_id` (nulo quando manual), `source` (`enrollment`, `manual`), `completed_on`, `notes`, `granted_by` | único parcial em `(member_id, school_id)`; `completed_on <= sp_today()` |
+
+### Diagrama de dados (UML)
+
+Para não poluir o diagrama, ele omite `id`, `created_at` e `updated_at`. `members` aparece só com as colunas usadas pelas regras. `◆` (composição) indica uma parte que não existe sem o todo: as aulas da escola e as aulas da turma.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class members {
+        <<existente>>
+        +uuid id PK
+        +text name
+        +bool is_active
+    }
+
+    class schools {
+        +text name
+        +text description
+        +bool is_active
+        +timestamptz deleted_at
+        +uuid deleted_by
+    }
+
+    class school_lessons {
+        +uuid school_id FK
+        +int position
+        +text title
+    }
+
+    class school_prerequisites {
+        +uuid school_id PK FK
+        +uuid required_school_id PK FK
+    }
+
+    class school_classes {
+        +uuid school_id FK
+        +text name
+        +date start_date
+        +date end_date
+        +timestamptz closed_at
+        +timestamptz deleted_at
+        +uuid deleted_by
+    }
+
+    class school_class_lessons {
+        +uuid class_id FK
+        +int position
+        +text title
+        +date lesson_date
+    }
+
+    class school_class_teachers {
+        +uuid class_id PK FK
+        +uuid member_id PK FK
+    }
+
+    class school_enrollments {
+        +uuid class_id FK
+        +uuid school_id FK
+        +uuid member_id FK
+        +enrollment_status status
+        +text status_reason
+        +timestamptz status_changed_at
+        +uuid status_changed_by
+        +timestamptz deleted_at
+        +uuid deleted_by
+    }
+
+    class school_attendance {
+        +uuid enrollment_id PK FK
+        +uuid class_lesson_id PK FK
+        +attendance_status status
+        +text justification
+    }
+
+    class member_certifications {
+        +uuid member_id FK
+        +uuid school_id FK
+        +uuid enrollment_id FK
+        +certification_source source
+        +date completed_on
+        +text notes
+        +uuid granted_by
+        +timestamptz deleted_at
+        +uuid deleted_by
+    }
+
+    class enrollment_status {
+        <<enumeration>>
+        in_progress
+        approved
+        failed
+    }
+
+    class attendance_status {
+        <<enumeration>>
+        present
+        absent
+        makeup
+    }
+
+    class certification_source {
+        <<enumeration>>
+        enrollment
+        manual
+    }
+
+    schools "1" *-- "1..*" school_lessons : modelo de aulas
+    schools "1" -- "0..*" school_prerequisites : exige
+    school_prerequisites "0..*" -- "1" schools : escola exigida
+    schools "1" -- "0..*" school_classes : turmas
+    school_classes "1" *-- "1..*" school_class_lessons : aulas copiadas
+    school_classes "1" -- "0..*" school_class_teachers : professores
+    members "1" -- "0..*" school_class_teachers : leciona
+    school_classes "1" -- "0..*" school_enrollments : alunos
+    members "1" -- "0..*" school_enrollments : matrículas
+    schools "1" -- "0..*" school_enrollments : cópia de school_id
+    school_enrollments "1" -- "0..*" school_attendance : chamada
+    school_class_lessons "1" -- "0..*" school_attendance : presenças da aula
+    members "1" -- "0..*" member_certifications : escolas concluídas
+    schools "1" -- "0..*" member_certifications : certifica
+    school_enrollments "0..1" -- "0..1" member_certifications : gera ao aprovar
+    school_enrollments ..> enrollment_status
+    school_attendance ..> attendance_status
+    member_certifications ..> certification_source
+```
+
+Leitura do diagrama:
+- **Membro ↔ escola concluída (N:N, U1):** a ligação é `member_certifications`, com no máximo uma certificação não excluída por membro e escola.
+- **Membro ↔ turma (N:N, U2):** a ligação é `school_enrollments`, com no máximo uma matrícula não excluída por membro e turma.
+- **Matrícula em andamento:** no máximo uma por membro e escola. É por isso que `school_id` é copiado para a matrícula.
+- **Presença (U4):** é a ligação entre matrícula e aula da turma. Se não há linha, a presença está "Não lançada".
+- **Origem da certificação:**
+  - `source = enrollment`: tem `enrollment_id` e foi gerada ao aprovar a matrícula.
+  - `source = manual`: não tem `enrollment_id` (carga histórica, ESC-27).
+- **Exclusão:**
+  - Exclusão lógica (`deleted_at`, `deleted_by`) em `schools`, `school_classes`, `school_enrollments` e `member_certifications`.
+  - Exclusão física nas tabelas de configuração e de ligação: `school_lessons`, `school_prerequisites`, `school_class_teachers`, `school_class_lessons` e `school_attendance`.
 
 ### Permissão nova
 
