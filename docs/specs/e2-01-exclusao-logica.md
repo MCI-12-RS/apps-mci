@@ -976,6 +976,13 @@ Quem não é administrador, com o e-mail da conta de um excluído: erro no campo
 - Componentes: `AlertDialog` (o aviso fica sobre o `Dialog` do formulário; o Radix devolve o foco ao botão "Criar membro"), `Alert`, `Button`.
 
 #### T10. Login e sessão
+> **Substituída pela T1 do E1.04** ([`e1-04-sign-in.md`](e1-04-sign-in.md#t1-login-srcpageslogintsx), ajustes em "Ajustes na T10 do E2.01"). A sessão encerrada e a mensagem única continuam valendo, com estas mudanças:
+> - todas as mensagens do login vão para o topo do formulário;
+> - no UX-35, "conta bloqueada" quer dizer a conta suspensa do membro excluído (DT-13);
+> - o bloqueio por excesso de tentativas tem mensagem própria, que recebe o foco.
+>
+> Quem implementar primeiro (este PR 6 ou o E1.04) segue a T1 do E1.04.
+
 ```
 Erro de login                            Sessão encerrada
 ┌──────────────────────────────────────┐ ┌──────────────────────────────────────┐
@@ -2085,6 +2092,7 @@ Seis PRs no `mci-connect`. **Tudo começa depois do merge do PR 4 do E1.08.**
   - PR 3 (11 → 12 ∥ 13) e, em seguida, PR 5 (18 → 19 ∥ 20). A 17 pode ser feita a qualquer momento depois do PR 1, mas o PR 5 só é mergeado com a 18;
   - PR 4 (14 → 15 ∥ 16).
 - PR 6 (21 → 22 ∥ 23) pode começar logo depois do PR 1, em paralelo com o PR 2.
+- **Ajuste pelo E1.04 (2026-11-23, DT-16 de [`e1-04-sign-in.md`](e1-04-sign-in.md)):** o PR 6 entra **depois do PR 2 do E1.04**, que já implementa a tela de login (T1 do E1.04, que substitui a T10). O PR 6 fica reduzido ao encerramento da sessão: `AuthContext`, `QueryCache`/`MutationCache`, `shouldEndSession` e o estado `session_ended` na navegação. Os testes de login de membro excluído (tarefa 23) passam pela `sign-in`. A DT-14 (`get-user-email` ignorando excluídos) vale até o PR 3 do E1.04, que remove a função.
 - 24 no fim.
 
 **Critérios de pronto**
