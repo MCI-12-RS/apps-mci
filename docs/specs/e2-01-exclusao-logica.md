@@ -1,6 +1,6 @@
 # E2.01: Exclusão lógica
 
-> Status: em refinamento. Negócio e Experiência (UX) escritos em 2026-11-23, com as pendências PO-UX-1 a PO-UX-9 resolvidas pelo PO; faltam Solução técnica, Tarefas e Testes.
+> Status: desenho pronto para revisão. Negócio e Experiência (UX) escritos em 2026-11-23, com as pendências PO-UX-1 a PO-UX-9 resolvidas pelo PO. Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto; os pontos "definidos pelo architect" (DA-1 a DA-10) ficam para revisão no PR. A implementação começa depois do merge do PR 4 do E1.08. Falta a seção Testes (QA).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
 ## Negócio
@@ -1239,23 +1239,881 @@ Nenhuma bloqueava o desenho. O PO resolveu todas em 2026-11-23 e registrou as de
     *Inativar não é bloqueado por discípulos ou células: a D10 vale só para a exclusão. O toast entrou nos "Textos de tela".*
 
 ## Solução técnica
-_Seção do `architect`._
+_Seção do `architect`. Escrita em 2026-11-23, só como desenho: nada foi implementado. **A implementação começa depois do merge do PR 4 do E1.08.** O desenho parte do estado final do E1.08 de leitura (PRs 1 a 4) e funciona com o PR 5 aplicado antes ou depois (DT-22)._
+
+_Conferido em 2026-11-23, só com consultas de leitura, na stack local `supabase_db_mci-e108-pr2` (migrations até o PR 2 do E1.08 e as RPCs do PR 3 em andamento):_
+- _colunas, constraints, índices, políticas (`pg_policies`), triggers, funções, enums e views;_
+- _privilégios das tabelas (`relacl`) e os privilégios padrão (`pg_default_acl`);_
+- _privilégios do `postgres` em `auth.users`, `auth.sessions` e `auth.refresh_tokens`._
+
+_O comportamento do Supabase Auth com conta banida e com conta sem senha foi conferido no código do `supabase/auth` (`internal/api/token.go`, `internal/api/verify.go` e `internal/tokens/service.go`)._
+
+### Revisão das regras
+Nenhuma RN precisou voltar ao PO. As lacunas técnicas foram resolvidas com a leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr).
+
+Casos de borda conferidos:
+- **Fuso e virada de semana:**
+  - a semana do relatório é `week_start(date)`, de domingo a sábado, sobre a data local gravada;
+  - "agora" vem sempre do banco (`now()` e `sp_today()`);
+  - excluir no sábado às 23:50 e lançar outro às 23:55 funciona (RN-12);
+  - restaurar um relatório de semana passada não confere a semana atual (RN-17, DT-28).
+- **Casal:** a exclusão desfaz o vínculo nos dois cadastros, na mesma transação, e a restauração não o refaz. As travas pegam o cônjuge em ordem de id (DT-09).
+- **Inativo:**
+  - discípulos e células inativos bloqueiam a exclusão (RN-04);
+  - excluir um inativo não muda os totais (D2);
+  - a restauração devolve a mesma situação.
+- **Sem líder:** não impede a exclusão. Quem é restaurado com o líder excluído volta sem líder (DA-3).
+- **Pastor:** segue a RN-04 como qualquer membro. O escopo dos pastores continua o do E1.08 (`view_all_church`).
+- **Consolidado:** a flag futura entra nas mesmas views. `deleted_at` é independente dela.
+- **Concorrência e volume:** ver [Bloqueios e concorrência](#bloqueios-e-concorrência) e [Riscos](#riscos-concorrência-escala-segurança).
+
+Leituras técnicas. Nenhuma muda regra, mas o PO e o QA precisam saber delas:
+1. **"Pela API" na edição (RN-07 e RN-14).**
+   - Um PATCH direto do PostgREST num registro excluído, ou feito por um usuário excluído, não dá erro: o RLS esconde a linha, e o resultado é "0 linhas alteradas".
+   - O banco não tem como responder "não existe ou já foi excluído" para uma linha que a pessoa não vê sem revelar que ela existe.
+   - A mensagem do PO vem de três lugares: das RPCs (exclusão e restauração); dos triggers (relatório de célula excluída e participante excluído); e da tela, que pede a linha de volta (`.select('id')`) e trata "0 linhas" com o texto do PO (DT-19).
+   - O "erro de permissão" da RN-14 vale para inserções e RPCs. No PATCH, o resultado é "0 linhas".
+2. **RN-11 e o RLS encadeado.**
+   - A política de SELECT de `cell_reports` (ramo `view_own_ministry`) consulta `cells` num `EXISTS`, e essa subconsulta passa pelo RLS de `cells`.
+   - Com `cells` escondendo as excluídas, os relatórios de célula excluída sumiriam para quem vê pelo ministério, e a `cell_reports_view` (que junta a tabela) deixaria de bater com o RLS.
+   - A DT-05 troca esse `EXISTS` por uma função *definer* com a mesma regra.
+3. **RN-03 sob concorrência.** Dois administradores que excluem um ao outro ao mesmo tempo passariam os dois pela checagem de "próprio cadastro", e não sobraria nenhum. A `delete_member` trava também quem exclui e confere a permissão de novo depois da trava (DT-21).
+4. **AQ-10 e o tempo de resposta.**
+   - Com a senha da conta esvaziada (DT-13), o login de um excluído responde com o mesmo texto e no mesmo tempo que uma identificação inexistente.
+   - A diferença de tempo que já existe entre "conta existe, senha errada" (com bcrypt) e "conta não existe" é do Supabase Auth. Ela só some com a `sign-in` do E1.04.
+5. **RN-16 (e) e RN-18 sem índice único.**
+   - Até o E2.04 criar os índices únicos de e-mail, celular e CPF, as duas regras conferem antes de gravar, sem garantia contra uma corrida.
+   - A `restore_member` já traduz o `unique_violation` que esses índices vão gerar.
+6. **A recomendação do E2.02 (delegar o RLS à view) não serve para `cell_reports`.**
+   - Uma política `id IN (SELECT id FROM cell_reports_view)` recusa o `INSERT … RETURNING`, que é o `insert().select('id')` do formulário de relatório.
+   - Motivo: a subconsulta não enxerga a linha que está sendo inserida, e o Postgres exige que a linha devolvida passe no SELECT.
+   - Fica registrado para o E2.02 (ver [Dependências](#dependências-e-impactos-em-outros-passos)).
+7. **UX T3, "sem os dados estruturados".** Toda recusa deste passo vem com o código e os detalhes (AQ-2). O texto simples fica só como reserva.
+
+#### Definidas pelo architect (revisar no PR)
+Pontos que as RNs não respondem por inteiro. O `architect` adotou a leitura mais conservadora e coerente com as RNs e a D10. O usuário pode mudar qualquer um no PR.
+
+| # | Ponto | Padrão adotado | Por quê |
+|---|---|---|---|
+| DA-1 | Vínculo celular por relatório de célula excluída (RN-08 × RN-11) | A participação num relatório **não excluído** conta no vínculo celular, mesmo que a célula tenha sido excluída. Só a participação em relatório excluído deixa de contar. | A RN-11 manda o relatório de célula excluída contar "como qualquer relatório não excluído". A RN-08 só tira o vínculo dado pelo papel na célula e pelo relatório excluído. |
+| DA-2 | Função na restauração (RN-16 a) | Volta com a função padrão quem tem conta de acesso e está sem função. Quem não tem conta continua como estava. | Ao apagar uma função, o banco limpa `role_id` (`ON DELETE SET NULL`). Como o cadastro pela tela sempre exige uma função, "com conta e sem função" é o caso da função apagada. |
+| DA-3 | Restaurado sem líder (RN-16 d) | `leader_id` nulo e `has_leadership = false` ("Tem Liderança?" desligado). O nível vira 0, e os totais são recalculados. | O cadastro fica coerente: sem líder e sem a chave ligada. "Definir líder" liga a chave no formulário (T5). |
+| DA-4 | Restaurar um id inexistente ou fora do escopo (só pela API) | Mensagem técnica: "Este cadastro não foi encontrado." (ou "Esta célula não foi encontrada." e "Este relatório não foi encontrado."). | O PO só definiu o texto de "não está excluído". O que está fora do escopo vale como inexistente (RN-02, RN-15). |
+| DA-5 | Célula com mais de uma pessoa excluída (RN-17) | A mensagem cita a primeira, na ordem líder, timóteo, anfitrião. Os detalhes trazem todas. | O texto do PO tem uma pessoa só. |
+| DA-6 | Restauração com mais de um dado em uso (RN-16 e) | A mensagem cita o primeiro, na ordem e-mail, celular, CPF. Os detalhes trazem todos. | O texto do PO tem um dado só. |
+| DA-7 | Participantes de relatório de célula excluída | Incluir ou retirar participante é recusado com a mensagem da RN-11. | Mudar os participantes é editar o relatório. |
+| DA-8 | RN-18 para o administrador | Nome, data e "Restaurar" só aparecem para o excluído que ele veria na lista Excluídos (o escopo da RN-15). Fora dela, o aviso sai como para quem não é administrador. | A RN-15 limita o administrador aos excluídos que ele veria se não estivessem excluídos. |
+| DA-9 | O que o membro excluído ainda consegue chamar (RN-14) | Ele também não lê funções e permissões, e o registro de login e logout dele (`log_auth_event`) não grava nada. As funções utilitárias sem dado de ninguém (data de hoje, início da semana) continuam respondendo. | A RN-14 diz que nenhuma leitura ou gravação dele é aceita. As utilitárias não leem dado de negócio. |
+| DA-10 | O que precisa estar visível para excluir e restaurar | Para excluir: o registro precisa estar visível na lista principal (as views do E1.08). Para restaurar: precisa estar na lista de excluídos. | RN-02 e RN-15. Fica um ponto único por entidade, que o E2.02 ajusta. |
+
+### Visão geral
+Cinco partes, todas no padrão do E1.08 e de Escolas:
+
+1. **Colunas e integridade.**
+   - `deleted_at` e `deleted_by` em `members`, `cells` e `cell_reports`.
+   - FKs sem cascata (DT-03).
+   - Índices parciais (DT-07), inclusive o índice único da semana do relatório.
+2. **Leitura sem excluídos**, em três níveis (DT-04):
+   - **Entidade:** as views do E1.08 e as políticas de SELECT e UPDATE ganham `deleted_at IS NULL`, fora dos parênteses do escopo.
+   - **Identidade de quem consulta:** os helpers de permissão e escopo ignoram o membro excluído, e é isso que corta o acesso dele (RN-14).
+   - **Árvore:** as funções de árvore **não** filtram, para que o histórico mantenha o escopo de antes da exclusão.
+
+   Três views novas listam os excluídos para o administrador (DT-06).
+3. **Escrita por RPC.**
+   - Excluir e restaurar só por RPCs `SECURITY DEFINER` (DT-02).
+   - A gravação dos participantes do relatório passa por uma RPC mínima (DT-15).
+   - Triggers `BEFORE` são a última barreira das RN-06, RN-11, RN-13 e RN-18 (DT-08).
+4. **Acesso do excluído.** Na mesma transação da exclusão, o banco suspende a conta no Auth: guarda o hash da senha, esvazia a senha, bane a conta e apaga as sessões. A restauração devolve tudo (DT-13). O corte de acesso não depende disso, porque o item 2 já ignora o excluído.
+5. **Auditoria nos triggers que já existem**, com a exclusão, a restauração e o cônjuge desfeito gravados sem engolir erro (DT-16).
 
 ### Modelo de dados e migrations
+
+#### Ordem das migrations
+Os nomes são sugestões; o timestamp é o do momento da criação.
+- Cada arquivo é idempotente (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DO` com guarda) e roda num banco zerado depois das migrations existentes.
+- Depois de cada PR com migration, regenere o `types.ts`.
+
+| # | PR | Arquivo | Conteúdo | Por que separado |
+|---|---|---|---|---|
+| 1 | 1 | `<ts>_e201_01_enum.sql` | `ALTER TYPE public.event_action ADD VALUE IF NOT EXISTS 'restore'` | Um valor novo de enum não pode ser usado na transação que o cria (padrão de Escolas) |
+| 2 | 1 | `<ts>_e201_02_schema.sql` | Colunas, CHECKs, FKs, funções de normalização, índices, schema `private` e a tabela de suspensões, e o GRANT por coluna condicionado ao PR 5 | Estrutura antes das funções que a usam |
+| 3 | 1 | `<ts>_e201_03_read.sql` | Helpers de identidade e escopo, `member_names`, views do E1.08, views de excluídos, políticas de SELECT, UPDATE e INSERT, `roles`, `role_permissions` e `log_auth_event` | Revisão da leitura separada da escrita |
+| 4 | 1 | `<ts>_e201_04_write.sql` | Funções internas `_del_*`, triggers, RPCs e grants. A ordem das travas fica escrita no cabeçalho. | Idem |
+| 5 | 2 | `<ts>_e201_05_no_physical_delete.sql` | Retira as políticas de DELETE de `members`, `cells` e `cell_reports`, e faz o `REVOKE` de DELETE e TRUNCATE | Só pode valer junto com o front que usa as RPCs (ver [Implantação](#implantação)) |
+
+O PR 1 é neutro para o usuário: até o PR 2, a tela não chama as RPCs, então não existe nenhum registro excluído logicamente. A exclusão física da tela antiga continua até a migration 5. A única mudança visível é a das FKs (DT-03): a exclusão física que antes apagava em cascata passa a falhar, sem apagar nada.
+
+#### DDL de referência (migration 2)
+```sql
+-- Colunas (DEL-01). deleted_by segue a convenção de Escolas (DT-31 de lá): o membro
+-- que excluiu, via viewer_member_id(); nulo quando vem da service role ou do legado.
+ALTER TABLE public.members      ADD COLUMN IF NOT EXISTS deleted_at timestamptz,
+                                ADD COLUMN IF NOT EXISTS deleted_by uuid;
+ALTER TABLE public.cells        ADD COLUMN IF NOT EXISTS deleted_at timestamptz,
+                                ADD COLUMN IF NOT EXISTS deleted_by uuid;
+ALTER TABLE public.cell_reports ADD COLUMN IF NOT EXISTS deleted_at timestamptz,
+                                ADD COLUMN IF NOT EXISTS deleted_by uuid;
+
+-- Para cada tabela (members, cells, cell_reports), dentro de DO com guarda de duplicate_object:
+--   <t>_deleted_by_fkey  FOREIGN KEY (deleted_by) REFERENCES public.members (id)
+--   <t>_deleted_by_check CHECK (deleted_by IS NULL OR deleted_at IS NOT NULL)
+
+-- FKs sem cascata nem SET NULL (DEL-07, seção 5.3). O nome fica o mesmo.
+ALTER TABLE public.members
+  DROP CONSTRAINT IF EXISTS members_leader_id_fkey,
+  ADD  CONSTRAINT members_leader_id_fkey FOREIGN KEY (leader_id) REFERENCES public.members (id),
+  DROP CONSTRAINT IF EXISTS members_spouse_id_fkey,
+  ADD  CONSTRAINT members_spouse_id_fkey FOREIGN KEY (spouse_id) REFERENCES public.members (id);
+ALTER TABLE public.cell_reports
+  DROP CONSTRAINT IF EXISTS cell_reports_cell_id_fkey,
+  ADD  CONSTRAINT cell_reports_cell_id_fkey FOREIGN KEY (cell_id) REFERENCES public.cells (id);
+ALTER TABLE public.cell_report_participants
+  DROP CONSTRAINT IF EXISTS cell_report_participants_report_id_fkey,
+  ADD  CONSTRAINT cell_report_participants_report_id_fkey
+       FOREIGN KEY (report_id) REFERENCES public.cell_reports (id),
+  DROP CONSTRAINT IF EXISTS cell_report_participants_member_id_fkey,
+  ADD  CONSTRAINT cell_report_participants_member_id_fkey
+       FOREIGN KEY (member_id) REFERENCES public.members (id);
+-- members.role_id continua ON DELETE SET NULL: funções são configuração (DA-2).
+-- members.auth_user_id → auth.users continua ON DELETE SET NULL.
+
+-- Normalização única de e-mail, celular e CPF (DT-17). O E2.04 usa as mesmas nos índices únicos.
+CREATE OR REPLACE FUNCTION public.normalize_email(_value text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = '' AS $$ SELECT nullif(lower(btrim(_value)), '') $$;
+CREATE OR REPLACE FUNCTION public.normalize_digits(_value text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = ''
+AS $$ SELECT nullif(regexp_replace(coalesce(_value, ''), '\D', '', 'g'), '') $$;
+
+-- Índices de lista do E1.08 passam a parciais, com o MESMO nome, porque os testes do
+-- E1.08 conferem o nome. Num DO: se o índice existir sem predicado (pg_index.indpred
+-- IS NULL), DROP; depois CREATE INDEX IF NOT EXISTS com WHERE deleted_at IS NULL.
+--   members_name_id_idx            ON public.members      (name, id)        WHERE deleted_at IS NULL
+--   cell_reports_date_id_idx       ON public.cell_reports (date DESC, id)   WHERE deleted_at IS NULL
+--   cell_reports_cell_id_date_idx  ON public.cell_reports (cell_id, date DESC) WHERE deleted_at IS NULL
+
+-- Listas de excluídos (RN-15: da exclusão mais recente para a mais antiga).
+CREATE INDEX IF NOT EXISTS members_deleted_at_idx
+  ON public.members (deleted_at DESC, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS cells_deleted_at_idx
+  ON public.cells (deleted_at DESC, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS cell_reports_deleted_at_idx
+  ON public.cell_reports (deleted_at DESC, id) WHERE deleted_at IS NOT NULL;
+
+-- RN-18: e-mail da conta de um excluído, consultado a cada cadastro novo.
+CREATE INDEX IF NOT EXISTS members_deleted_account_email_idx
+  ON public.members (public.normalize_email(email))
+  WHERE deleted_at IS NOT NULL AND auth_user_id IS NOT NULL;
+
+-- REL-03 e DEL-03, antecipado do E2.11: um relatório não excluído por célula e semana.
+-- Antes do CREATE, um DO confere se há duplicatas e, se houver, falha com a lista
+-- (cell_id, semana, ids), sem criar nada.
+CREATE UNIQUE INDEX IF NOT EXISTS cell_reports_cell_week_key
+  ON public.cell_reports (cell_id, public.week_start(date)) WHERE deleted_at IS NULL;
+
+-- Credenciais suspensas (RN-14: "a senha fica guardada para uma eventual restauração").
+CREATE SCHEMA IF NOT EXISTS private;
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
+CREATE TABLE IF NOT EXISTS private.member_access_suspensions (
+  member_id             uuid PRIMARY KEY REFERENCES public.members (id),
+  auth_user_id          uuid NOT NULL,
+  encrypted_password    text,          -- o hash bcrypt de auth.users, como estava
+  previous_banned_until timestamptz,   -- normalmente nulo
+  suspended_at          timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE private.member_access_suspensions ENABLE ROW LEVEL SECURITY;   -- sem políticas
+REVOKE ALL ON TABLE private.member_access_suspensions FROM PUBLIC, anon, authenticated, service_role;
+
+-- E1.08 PR 5 (trava por coluna em members) já aplicado? Então as colunas novas precisam
+-- do GRANT (risco 4 do E1.08). Se ainda não, o PR 5 inclui as duas na lista dele (DT-22).
+DO $$ BEGIN
+  IF NOT has_table_privilege('authenticated', 'public.members', 'SELECT') THEN
+    GRANT SELECT (deleted_at, deleted_by) ON public.members TO authenticated;
+  END IF;
+END $$;
+```
+
+#### Integridade garantida pelo banco
+| Garantia | Como |
+|---|---|
+| Autor só com data (DEL-01) | `CHECK (deleted_by IS NULL OR deleted_at IS NOT NULL)` nas três tabelas |
+| Nenhuma exclusão física pela API (RN-01) | Sem política de DELETE e sem privilégio DELETE e TRUNCATE para `anon` e `authenticated` nas três tabelas (migration 5). Participantes mantêm a política de DELETE (RN-13), mas perdem o TRUNCATE. |
+| Nenhuma cascata apaga histórico (DEL-07) | FKs `NO ACTION`. Uma exclusão física feita pela service role falha enquanto houver referência. |
+| Nada aponta para um excluído (RN-06) | Triggers `BEFORE` com `FOR KEY SHARE` na linha referenciada ([Triggers](#triggers-última-barreira)) |
+| Marcação só pelas RPCs | Políticas de UPDATE e INSERT com `WITH CHECK (… AND deleted_at IS NULL)`. Um PATCH que tente marcar `deleted_at` recebe 42501. A service role passa por fora (ver risco 8). |
+| Um relatório não excluído por célula e semana (RN-12, RN-17, RN-20) | Índice único parcial `cell_reports_cell_week_key` |
+| Credenciais suspensas fora da API | Schema `private`, RLS sem políticas, sem privilégios |
+
+### Leitura: onde os excluídos somem
+
+#### Funções de identidade e escopo (migration 3)
+Todas continuam `STABLE SECURITY DEFINER SET search_path = public`, com os mesmos grants de hoje.
+
+| Função | Mudança | Efeito |
+|---|---|---|
+| `user_has_permission(_user_id, _permission)` | `AND m.deleted_at IS NULL` no cadastro de quem consulta | O excluído não tem permissão nenhuma (RN-14). Vale para `viewer_has`, as RPCs, o RLS e a `create-user-admin`. |
+| `is_admin(_user_id)` | Idem | Idem nas políticas de `roles` e `role_permissions` |
+| `viewer_member_id()` | `AND m.deleted_at IS NULL` (o comentário `E2.01` do PR 1) | Sem cadastro, sem escopo. Escolas depende disso (ESC-33). |
+| `can_assign_role(_role_id)` | Passa a usar `viewer_covers_role(_role_id)`; o cadastro de quem consulta ignora excluídos | Mesma regra de hoje |
+| `viewer_covers_role(_role_id)` (**nova**) | `NOT EXISTS (permissões da função EXCEPT permissões de quem consulta)`; falso sem cadastro não excluído | A regra de "cobrir a função", sem exigir `assign_role` (RN-03, RN-16 b; DT-12) |
+| `can_manage_own_cell(_user_id, _cell_id)` | Ignora o **usuário** excluído. Não filtra a célula. | O líder de uma célula excluída continua vendo os relatórios dela (RN-11). O filtro da célula fica nas políticas. |
+| `is_in_same_ministry(_user_id, _target)` | Ignora o **usuário** excluído. Não filtra o alvo. | Equivalência com `viewer_ministry_member_ids` mantida (teste do E1.08) |
+| `get_ministry_root`, `viewer_ministry_member_ids` | Sem mudança (o `me` já vem de `viewer_member_id`) | A descida da árvore passa por excluídos: o histórico (célula ou relatório de um excluído) mantém o escopo de antes (DT-04, DA-10) |
+| `is_leader_of_visible_member` | Considera só discípulos não excluídos | Coerente com a `member_names` |
+| `member_names(_ids)` | `AND m.deleted_at IS NULL` | Os seletores não mostram excluídos. O nome de referência nas linhas vem dos *joins* das views, que não filtram (RN-09 c). |
+| `cell_in_viewer_ministry(_cell_id)` (**nova**) | `EXISTS` em `cells` **sem RLS**: o líder ou o timóteo está no ministério de quem consulta (`is_in_same_ministry(auth.uid(), …)`) | Substitui o `EXISTS` sob RLS nas políticas de relatórios e participantes (DT-05). Sem parâmetro de usuário. |
+| `log_auth_event` | Não grava nada quando quem chama é um membro excluído | DA-9 |
+
+#### Views do E1.08 (migration 3)
+`CREATE OR REPLACE VIEW`, com as mesmas colunas na mesma ordem e as novas **no fim** (risco 5 do E1.08). Continuam *security definer* com `security_barrier`, donas `postgres`, só com SELECT para `authenticated`.
+
+| View | Mudança |
+|---|---|
+| `members_view` | `WHERE (<escopo atual>) AND m.deleted_at IS NULL`. Vínculo celular: `is_cell_*` só com `c.deleted_at IS NULL`; `attended_last_30_days` só com `r.deleted_at IS NULL`. O relatório de célula excluída conta (DA-1). |
+| `cells_view` | `WHERE (<escopo atual>) AND c.deleted_at IS NULL`. `last_report_date` só com `r.deleted_at IS NULL`. |
+| `cell_reports_view` | `WHERE (<escopo atual>) AND r.deleted_at IS NULL`. Continua juntando a **tabela** `cells`, então o relatório de célula excluída fica (RN-11). Coluna nova no fim: `cell_deleted boolean` (`c.deleted_at IS NOT NULL`, AQ-4). `participants_count` continua contando os participantes excluídos (RN-13). |
+| `cell_report_participants_view` | Herda o filtro do relatório (junta a `cell_reports_view`). Continua mostrando o nome do membro excluído (RN-09 b, RN-13). Coluna nova no fim: `member_deleted boolean` (AQ-5). |
+
+As RPCs do dashboard (PR 3) e a `ministry_tree_nodes` (PR 4) leem só dessas views e **não mudam**. Com isso:
+- os cards de membros, os cards da semana, as células por tipo, o ranking e a árvore ficam sem excluídos (RN-08);
+- o relatório de célula excluída continua em relatórios enviados, visitantes e não realizadas (RN-11);
+- a célula excluída sai de pendentes e da contagem por tipo;
+- a semana liberada volta a contar como pendente (RN-12).
+
+#### Views de excluídos (migration 3, AQ-3)
+Três views novas no padrão das demais: *security definer*, `security_barrier`, donas `postgres`, `REVOKE ALL` e `GRANT SELECT` só para `authenticated`. O `WHERE` de cada uma tem três partes:
+- `(SELECT viewer_has('manage_roles'))`;
+- o **mesmo** predicado de escopo da view principal;
+- `deleted_at IS NOT NULL`.
+
+Assim, o administrador vê os excluídos que veria se eles não estivessem excluídos (RN-15).
+
+| View | Colunas | Ordem e busca |
+|---|---|---|
+| `members_deleted_view` | `id`, `name`, `gender`, `is_active`, `is_pastor`, `neighborhood`, `city`; `leader_id`, `leader_name`, `leader_deleted`; `role_id`, `role_name`; `restore_role_name` e `role_reset_on_restore` (DA-2); `has_account`; `sensitive_visible` e `email`, `cpf`, `mobile_whatsapp` mascarados como na `members_view`; `deleted_at`, `deleted_by`, `deleted_by_name`; `search_text` | `deleted_at DESC, id`. Busca pelos mesmos campos da lista principal (nome, e-mail e CPF já mascarados) |
+| `cells_deleted_view` | `id`, `type`, `meeting_day`, `meeting_weekday`, `meeting_time`, `street`, `number`, `neighborhood`, `city`, `is_active`; `leader_id`, `leader_name`, `leader_deleted`; `timothy_id`, `timothy_name`, `timothy_deleted`; `host_id`, `host_name`, `host_deleted`; `deleted_at`, `deleted_by`, `deleted_by_name`; `search_text` (igual ao da `cells_view`) | `deleted_at DESC, id` |
+| `cell_reports_deleted_view` | `id`, `cell_id`, `date`, `time`, `was_held`, `theme`, `reason_not_held`, `week_start`; `cell_leader_id`, `cell_leader_name`, `cell_deleted`; `week_taken` (outro relatório não excluído da mesma célula na mesma semana, pelo índice `cell_reports_cell_week_key`); `deleted_at`, `deleted_by`, `deleted_by_name`; `search_text` (nome do líder e tema) | `deleted_at DESC, id` |
+
+- `deleted_by_name` sai por *join* com `members`, sem filtro de excluído: é o nome de quem excluiu, que pode ter sido excluído depois. Nulo = "Autor não registrado".
+- A `members_view` **não muda o `WHERE` de escopo**: os excluídos ficam em views próprias.
+
+#### Políticas de RLS (migration 3)
+As políticas continuam espelhadas pelas views. O teste de paridade do E1.08 ganha registros excluídos na massa (ver [Verificações](#verificações-obrigatórias-para-o-qa)).
+
+| Tabela | SELECT | UPDATE | INSERT |
+|---|---|---|---|
+| `members` | `(<atual>) AND deleted_at IS NULL` | `USING` e `WITH CHECK`: `(<atual>) AND deleted_at IS NULL` | `WITH CHECK (<atual> AND deleted_at IS NULL AND deleted_by IS NULL)` |
+| `cells` | `(<atual>) AND deleted_at IS NULL` | idem | idem |
+| `cell_reports` | `(<atual>, com o ramo view_own_ministry usando cell_in_viewer_ministry(cell_id)>) AND deleted_at IS NULL` | idem, sobre a política atual (`edit_cell_report`) | idem |
+| `cell_report_participants` | `(<atual>, com o ramo view_own_ministry usando cell_in_viewer_ministry(cr.cell_id)>) AND EXISTS (SELECT 1 FROM cell_reports r WHERE r.id = report_id AND r.deleted_at IS NULL)` | — (não tem) | sem mudança. O trigger recusa os casos da RN-06, RN-07 e RN-11. |
+| `roles`, `role_permissions` | `USING (public.viewer_member_id() IS NOT NULL)` no lugar de `true` (DA-9) | sem mudança | sem mudança |
+
+- As políticas de DELETE de `members`, `cells` e `cell_reports` saem na migration 5 (PR 2), junto com o `REVOKE` de DELETE e TRUNCATE. A de participantes fica.
+- Os outros ramos de `view_own_reports` em relatórios e participantes ficam como estão. Eles já são cobertos pelos ramos de `can_manage_own_cell` (achado 3 do E1.08), e o E2.02 os corrige.
+
+Exemplo da política de `members` (as outras seguem o mesmo molde):
+```sql
+DROP POLICY IF EXISTS "Members view policy" ON public.members;
+CREATE POLICY "Members view policy" ON public.members FOR SELECT TO authenticated
+USING (
+  (    public.user_has_permission(auth.uid(), 'view_all_church')
+    OR public.user_has_permission(auth.uid(), 'view_members')
+    OR (public.user_has_permission(auth.uid(), 'view_own_ministry')
+        AND public.is_in_same_ministry(auth.uid(), id))
+    OR auth_user_id = auth.uid() )
+  AND deleted_at IS NULL                       -- E2.01; espelhado na members_view
+);
+```
+
+#### Totais (RN-10, migration 4)
+`refresh_member_stats_v2` é reescrita com a mesma fórmula e quatro mudanças:
+- a descida da subárvore ignora membros excluídos (`m.deleted_at IS NULL`);
+- `cell_totals` conta só células com `is_active AND deleted_at IS NULL`;
+- ganha `SET search_path = public`, que hoje não tem;
+- os triggers `trg_refresh_stats_members` e `trg_refresh_stats_cells` passam a disparar também em `UPDATE OF deleted_at`.
+
+Excluir ou restaurar muda os totais na mesma transação.
+
+### Escrita
+
+#### Funções internas (migration 4)
+São `SECURITY DEFINER SET search_path = public`, com `REVOKE ALL … FROM PUBLIC, anon, authenticated`. Só as RPCs e os triggers as chamam.
+
+| Função | O que faz |
+|---|---|
+| `_del_raise(_code text, _message text, _detail jsonb DEFAULT '{}')` | Levanta o erro estruturado ([Formato dos erros](#formato-dos-erros-aq-2)) |
+| `_del_lock_members(_target uuid, _actor uuid)` | Trava com `FOR UPDATE`, em ordem de id, o alvo, o cônjuge atual dele e quem exclui. Relê o cônjuge depois da trava e repete se ele mudou (DT-09, DT-21). |
+| `_del_member_blockers(_member_id uuid) RETURNS jsonb` | `NULL` se a exclusão pode seguir. Senão, devolve o objeto de recusa, na ordem: inexistente, excluído ou fora da `members_view` (`not_found_or_deleted`) → próprio cadastro (`self_delete`) → função não coberta (`role_above`) → ligações (`member_has_links`). Usada pela pré-checagem e pela exclusão (DT-11). |
+| `_del_suspend_access(_member_id uuid, _auth_user_id uuid)` | Suspende a conta (DT-13): guarda a senha e o banimento anterior em `private.member_access_suspensions`, esvazia `auth.users.encrypted_password`, põe `banned_until` 100 anos à frente e apaga as sessões e os *refresh tokens* |
+| `_del_resume_access(_member_id uuid)` | Devolve a senha e o banimento guardados e apaga a suspensão. Sem suspensão guardada, só limpa `banned_until`. |
+| `_del_lock_cell_week(_cell_id uuid, _date date)` | `pg_advisory_xact_lock(hashtextextended('cell-week:' \|\| _cell_id \|\| ':' \|\| week_start(_date), 0))` (DT-23) |
+
+```sql
+CREATE OR REPLACE FUNCTION public._del_suspend_access(_member_id uuid, _auth_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO private.member_access_suspensions
+         (member_id, auth_user_id, encrypted_password, previous_banned_until)
+  SELECT _member_id, u.id, u.encrypted_password, u.banned_until
+    FROM auth.users u WHERE u.id = _auth_user_id
+  ON CONFLICT (member_id) DO NOTHING;            -- nunca sobrescreve a senha guardada com ''
+  -- Senha vazia: o login responde "Invalid login credentials" antes da checagem de banimento,
+  -- igual a uma conta inexistente (AQ-10). O banimento barra renovação, link mágico e recuperação.
+  UPDATE auth.users
+     SET encrypted_password = '', banned_until = now() + interval '100 years', updated_at = now()
+   WHERE id = _auth_user_id;
+  DELETE FROM auth.sessions WHERE user_id = _auth_user_id;              -- refresh tokens caem em cascata
+  DELETE FROM auth.refresh_tokens WHERE user_id = _auth_user_id::text;  -- tokens antigos sem sessão
+END $$;
+```
+
+#### RPCs
+Valem para todas:
+- `REVOKE EXECUTE … FROM PUBLIC, anon` e `GRANT EXECUTE … TO authenticated`.
+- Nenhuma recebe id de usuário: quem chama é sempre `auth.uid()`.
+- Ordem das checagens: permissão (42501) → forma da entrada → travas → existência e visibilidade → regras → escrita. A auditoria sai dos triggers.
+- `deleted_by` recebe `viewer_member_id()`.
+- Mensagens novas, fora da tabela do PO, aparecem em itálico. São técnicas, e a tela normal não as provoca.
+
+| RPC | Tipo | Quem | Travas | Recusas (código: mensagem) | Efeito |
+|---|---|---|---|---|---|
+| `check_member_deletion(_member_id uuid) RETURNS jsonb` | `STABLE SECURITY DEFINER`, só leitura | `delete_member` | — | 42501 sem a permissão | `{ "can_delete": true }` ou `{ "can_delete": false, "code", "message", … }`, com o mesmo conteúdo da recusa de `delete_member` (AQ-1) |
+| `delete_member(_member_id uuid) RETURNS void` | `SECURITY DEFINER` | `delete_member` | `_del_lock_members` (alvo, cônjuge e quem exclui); confere `viewer_has` de novo depois da trava | `not_found_or_deleted`: Este cadastro não existe ou já foi excluído. · `self_delete`: Você não pode excluir o seu próprio cadastro. · `role_above`: Você não tem permissão para excluir este membro. · `member_has_links`: ver [Formato dos erros](#formato-dos-erros-aq-2) | `deleted_at = now()`, `deleted_by`, `spouse_id = NULL` (o trigger de cônjuge limpa o outro lado); totais e auditoria pelos triggers; `_del_suspend_access` se houver conta |
+| `restore_member(_member_id uuid) RETURNS TABLE (restored_without_leader boolean, previous_leader_name text, role_reset_to_default boolean, role_name text)` | `SECURITY DEFINER` | `manage_roles` | o alvo `FOR UPDATE`; o líder guardado `FOR KEY SHARE` | `not_found`: *Este cadastro não foi encontrado.* (DA-4) · `not_deleted`: Este cadastro não está excluído. · `restore_role_above`: Você não tem permissão para restaurar este membro. · `restore_value_in_use`: Não é possível restaurar: outro cadastro já usa este {e-mail \| celular \| CPF}. (DA-6) | `deleted_at` e `deleted_by` nulos. `leader_id` sempre no `SET`, o que recalcula o nível e os totais: o mesmo líder, ou nulo com `has_leadership = false` se ele foi excluído (DA-3). `role_id` padrão se for o caso (DA-2). `_del_resume_access` se houver conta. Um `unique_violation` dos índices do E2.04 vira `restore_value_in_use`. |
+| `delete_cell(_cell_id uuid) RETURNS void` | `SECURITY DEFINER` | `delete_cell` | a célula `FOR UPDATE` | `not_found_or_deleted`: Esta célula não existe ou já foi excluída. | marca a célula; os relatórios não mudam (RN-11); totais e auditoria pelos triggers |
+| `restore_cell(_cell_id uuid) RETURNS void` | `SECURITY DEFINER` | `manage_roles` | a célula `FOR UPDATE`; líder, timóteo e anfitrião `FOR KEY SHARE` | `not_found`: *Esta célula não foi encontrada.* · `not_deleted`: Esta célula não está excluída. · `restore_person_deleted`: Não é possível restaurar a célula: o {líder \| timóteo \| anfitrião} {Nome} foi excluído. Restaure o cadastro dele antes ou crie uma célula nova. (DA-5) | desmarca a célula; os relatórios voltam a ser editáveis |
+| `delete_cell_report(_report_id uuid) RETURNS void` | `SECURITY DEFINER` | `delete_cell_report` | o relatório `FOR UPDATE` | `not_found_or_deleted`: Este relatório não existe ou já foi excluído. | marca o relatório; os participantes ficam guardados (RN-01, RN-12). Vale também para relatório de célula excluída (RN-11). |
+| `restore_cell_report(_report_id uuid) RETURNS void` | `SECURITY DEFINER` | `manage_roles` | o relatório `FOR UPDATE`; `_del_lock_cell_week` | `not_found`: *Este relatório não foi encontrado.* · `not_deleted`: Este relatório não está excluído. · `restore_week_taken`: Esta célula já tem outro relatório na mesma semana. Exclua-o antes de restaurar este. | desmarca; não confere REL-01, REL-02 nem REL-04 (DT-28). O `unique_violation` de `cell_reports_cell_week_key` vira `restore_week_taken`. |
+| `set_cell_report_participants(_report_id uuid, _member_ids uuid[]) RETURNS void` | **`SECURITY INVOKER`** (o RLS de participantes vale) | as políticas atuais de INSERT e DELETE de participantes | as do trigger de participantes | as do trigger; 22023 *"Um relatório pode ter no máximo 1000 participantes."* | ver [Participantes do relatório](#participantes-do-relatório-rn-13) |
+| `find_deleted_member_matches(_email text, _mobile text, _cpf text) RETURNS TABLE (member_id uuid, name text, deleted_at timestamptz, matched_fields text[], is_account_email boolean)` | `STABLE SECURITY DEFINER` | `create_member` | — | 42501 sem a permissão | ver [Cadastro com dado de excluído](#cadastro-com-dado-de-excluído-rn-18) |
+
+Esqueleto da exclusão de membro (as demais seguem o mesmo molde):
+```sql
+CREATE OR REPLACE FUNCTION public.delete_member(_member_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _me uuid := public.viewer_member_id();
+  _auth uuid;
+  _block jsonb;
+BEGIN
+  IF NOT public.viewer_has('delete_member') THEN
+    RAISE EXCEPTION 'Você não tem permissão para esta ação.' USING ERRCODE = '42501';
+  END IF;
+  IF _member_id IS NULL THEN
+    PERFORM public._del_raise('not_found_or_deleted', 'Este cadastro não existe ou já foi excluído.',
+                              '{"entity": "member"}');
+  END IF;
+
+  PERFORM public._del_lock_members(_member_id, _me);   -- alvo, cônjuge e quem exclui (DT-09, DT-21)
+  IF NOT public.viewer_has('delete_member') THEN       -- quem exclui pode ter sido excluído na espera
+    RAISE EXCEPTION 'Você não tem permissão para esta ação.' USING ERRCODE = '42501';
+  END IF;
+
+  _block := public._del_member_blockers(_member_id);   -- o mesmo objeto da pré-checagem
+  IF _block IS NOT NULL THEN
+    PERFORM public._del_raise(_block ->> 'code', _block ->> 'message', _block - 'message');
+  END IF;
+
+  UPDATE public.members
+     SET deleted_at = now(), deleted_by = _me, spouse_id = NULL
+   WHERE id = _member_id
+  RETURNING auth_user_id INTO _auth;                   -- triggers: cônjuge, totais, auditoria
+  IF _auth IS NOT NULL THEN
+    PERFORM public._del_suspend_access(_member_id, _auth);
+  END IF;
+END $$;
+```
+
+#### Triggers (última barreira)
+São todas `SECURITY DEFINER SET search_path = public`.
+- As funções novas valem para qualquer papel, inclusive a service role (DT-27). Só a carga com `session_replication_role = replica` passa por fora (risco 8).
+- Os nomes com `aa_` e `ab_` garantem a ordem entre os triggers `BEFORE`, que é alfabética.
+- A trava `FOR KEY SHARE` na linha referenciada conflita com o `FOR UPDATE` das RPCs de exclusão. Por isso, "escolher" e "excluir" a mesma pessoa ou célula nunca passam juntos (RN-20).
+
+| Tabela | Trigger (função) | Quando | Regra |
+|---|---|---|---|
+| `members` | `ab_enforce_member_links` (`enforce_member_links`) | `BEFORE INSERT OR UPDATE OF leader_id, spouse_id, deleted_at` | Linha excluída: nada a conferir. Senão, quando o líder ou o cônjuge mudam, ou na restauração: trava a pessoa com `FOR KEY SHARE` e recusa a excluída com `deleted_member_chosen` ("Este membro foi excluído e não pode ser escolhido.", com `field` e `member_id`). No INSERT, recusa o e-mail da conta de um excluído com `deleted_account_email` (RN-18). |
+| `cells` | `aa_enforce_cell_links` (`enforce_cell_links`) | `BEFORE INSERT OR UPDATE OF leader_id, timothy_id, host_id, deleted_at` | Igual, para líder, timóteo e anfitrião, na criação, na troca e na restauração |
+| `cell_reports` | `aa_enforce_cell_report_rules` (`enforce_cell_report_rules`) | `BEFORE INSERT OR UPDATE` | Marcar ou desmarcar `deleted_at`: nada a conferir. Edição de relatório cuja célula atual está excluída: `report_cell_deleted` ("A célula deste relatório foi excluída. Restaure a célula para editar o relatório."). INSERT, ou troca de `cell_id`, para célula excluída: `cell_deleted` ("Esta célula foi excluída e não recebe relatórios."). A célula é travada com `FOR KEY SHARE`. |
+| `cell_reports` | `enforce_unique_weekly_cell_report_trigger` (reescrita) | como hoje (`INSERT` ou `UPDATE OF cell_id, date`) | Ignora relatório excluído (o novo e os existentes), pega `_del_lock_cell_week` antes de consultar e mantém a mensagem atual. O índice único é a garantia. |
+| `cell_report_participants` | `aa_enforce_participant_rules` (`enforce_participant_rules`) | `BEFORE INSERT OR DELETE` | Trava o relatório e a célula com `FOR KEY SHARE`. Relatório excluído: `not_found_or_deleted` (relatório). Célula excluída: `report_cell_deleted` (DA-7). INSERT de um par que já existe: devolve a linha sem conferir nada (o `ON CONFLICT` a descarta). INSERT de membro excluído: `deleted_member_chosen`. DELETE de membro excluído: `deleted_participant_removal` ("Não é possível retirar um participante cujo cadastro foi excluído."). |
+| `members`, `cells` | `trg_refresh_stats_*` (recriados) | `AFTER INSERT OR DELETE OR UPDATE OF leader_id, is_active, deleted_at` | Totais (RN-10) |
+| `members`, `cells`, `cell_reports` | `trg_log_*` (funções reescritas) | como hoje | [Auditoria](#auditoria-rn-19) |
+
+O trigger de semana atual (`enforce_cell_report_current_week`) não muda. A restauração não o dispara, porque não mexe em `date` (DT-28).
+
+#### Participantes do relatório (RN-13)
+O `CellReportForm` apaga e regrava todos os participantes ao editar. Com a RN-06 e a RN-13, isso deixa de funcionar: apagar um participante excluído é recusado, e reinseri-lo também. A solução deste passo é uma RPC mínima, `set_cell_report_participants` (DT-15). O E2.11 a absorve na RPC de lançamento.
+
+- **Contrato:** `_member_ids` é o conjunto **final**, incluindo os participantes excluídos que continuam no relatório. A tela os recebe da `cell_report_participants_view` (`member_deleted`) e os devolve sem mudança.
+- **Efeito, numa transação:**
+  1. apaga os pares que não estão na lista (`DELETE … WHERE report_id = _report_id AND NOT (member_id = ANY(_member_ids))`);
+  2. insere só os que faltam (`INSERT … SELECT … WHERE NOT EXISTS (…) ON CONFLICT DO NOTHING`, **sem alvo**). Com alvo, o Postgres aplicaria a política de SELECT às linhas propostas.
+- **Garantias, pelo trigger:**
+  - um participante excluído omitido da lista é recusado com `deleted_participant_removal`, e nada muda;
+  - um membro excluído novo é recusado com `deleted_member_chosen`;
+  - relatório excluído e relatório de célula excluída são recusados.
+- **Permissão:** é `SECURITY INVOKER`, então valem as políticas atuais de INSERT e DELETE de participantes, sem regra nova de permissão.
+- **Tamanho:** ids repetidos são ignorados. Acima de 1000, 22023.
+- **Limite conhecido:** gravar o relatório e gravar os participantes continuam sendo duas chamadas, como hoje. O lançamento atômico é do E2.11.
+
+#### Cadastro com dado de excluído (RN-18)
+- **`find_deleted_member_matches`:**
+  - normaliza a entrada com `normalize_email` e `normalize_digits`;
+  - procura membros **excluídos** com o mesmo e-mail, celular (`mobile_whatsapp`) ou CPF;
+  - devolve até 10 linhas, uma por cadastro, da exclusão mais recente para a mais antiga;
+  - `matched_fields` é um subconjunto de `{email, mobile, cpf}`, e `is_account_email` diz se o e-mail combinou com um excluído que tem conta de acesso;
+  - `member_id`, `name` e `deleted_at` só saem para quem tem `manage_roles` e quando o cadastro está na `members_deleted_view` dele (DA-8). Para os demais, vêm nulos do banco (AQ-6).
+- **`create-user-admin`:**
+  - aceita `confirmDeletedMatches?: boolean` no corpo;
+  - depois de conferir a permissão e a entrada, e **antes** de criar a conta no Auth, chama `find_deleted_member_matches` com a sessão de quem chamou;
+  - com `is_account_email` em alguma linha, responde 409 `{ error, code: "deleted_account_email", matches }`. Não há como seguir;
+  - com correspondências e sem `confirmDeletedMatches`, responde 409 `{ error, code: "deleted_matches", matches }`;
+  - nos demais casos, segue como hoje;
+  - o `error` é o texto do PO para quem não é administrador. O de administrador é montado pela tela a partir de `matches`.
+- **Recusa definitiva pela API:** o trigger `ab_enforce_member_links` recusa o INSERT de `members` com o e-mail da conta de um excluído (`deleted_account_email`), mesmo sem passar pela Edge Function. O Auth também recusa, porque o e-mail continua na conta.
+- **Restaurar a partir do aviso:** a tela chama `restore_member`, que é a mesma RPC da lista. Depois, lê o cadastro restaurado na `members_view` e abre o formulário em modo de edição.
+
+### Acesso do membro excluído (RN-14)
+| Caminho | O que barra | Quando |
+|---|---|---|
+| Qualquer leitura com o token antigo (PostgREST, views, RPCs) | `user_has_permission`, `viewer_member_id`, `is_admin`, `can_manage_own_cell`, RLS e views ignoram o cadastro excluído: as leituras voltam vazias, as RPCs dão 42501, o INSERT dá 42501 e o PATCH volta com 0 linhas | Na hora do *commit* da exclusão. Não depende do Auth. |
+| Edge Functions (`create-user-admin`) | `user_has_permission` é falso, e a função recusa com 403. O `auth.getUser` pode recusar antes, porque a sessão foi apagada. | Na hora |
+| Login por e-mail e senha | Senha vazia: o Auth responde `invalid_credentials` antes de olhar o banimento, como para uma conta inexistente | Na hora |
+| Login por CPF ou celular | A `get-user-email` ignora excluídos e responde `{ "email": null }`, como para inexistente; a tela mostra a mensagem única (DT-14) | Na hora |
+| Renovação do token | Sessões apagadas e conta banida: o Auth recusa a renovação | Na hora. O token de acesso já emitido vale até expirar (até 1 hora), mas o banco o ignora (primeira linha). |
+| Link mágico e recuperação de senha | `/verify` recusa conta banida (`user_banned`) | Na hora |
+| Restauração | `_del_resume_access` devolve a mesma senha e tira o banimento, na mesma transação | Na hora |
+
+Por que dentro da transação, e não pela Admin API depois do *commit* (DT-13):
+- **RN-20:** com a Admin API, uma falha entre o *commit* e a chamada deixaria um membro restaurado bloqueado, ou exigiria compensação.
+- **RN-14 e AQ-10:** o banimento sozinho (`ban_duration` da Admin API) faz o login responder `user_banned` ("User is banned") antes de conferir a senha. Qualquer pessoa com a chave pública descobriria que um e-mail é de um cadastro excluído.
+- **O custo** é escrever em colunas do Auth (`encrypted_password`, `banned_until`, `sessions`, `refresh_tokens`). Ver o risco 1, com o plano B.
+
+Na tela (AQ-8, DT-20): o `AuthContext` relê o próprio cadastro na `members_view` em três momentos:
+- em toda recusa 42501;
+- em todo PATCH que volte com 0 linhas no próprio cadastro;
+- quando a aba volta a ter foco.
+
+Se a leitura volta **sem linha e sem erro**, a tela encerra a sessão localmente e abre `/login` com o aviso. O `SIGNED_OUT` que não foi pedido pelo usuário (renovação recusada) faz o mesmo. Erro de rede e 5xx nunca encerram a sessão.
+
+### Formato dos erros (AQ-2)
+| Código | Quando | Mensagem |
+|---|---|---|
+| 42501 | Falta de permissão (`viewer_has` falso, inclusive para o membro excluído) | "Você não tem permissão para esta ação." A tela usa o próprio texto (UX-39). |
+| 22023 + `HINT = 'app_error'` | Qualquer regra deste passo, inclusive "próprio cadastro" e "função acima", que não podem ser 42501 porque a tela trocaria o texto pelo genérico | A mensagem do PO, ou a técnica em itálico |
+
+```sql
+RAISE EXCEPTION USING
+  ERRCODE = '22023',
+  MESSAGE = _message,                                          -- texto pronto para a tela
+  DETAIL  = (jsonb_build_object('code', _code) || _detail)::text,
+  HINT    = 'app_error';
+```
+O PostgREST devolve `{ code: "22023", message, details: "<json>", hint: "app_error" }`. É um padrão do projeto para erros com um item só: Escolas usa `esc_batch` para os lotes, e os dois convivem.
+
+| `code` | Detalhes além de `code` |
+|---|---|
+| `not_found_or_deleted`, `not_found`, `not_deleted` | `entity`: `member`, `cell` ou `cell_report` |
+| `self_delete`, `role_above`, `restore_role_above`, `deleted_account_email` | — |
+| `member_has_links` | `member_id`, `member_name`; `disciples_total` e `disciples` (até 5, por nome: `{ id, name, is_active }`); `cells_total` e `cells` (até 5, por nome do líder, dia e horário: `{ id, roles: ["leader" \| "timothy" \| "host"], leader_name, meeting_day, meeting_time: "HH:MM", is_active }`). `MESSAGE` é a reserva em texto: "Não é possível excluir {Nome}. Antes, reatribua {N} discípulo(s) e {M} célula(s)." |
+| `deleted_member_chosen` | `field` (`leader_id`, `spouse_id`, `timothy_id`, `host_id` ou `member_id`) e `member_id` |
+| `cell_deleted`, `report_cell_deleted` | `cell_id` |
+| `deleted_participant_removal` | `member_id` |
+| `restore_value_in_use` | `fields` (`email`, `mobile`, `cpf`) |
+| `restore_person_deleted` | `people`: `[{ role, member_id, member_name }]` |
+| `restore_week_taken` | `report_id` (o outro relatório) e `week_start` |
+
+No front, `parseAppError(error)` (`src/lib/errors.ts`) valida o JSON com um *type guard*, sem `any`, e devolve `{ code, message, detail }` ou `null`. A pré-checagem (`check_member_deletion`) devolve o mesmo objeto, então a tela usa um parser só.
+
+### Bloqueios e concorrência
+**Ordem global de aquisição, igual em todas as RPCs e triggers deste passo:**
+1. relatório;
+2. célula;
+3. membros: o alvo, o cônjuge e quem exclui, em ordem de id;
+4. trava consultiva (célula, semana);
+5. linhas atualizadas pelos triggers: ancestrais (totais), `auth.users` e sessões, suspensão e eventos.
+
+Nenhuma operação pega uma trava de um nível acima depois de uma de nível abaixo. Em `READ COMMITTED`, cada comando PL/pgSQL tira um *snapshot* novo, então as checagens feitas depois da trava enxergam o que a outra transação acabou de gravar e recusam com a mensagem amigável. Os índices únicos ficam como última garantia.
+
+| Operação | Relatório | Célula | Membros | (célula, semana) |
+|---|---|---|---|---|
+| `delete_member` | — | — | alvo, cônjuge e quem exclui `FOR UPDATE` | — |
+| `restore_member` | — | — | alvo `FOR UPDATE`; líder `FOR KEY SHARE` | — |
+| `delete_cell` | — | `FOR UPDATE` | — | — |
+| `restore_cell` | — | `FOR UPDATE` | líder, timóteo e anfitrião `FOR KEY SHARE` | — |
+| `delete_cell_report` | `FOR UPDATE` | — | — | — |
+| `restore_cell_report` | `FOR UPDATE` | — | — | sim |
+| PATCH ou INSERT de membro (trigger) | — | — | a própria linha; líder e cônjuge `FOR KEY SHARE` | — |
+| PATCH ou INSERT de célula (trigger) | — | a própria linha | as pessoas `FOR KEY SHARE` | — |
+| INSERT ou PATCH de relatório (triggers) | a própria linha | `FOR KEY SHARE` | — | sim |
+| Participantes (trigger) | `FOR KEY SHARE` | `FOR KEY SHARE` | o membro `FOR KEY SHARE` | — |
+
+Os casos dos critérios (RN-20):
+- **Duas exclusões do mesmo registro:** a segunda espera o `FOR UPDATE`, relê, encontra `deleted_at` preenchido e recebe `not_found_or_deleted`. A data e o autor ficam os da primeira.
+- **Excluir Gil enquanto outra pessoa o escolhe como líder de Hugo** (ou cônjuge, timóteo, anfitrião, participante):
+  - se a exclusão trava primeiro, o trigger do PATCH espera, relê Gil excluído e recusa (RN-06);
+  - se o PATCH trava primeiro (`FOR KEY SHARE`), a exclusão espera e, ao contar os discípulos, encontra Hugo e recusa (RN-04).
+- **Dois administradores que se excluem ao mesmo tempo (RN-03):** os dois travam {A, B} na mesma ordem. O segundo, depois da trava, já não tem permissão (`viewer_has` falso) e recebe 42501.
+- **Restaurar o relatório R enquanto a célula recebe S na mesma semana:** os dois pegam a trava consultiva (célula, semana), e o segundo encontra o primeiro e recusa com a mensagem amigável. O índice único cobre qualquer caminho que não pegue a trava.
+- **Restaurar a célula C enquanto o anfitrião dela é excluído:** a restauração trava o anfitrião com `FOR KEY SHARE`.
+  - Se a exclusão do anfitrião vem antes, a restauração relê e recusa (`restore_person_deleted`).
+  - Se vem depois, a exclusão encontra C não excluída e recusa (RN-04).
+- **Restaurar Bruno enquanto o líder dele, Gil, é excluído:** a restauração trava Gil com `FOR KEY SHARE`.
+  - Se a exclusão de Gil vem antes, Bruno volta sem líder.
+  - Se vem depois, a exclusão de Gil encontra Bruno e recusa.
+
+Casos que o Postgres resolve com *deadlock* detectado (40P01, "tente de novo"), aceitos por serem raros e pré-existentes (risco 3):
+- uma exclusão concorrente com a troca do cônjuge do mesmo casal, porque o trigger de cônjuge trava na ordem "linha editada → cônjuge";
+- o mesmo usuário excluindo alguém numa aba enquanto troca o próprio líder em outra;
+- dois recálculos de totais na mesma subárvore, como já acontece hoje.
+
+### Auditoria (RN-19)
+As três funções de auditoria (`_trg_log_member_event`, `_trg_log_cell_event` e `_trg_log_cell_report_event`) ganham, **antes** do bloco que engole erros, um ramo que grava sem engolir erro (DT-16). Se a auditoria falhar, a exclusão ou a restauração falha junto (RN-20). Os demais eventos continuam como hoje.
+
+| Situação | `action` | Descrição (pt-BR) | `metadata` |
+|---|---|---|---|
+| `deleted_at` passa de nulo a preenchido | `delete` | "Excluiu o membro {Nome}" · "Excluiu a célula de {Líder}" · "Excluiu o relatório da célula de {Líder}" | `op: "soft_delete"`; no membro, `spouse_id` de/para |
+| `deleted_at` passa de preenchido a nulo | `restore` (valor novo de `event_action`, AQ-9) | "Restaurou o membro {Nome}" (célula, relatório) | no membro, `restored_without_leader`, `previous_leader_id` e `role_reset_to_default` (comparando `OLD` e `NEW`) |
+| Cônjuge desfeito pela exclusão: o `spouse_id` do outro cadastro vira nulo, e o cônjuge antigo está excluído | `update` | "Vínculo de cônjuge desfeito pela exclusão de {Nome}" | `spouse_id` de/para; `reason: "spouse_deleted"` |
+| Exclusão física (só a service role, fora da API) | `delete` | "Removeu …", como hoje | como hoje |
+
+A autoria vem de `auth.uid()` em `_log_event`, como hoje. No front, `Events.tsx` ganha `restore: "Restauração"` em `ACTION_LABELS`, o que já põe a opção no filtro (UX-37).
+
+### Contratos (RPC, Edge Functions, colunas novas)
+**Colunas novas:** `deleted_at timestamptz` e `deleted_by uuid` em `members`, `cells` e `cell_reports`. Não aparecem nas views principais, porque elas já filtram os excluídos.
+
+**Views:**
+| View | Novidade |
+|---|---|
+| `members_view`, `cells_view` | sem excluídos; nenhuma coluna nova |
+| `cell_reports_view` | sem relatórios excluídos; `cell_deleted` no fim |
+| `cell_report_participants_view` | sem participantes de relatório excluído; `member_deleted` no fim |
+| `members_deleted_view`, `cells_deleted_view`, `cell_reports_deleted_view` | novas ([Views de excluídos](#views-de-excluídos-migration-3-aq-3)) |
+
+**RPCs** (todas com EXECUTE só para `authenticated`): `check_member_deletion`, `delete_member`, `restore_member`, `delete_cell`, `restore_cell`, `delete_cell_report`, `restore_cell_report`, `set_cell_report_participants` e `find_deleted_member_matches`. As assinaturas estão em [RPCs](#rpcs).
+
+**Funções públicas novas:** `viewer_covers_role`, `cell_in_viewer_ministry`, `normalize_email` e `normalize_digits`, com EXECUTE só para `authenticated` (sem `anon`). O EXECUTE é necessário porque elas rodam com o papel de quem consulta ou grava: `cell_in_viewer_ministry` nas políticas de RLS, e as de normalização nos índices de `members` (lição do E1.08: funções chamadas por views e políticas precisam do grant).
+
+**Edge Functions:**
+- `get-user-email`: `.is('deleted_at', null)` na busca. A resposta não muda de formato.
+- `create-user-admin`:
+  - aceita `confirmDeletedMatches`;
+  - responde 409 com `code` (`deleted_matches` ou `deleted_account_email`) e `matches`;
+  - traduz os erros `app_error` do trigger de `members` (`deleted_member_chosen` e `deleted_account_email`) para 400 ou 409, com a mensagem do PO.
+
+**Enum:** `event_action` ganha `restore`.
+
+### Front
+Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica nos hooks e a regra pura fica em `src/lib/`.
+
+- **Domínio puro, com testes Vitest e sem React nem Supabase:**
+  - `src/lib/errors.ts`: `APP_ERROR_HINT`, `parseAppError` e `isNetworkError`;
+  - `src/lib/deletion/codes.ts`: os códigos da tabela acima, como união de tipos;
+  - `src/lib/deletion/texts.ts`: **todos** os textos deste spec, num módulo só;
+  - `src/lib/deletion/blockers.ts`: monta os grupos da T3 a partir do detalhe (até 5 itens, "e mais N", "(inativo)" e "(inativa)", rótulo do papel e dia e hora);
+  - `src/lib/members/deleted-matches.ts`: monta o diálogo da T9 a partir de `matches` e de "é administrador";
+  - `src/lib/auth/session.ts`: textos do login e da sessão, `toLoginErrorMessage(error)` e `shouldEndSession(result)`.
+- **Hooks:**
+  - exclusão: `use-member-deletion.ts` (pré-checagem e exclusão), `use-cell-deletion.ts` e `use-cell-report-deletion.ts`;
+  - listas de excluídos: `use-deleted-members-list.ts`, `use-deleted-cells-list.ts` e `use-deleted-cell-reports-list.ts`, no padrão dos hooks de lista do E1.08 (`useListSearchParams`, `range`, `count: 'exact'`);
+  - restauração: `use-restore.ts`;
+  - consulta do relatório: `use-cell-report.ts`.
+
+  As mutações invalidam `["members"]`, `["cells"]`, `["cell_reports"]`, `["dashboard"]` e `["ministry-tree"]`, conforme a entidade.
+- **Componentes compartilhados:**
+  - `BlockedActionDialog` (P3) e `StatusBadge` (P6), reaproveitados por Escolas;
+  - `ConfirmDeleteDialog` (T2, com as classes da P9);
+  - `RowActionsMenu` (T1, P8).
+
+  Os específicos: `MemberDeletionFlow` (T2 e T3), `RestoreMemberDialog` (T5), `CellReportSheet` (T7) e `DeletedMatchesDialog` (T9).
+- **Páginas e rotas:**
+  - `MembersDeleted.tsx`, `CellsDeleted.tsx` e `CellReportsDeleted.tsx`, em `/members/deleted`, `/cells/deleted` e `/cell-reports/deleted`;
+  - item ativo no `AppSidebar` com `pathname === path || pathname.startsWith(path + "/")` (exceto `/`) e `aria-current="page"`.
+- **Gravações com "0 linhas"** (DT-19):
+  - `MemberForm`, `CellForm`, o atalho "Marcar como inativo" e a edição do `CellReportForm` passam a usar `.update(…).eq('id', id).select('id')`;
+  - sem linha de volta, mostram "Este cadastro não existe ou já foi excluído. As alterações não foram salvas." (célula e relatório com os textos deles).
+- **Permissões na tela:** `hasPermission` decide o que aparece, e o banco é a última palavra. A lista Excluídos e "Restaurar" exigem `manage_roles`; "Excluir" exige a permissão da entidade, e não aparece na linha do próprio usuário.
+- **Sessão (AQ-8):**
+  - o `QueryClient` ganha `QueryCache` e `MutationCache` com `onError`, que avisam o `AuthContext` em 42501;
+  - o `AuthContext` relê o próprio cadastro e encerra a sessão se ele não vier;
+  - o `signOut` pedido pelo usuário marca a origem, para não mostrar o aviso.
 
 ### Onde cada regra é imposta
 | RN | Banco (constraint, RLS, trigger, RPC) | UI |
 |---|---|---|
+| RN-01 | Colunas e CHECK; RPCs `delete_*`; sem política e sem privilégio de DELETE e TRUNCATE (migration 5); FKs `NO ACTION`; participantes intocados na exclusão do relatório | Ações "Excluir" chamam as RPCs |
+| RN-02 | `viewer_has('delete_*')` (42501) nas RPCs; visibilidade pela view principal (`not_found_or_deleted`, DA-10) | Ação só com a permissão da entidade |
+| RN-03 | `_del_member_blockers` (`self_delete`, `role_above` via `viewer_covers_role`); trava de quem exclui (DT-21) | Sem "Excluir" na própria linha; recusas no diálogo de bloqueio |
+| RN-04 | `_del_member_blockers` (discípulos e células não excluídos, ativos ou inativos), sob o `FOR UPDATE` do alvo | Pré-checagem (AQ-1) e T3 |
+| RN-05 | `delete_member` zera `spouse_id`; `sync_spouse_relationship` limpa o outro lado | — |
+| RN-06 | Triggers `enforce_member_links`, `enforce_cell_links`, `enforce_cell_report_rules` e `enforce_participant_rules`, com `FOR KEY SHARE`; RPCs de restauração | Seletores leem as views, que não têm excluídos; corrida tratada no campo (UX-30) |
+| RN-07 | RLS de SELECT e UPDATE com `deleted_at IS NULL`; `WITH CHECK` impede marcar por PATCH; RPCs com `not_found_or_deleted` | "0 linhas" vira a mensagem do PO |
+| RN-08 | Views e RPCs do E1.08 com o filtro; RLS; helpers de identidade; vínculo celular e `last_report_date` sem excluídos | — |
+| RN-09 | Nomes por *join* nas views, sem filtro de excluído; views de excluídos; Auditoria; RN-18 | Exibe o nome, sem link para o cadastro |
+| RN-10 | `refresh_member_stats_v2` ignora excluídos e dispara em `deleted_at` | — |
+| RN-11 | `cell_reports_view` junta a tabela `cells`; `cell_deleted`; `cell_in_viewer_ministry` no RLS; trigger recusa a edição e a troca de participantes | Badge "Célula excluída", sem "Editar", "Ver relatório" |
+| RN-12 | Índice único parcial; trigger de semana única sem excluídos; `last_report_date` sem excluídos | — |
+| RN-13 | Trigger recusa retirar o excluído e incluir excluído novo; `set_cell_report_participants`; `member_deleted` | Linha só de leitura (T8) |
+| RN-14 | Helpers de identidade, RLS e views; suspensão da conta e sessões apagadas (DT-13); `get-user-email` sem excluídos | Mensagem única no login; encerramento da sessão (AQ-8) |
+| RN-15 | `manage_roles` nas views de excluídos e nas RPCs `restore_*`; `not_deleted` | Botão e rotas só com `manage_roles` |
+| RN-16 | `restore_member`: função (b, DA-2), líder (d, DA-3), cônjuge (c), dados em uso (e), acesso (f) | T5 |
+| RN-17 | `restore_cell` (pessoas excluídas); `restore_cell_report` (semana), com a trava consultiva e o índice | T6 |
+| RN-18 | `find_deleted_member_matches`; `create-user-admin` com confirmação; trigger de INSERT para o e-mail da conta | T9 |
+| RN-19 | Triggers de auditoria (`delete`, `restore`, cônjuge), sem engolir erro | Rótulo "Restauração" |
+| RN-20 | Uma transação por RPC; travas na ordem global; índice único; suspensão da conta na mesma transação | "Tente de novo" na falha |
 
-### Contratos (RPC, Edge Functions, colunas novas)
+### Respostas às perguntas do UX (AQ-1 a AQ-11)
+| # | Resposta |
+|---|---|
+| AQ-1 | **Sim.** `check_member_deletion(_member_id)`, só leitura, com `delete_member`. Devolve `can_delete` e, na recusa, o mesmo objeto da recusa de `delete_member`: o motivo (`self_delete`, `role_above`, `member_has_links` ou `not_found_or_deleted`), os totais e até 5 discípulos (`id`, `name`, `is_active`) e 5 células (`id`, `roles`, `leader_name`, `meeting_day`, `meeting_time`, `is_active`). |
+| AQ-2 | **Sim.** 22023 com `HINT = 'app_error'` e `DETAIL` em JSON `{ code, … }`, com os códigos pedidos. A tabela está em [Formato dos erros](#formato-dos-erros-aq-2). |
+| AQ-3 | **Sim.** As 3 views de excluídos, só para `manage_roles`, paginadas pelo PostgREST com `count: 'exact'`, com a mesma busca da lista principal e a ordem `deleted_at DESC, id`. Trazem os campos de antecipação: `leader_deleted`, `timothy_deleted`, `host_deleted`, `cell_deleted`, `week_taken`, `role_name`, `restore_role_name`, `role_reset_on_restore` e `has_account`. |
+| AQ-4 | **Sim.** `cell_reports_view.cell_deleted`. |
+| AQ-5 | **Sim.** `cell_report_participants_view.member_deleted`, e a gravação passa a preservar as participações pela `set_cell_report_participants`. |
+| AQ-6 | **Sim.** O aviso é a resposta 409 da `create-user-admin` (`code: "deleted_matches"`), com `matches`. O nome, o id e a data vêm nulos do banco para quem não é administrador. "Cadastrar mesmo assim" é `confirmDeletedMatches: true`. O e-mail da conta é recusado em definitivo (`deleted_account_email`), inclusive por um INSERT direto. A restauração usa `restore_member`. |
+| AQ-7 | **Sim.** `restore_member` devolve `restored_without_leader`, `previous_leader_name`, `role_reset_to_default` e `role_name`. Antes de restaurar, a lista já traz `has_account`, `leader_deleted`, `leader_name` e `restore_role_name`. |
+| AQ-8 | **Sim**, como sugerido, sem nenhuma consulta nova: a tela relê o próprio cadastro na `members_view` em toda recusa 42501, no "0 linhas" do próprio cadastro, no `SIGNED_OUT` não pedido e na volta do foco. A suspensão da conta **derruba a renovação do token na hora**, porque as sessões são apagadas e a conta é banida. O token de acesso já emitido continua válido até expirar, mas o banco o ignora. Rede e 5xx nunca encerram a sessão. |
+| AQ-9 | `events.action = 'restore'`, um valor novo do enum `event_action`. |
+| AQ-10 | **Confirmado, com uma ressalva.** A `get-user-email` responde `{ "email": null }` igual para inexistente e para excluído, com a mesma consulta. O login por e-mail de um excluído responde `invalid_credentials`, como uma conta inexistente e sem bcrypt, então no mesmo tempo (DT-13). A ressalva é a diferença de tempo que o Supabase Auth já tem entre "senha errada" e "conta inexistente", para qualquer conta; ela só some com a `sign-in` do E1.04. |
+| AQ-11 | **Confirmado.** O atalho é o mesmo PATCH de `is_active` de hoje, com `edit_member` ou `edit_cell`. Valem as regras de escrita do E1.03, do E1.08 e, depois, do E2.02, e a Auditoria registra uma alteração. Sem RPC nova. |
+
+### Decisões técnicas
+| # | Decisão | Motivo |
+|---|---|---|
+| DT-01 | `deleted_at timestamptz` e `deleted_by uuid → members(id)`, preenchido com `viewer_member_id()`, nas três tabelas, com `CHECK (deleted_by IS NULL OR deleted_at IS NOT NULL)`. Nulo quando vem da service role ou do legado. | Mesma convenção da DT-31 de Escolas. O nome do autor sai por *join*. |
+| DT-02 | Excluir e restaurar só por RPC `SECURITY DEFINER`. Sem política de DELETE e com `REVOKE` de DELETE e TRUNCATE nas três tabelas. | DEL-01. O TRUNCATE ignora o RLS e hoje está concedido a `anon` e `authenticated` pelos privilégios padrão. |
+| DT-03 | `leader_id`, `spouse_id`, `cell_reports.cell_id` e as duas FKs de participantes passam a `NO ACTION`. `role_id` continua `SET NULL`. | Seção 5.3. As funções são configuração, e a RN-16 (a) conta com a limpeza. |
+| DT-04 | O filtro de excluídos fica em três níveis: entidade (views, políticas), identidade de quem consulta (helpers) e, sem filtro, a árvore (`get_ministry_root` e a descida de `viewer_ministry_member_ids`). | Corta o acesso do excluído (RN-14) e mantém o escopo do histórico de células e relatórios de excluídos. |
+| DT-05 | Nas políticas de SELECT de `cell_reports` e de participantes, o `EXISTS` em `cells` sob RLS (ramo `view_own_ministry`) dá lugar a `cell_in_viewer_ministry(cell_id)`, *definer*, com a mesma regra. Participantes ganham o filtro do relatório não excluído. | Senão, o relatório de célula excluída sumiria para o ministério (RN-11) e a `cell_reports_view` deixaria de bater com o RLS. Delegar à view quebraria o `INSERT … RETURNING`. |
+| DT-06 | Excluídos em três views próprias, só para `manage_roles`, com o mesmo escopo das principais. As principais só ganham o filtro e as colunas `cell_deleted` e `member_deleted`, no fim. | A `members_view` não muda o `WHERE` de escopo; a UXD-1 pede rotas próprias. |
+| DT-07 | Os índices de lista do E1.08 viram parciais (`WHERE deleted_at IS NULL`) com o mesmo nome. Entram também `(deleted_at DESC, id) WHERE deleted_at IS NOT NULL` por tabela, o índice único `(cell_id, week_start(date)) WHERE deleted_at IS NULL` e o índice do e-mail da conta de excluídos. | Os planos das listas continuam usando o índice de ordenação. O índice único antecipa a parte da REL-03 que a RN-17 e a RN-20 exigem. |
+| DT-08 | A RN-06 é imposta por triggers `BEFORE`, que travam a linha referenciada com `FOR KEY SHARE` e conferem `deleted_at`. As RPCs de exclusão usam `FOR UPDATE`, que conflita com ela. | "Escolher" e "excluir" a mesma pessoa ou célula nunca passam juntos (RN-20), em qualquer caminho de escrita. |
+| DT-09 | Ordem global das travas: relatório → célula → membros (alvo, cônjuge e quem exclui, em ordem de id) → (célula, semana) → linhas dos triggers. | Sem ciclo de espera entre as operações deste passo. |
+| DT-10 | Erros: 42501 só para permissão; 22023 + `HINT 'app_error'` + `DETAIL` JSON para as regras, com as mensagens do PO. Um parser só no front. | AQ-2. Segue o formato de Escolas (22023, `HINT` e `DETAIL` em JSON), com um item só em vez de uma lista. |
+| DT-11 | A pré-checagem e a recusa da exclusão vêm da mesma função interna (`_del_member_blockers`), com o mesmo JSON. | A tela e o servidor nunca discordam (UXD-2). |
+| DT-12 | "Cobrir a função" (RN-03 e RN-16 b) = permissões da função ⊆ permissões de quem age (`viewer_covers_role`), sem exigir `assign_role`. A `can_assign_role` passa a usar a mesma função. | Exigir `assign_role` impediria o Líder de excluir qualquer membro com função, contra o critério da RN-02. A regra fica num lugar só. |
+| DT-13 | **(revisar no PR)** A suspensão da conta acontece na mesma transação, e não pela Admin API depois do *commit*: a senha vai para `private.member_access_suspensions`, `encrypted_password` fica vazio, `banned_until` vai 100 anos à frente e as sessões são apagadas. A restauração devolve tudo. | RN-20 sem compensação. O login de excluído fica igual ao de inexistente (AQ-10), o que só com o banimento não acontece. O corte de acesso não depende disso (DT-04). |
+| DT-14 | A `get-user-email` ignora excluídos e responde `{ email: null }` como para inexistente. | AQ-10, até a `sign-in` do E1.04. |
+| DT-15 | Os participantes são gravados pela RPC mínima `set_cell_report_participants`, `SECURITY INVOKER`, que recebe o conjunto final (com os excluídos) e grava só a diferença. O trigger ignora o par que já existe. | A RN-13 é deste passo. Fica atômico sem duplicar regra de permissão; o E2.11 absorve a RPC. |
+| DT-16 | A auditoria continua nos triggers. Exclusão, restauração e cônjuge desfeito são gravados num ramo que não engole erro. `restore` entra em `event_action`, numa migration separada. | RN-19 e RN-20, valendo para qualquer caminho de escrita. |
+| DT-17 | `normalize_email` e `normalize_digits` são a única normalização de e-mail, celular e CPF. | RN-16 (e), RN-18 e os índices do E2.04 comparam igual. |
+| DT-18 | RN-18: `find_deleted_member_matches`, mais a `create-user-admin` com `confirmDeletedMatches`, mais o trigger de INSERT para o e-mail da conta. | O aviso é parte do salvar (P-DEL-22). A recusa definitiva vale pela API. |
+| DT-19 | A edição de um registro excluído por PATCH direto volta com 0 linhas e sem erro. A tela pede `select('id')` e traduz. | O RLS não revela registros escondidos. |
+| DT-20 | A tela encerra a sessão quando o próprio cadastro não volta da `members_view` (depois de um 42501, de "0 linhas", do `SIGNED_OUT` não pedido ou da volta do foco). Falha de rede nunca encerra. | AQ-8, sem endpoint novo. |
+| DT-21 | `delete_member` trava também quem exclui e confere a permissão de novo depois da trava. | RN-03: sempre sobra um administrador, mesmo com exclusões cruzadas ao mesmo tempo. |
+| DT-22 | O GRANT por coluna de `deleted_at` e `deleted_by` em `members` só é feito se o PR 5 do E1.08 já estiver aplicado. Se o E2.01 vier antes, o PR 5 inclui as duas na lista dele. | Risco 4 do E1.08, nas duas ordens. |
+| DT-23 | Trava consultiva (célula, semana) no trigger de semana única e em `restore_cell_report`. O índice único é a garantia. | Mensagem amigável também na corrida (RN-17, RN-20). |
+| DT-24 | `refresh_member_stats_v2` ignora membros e células excluídos, dispara em `UPDATE OF deleted_at` e ganha `SET search_path`. | RN-10 na mesma transação. |
+| DT-25 | `roles` e `role_permissions` só são lidas por quem tem cadastro não excluído, e `log_auth_event` não grava para excluído. | DA-9. |
+| DT-26 | Seis PRs. O PR 1 é só banco e neutro. A retirada das políticas de DELETE vai no PR 2, junto com o front que usa as RPCs. | Cada PR vai ao ar sozinho, com uma janela de minutos só no PR 2 ([Implantação](#implantação)). |
+| DT-27 | Os triggers da RN-06, RN-11, RN-13 e RN-18 valem para todos os papéis, inclusive a service role. | Invariantes valem sempre. Só a carga com `replica` passa por fora, e a reconciliação confere (E4.09). |
+| DT-28 | Restaurar não confere a semana atual nem a data. Os triggers de data não disparam, porque a restauração não mexe em `date`. | RN-17. |
 
 ### Riscos (concorrência, escala, segurança)
+1. **Escrita no schema do Auth (DT-13).** A suspensão grava em `auth.users` (`encrypted_password`, `banned_until`), `auth.sessions` e `auth.refresh_tokens`, que são do GoTrue.
+   - Se o Supabase mudar essas colunas ou tirar o privilégio do `postgres`, a exclusão de quem tem conta falha inteira, por causa da RN-20. Nada fica pela metade.
+   - Mitigações:
+     - as duas funções `_del_*_access` são o único ponto que toca o Auth;
+     - um pgTAP confere a suspensão e a restauração;
+     - o *smoke* e2e de login roda a cada deploy;
+     - a tarefa 1 confere o privilégio em produção antes de implementar.
+   - **Plano B:** uma Edge Function chamada pela tela depois da RPC, com `ban_duration` e `password` aleatória pela Admin API, com nova tentativa. Ela aceita a diferença `user_banned` até o E1.04 e perde a senha antiga (a RN-16 f passaria a pedir redefinição). Só se a tarefa 1 falhar, e com o aceite do usuário.
+2. **Desvio entre views e RLS.** Agora são três lugares por entidade (view principal, view de excluídos e política).
+   - Mitigação: paridade por persona com excluídos na massa.
+   - A view de excluídos usa o mesmo predicado da principal, e o teste confere que, para cada persona, os ids da principal mais os da de excluídos (para `manage_roles`) cobrem os registros do escopo.
+3. **Deadlocks residuais** (cônjuge, o mesmo usuário em duas abas, totais na mesma subárvore). O Postgres detecta e aborta um deles com 40P01, e a tela mostra "tente de novo". São pré-existentes ou raros. O E2.06 pode ordenar as travas dos totais.
+4. **Custo da exclusão e da restauração de membro.** O recálculo de totais percorre a subárvore de cada ancestral, até a igreja inteira para o pastor. É o mesmo custo de hoje ao trocar um líder. Meta: menos de 1 s no volume de referência; o E2.06 otimiza.
+5. **Unicidade sem índice até o E2.04.** A RN-16 (e) e a RN-18 conferem antes de gravar. Uma corrida rara pode gerar duplicidade entre não excluídos até o E2.04, que fecha com os índices. A RPC já traduz o `unique_violation`.
+6. **O índice único da semana não é criado se houver duplicatas.** A migration falha cedo, com a lista, e nada muda. A tarefa 1 confere em produção antes.
+7. **Janela do PR 2.** Entre o "Deploy: banco" e o promote, a exclusão pelo front antigo recebe 42501 e nada é apagado. O promote é feito logo em seguida.
+8. **Service role e carga.**
+   - Um `UPDATE … SET deleted_at` feito direto pela service role não suspende a conta nem passa pelas regras: o único caminho suportado é a RPC.
+   - A carga do E4 usa `replica`, que desliga os triggers. A reconciliação (E4.09) confere a RN-06 com uma consulta.
+   - Excluídos do legado não recebem conta (6.2).
+9. **Enumeração pela RN-18.** Quem tem `create_member` descobre se existe um excluído com um celular ou CPF. É assim por desenho, sem o nome para quem não é administrador e só ao salvar (P-DEL-22). Não há limite de tentativas até o E1.04.
+10. **Token de acesso ainda válido** por até 1 hora depois da exclusão. O banco o ignora (DT-04), e a tela encerra a sessão (DT-20).
+11. **Trava por coluna do E1.08 (PR 5).** Ver a DT-22. Fica proibido `select('*')` em `members`; este passo não lê a tabela.
+12. **Alerta do Supabase.** O *advisor* acusa `security_definer_view` nas 3 views novas. É esperado; não trocar para `security_invoker`.
+13. **Recriação de views.** Só acrescentar colunas no fim. A `cell_report_participants_view` depende da `cell_reports_view`.
+14. **Volume.**
+   - Medir no volume de referência do E1.08 (20 mil membros, 1.500 células, 100 mil relatórios e 800 mil participações), com 10% de membros e 5% de relatórios excluídos.
+   - Metas, iguais às do E1.08:
+     - página de lista com contagem abaixo de 300 ms;
+     - `dashboard_summary` abaixo de 800 ms;
+     - lista de excluídos abaixo de 300 ms;
+     - `check_member_deletion` abaixo de 100 ms.
+   - O `EXPLAIN` das listas padrão precisa mostrar os índices parciais.
+   - Impacto esperado no `EXPLAIN` das listas do E1.08:
+     - o filtro novo fica dentro da view, antes da barreira, então o predicado `deleted_at IS NULL` implica o do índice parcial, e o *planner* continua usando o índice de ordenação (`members_name_id_idx`, `cell_reports_date_id_idx`);
+     - `last_report_date` e a contagem de pendentes usam `cell_reports_cell_id_date_idx` parcial;
+     - o vínculo celular ganha um filtro a mais nas buscas por índice que já faz;
+     - a contagem exata continua varrendo as linhas visíveis, como hoje.
+15. **Schema `private`.** Precisa ficar fora dos *Exposed schemas* da API; a tarefa 1 confere.
+
+### Dependências e impactos em outros passos
+| Passo | Relação |
+|---|---|
+| E1.08 PRs 1 a 4 | **Pré-requisito.** O E2.01 entra sobre as views, as RPCs do dashboard, a `ministry_tree_nodes`, os seletores assíncronos e o `CellReportForm` com seletores no servidor. A implementação começa depois do merge do PR 4. |
+| E1.08 PR 5 | Nas duas ordens: ver a DT-22. **Se o PR 5 vier depois, a lista do GRANT dele inclui `deleted_at` e `deleted_by`.** |
+| E1.04 (`sign-in`) | A função de login busca só não excluídos e responde igual para excluído, inexistente, senha errada e conta suspensa. Ela substitui a `get-user-email`. |
+| E2.02 (escopo) | Ajusta o escopo nos mesmos pontos únicos: os `WHERE` das views (principais e de excluídos), as políticas e a visibilidade nas RPCs (DA-10). **Não delegar o SELECT de `cell_reports` à view** (leitura técnica 6). Deve decidir se `view_own_reports` passa a valer de fato. |
+| E2.03 (senha) | A `change-member-password` recusa alvo excluído lendo a `members_view` (RN-07). O `user_has_permission` já recusa quem chama se estiver excluído. |
+| E2.04 (unicidade) | Índices únicos parciais `WHERE deleted_at IS NULL` sobre `normalize_email(email)`, `normalize_digits(mobile_whatsapp)` e `normalize_digits(cpf)`, que a `restore_member` já trata. Pode precisar ajustar a normalização do celular (DDI); se ajustar, ajusta a função, que é única. |
+| E2.05 (autoria) | `created_by` e `updated_by` devem seguir a convenção de `deleted_by` (membro, via `viewer_member_id()`). |
+| E2.06 (hierarquia) | Recebe a `refresh_member_stats_v2` já sem excluídos. O caminho materializado precisa ignorar excluídos também. |
+| E2.11 (relatório) | Absorve a `set_cell_report_participants`. Reaproveita `cell_reports_cell_week_key` e `_del_lock_cell_week`, e mantém os triggers da RN-06, RN-11 e RN-13 como barreira. As colunas de snapshot (REL-09) **podem** apontar para membros excluídos: o trigger da RN-06 não confere essas colunas. |
+| E4.02 (`legacy_id`, snapshot) | As colunas `deleted_at` e `deleted_by` já existem. Na carga, `deleted_by` fica nulo, e nenhum excluído do legado recebe suspensão, porque não tem conta. |
+| E4.04 (saneamento) | Listar também os membros inativos com líder excluído e as células não excluídas com pessoa excluída (Impactos do PO). |
+| Escolas | Coerente com a DT-31 e a ESC-33: `members.deleted_at`, `deleted_by → members(id)` e `viewer_member_id()` sem excluídos. Escolas pode adotar `app_error` para os erros de um item só. Os componentes P3 e P6 nascem aqui. |
+
+### Pontos de extensão
+| Futuro | Onde muda |
+|---|---|
+| Exclusão lógica em entidades novas (Consolidação, Escolas) | Mesmo molde: colunas, `CHECK`, índices parciais, RPCs `delete_*`/`restore_*` com `_del_raise`, view de excluídos com `manage_roles` e as rotas da P7 |
+| Escopo de escrita (E2.02) | A visibilidade de cada RPC (DA-10), num lugar só por entidade |
+| Exclusão e restauração em lote | Novas RPCs com o mesmo `_del_member_blockers` por item, e as travas em ordem de id |
+| Anonimização (LGPD) | Processo à parte, com a service role e os triggers desligados de propósito. As FKs `NO ACTION` impedem apagar histórico por engano. |
+
+### Implantação
+| PR | Ordem | Efeito no front em produção |
+|---|---|---|
+| 1 (banco) | merge → "Deploy: banco" (migrations 1 a 4 e `get-user-email`) | Nenhum: não há excluídos. Uma exclusão física pelo front antigo que apagaria em cascata passa a falhar (FKs `NO ACTION`), sem apagar nada. |
+| 2 (exclusão) | merge → "Deploy: banco" (migration 5) → **promote em seguida** | Entre os dois passos, a exclusão pelo front antigo recebe 42501 (risco 7). Depois do promote, a exclusão é lógica. |
+| 3, 4 e 6 (só front) | merge → promote | — |
+| 5 (RN-18) | merge → "Deploy: banco" (publica a `create-user-admin`) → promote | Entre os dois, o front em produção recebe o 409 num cadastro com dado de excluído e mostra o texto do `error`, sem "Cadastrar mesmo assim". A janela é de minutos. |
+
+- O promote já recusa rodar com migration pendente.
+- **Rollback:** o front volta pelo promote do commit anterior. As migrations do PR 1 podem ficar, porque só filtram o que não existe. Se a migration 5 precisar voltar, uma migration nova recria as políticas de DELETE (a exclusão física não volta a apagar em cascata, por causa da DT-03).
+
+### Verificações obrigatórias (para o QA)
+**pgTAP** (`supabase/tests/database/e201_*.test.sql`, autocontido, com `ROLLBACK`). A massa tem excluídos de cada tipo, casal, inativos, pastor, célula de excluído e relatório de célula excluída.
+
+- **Grants e estrutura:**
+  - views novas só com SELECT para `authenticated` e dono `postgres`;
+  - RPCs sem EXECUTE para `anon`, e `_del_*` sem EXECUTE para `authenticated`;
+  - `private.member_access_suspensions` sem privilégio para `anon`, `authenticated` e `service_role`;
+  - depois da migration 5: DELETE e TRUNCATE em `members`, `cells` e `cell_reports` dão 42501, inclusive para o administrador (RN-01);
+  - as FKs são `NO ACTION`.
+- **RN-01:** a marcação guarda data e autor; o relatório excluído e restaurado volta com os mesmos 8 participantes; um PATCH tentando marcar `deleted_at` dá 42501.
+- **RN-02 e DA-10:** sem a permissão, cada RPC dá 42501; fora do escopo, `not_found_or_deleted`; com `delete_cell` e sem `delete_cell_report`, 42501.
+- **RN-03:** próprio cadastro; função não coberta; um administrador exclui outro.
+- **RN-04:** o caso de Gil, com 4 discípulos (um inativo) e 2 células (uma inativa), confere o JSON inteiro; 7 discípulos dão 5 nomes e `disciples_total = 7`; discípulo excluído não bloqueia; pastor com G12 é recusado; Nina é aceita; a pré-checagem devolve o mesmo objeto que a recusa.
+- **RN-05:** os dois cadastros ficam sem cônjuge; a restauração não refaz o vínculo; o ranking e a árvore mostram Otávio sozinho.
+- **RN-06:** líder, cônjuge, timóteo, anfitrião, participante novo e célula do relatório excluídos são recusados com `deleted_member_chosen` ou `cell_deleted`. Depois de toda a sequência, a consulta de invariantes devolve zero linhas.
+- **RN-07:** PATCH em registro excluído volta com 0 linhas e não muda nada; excluir de novo dá `not_found_or_deleted` com a data e o autor originais.
+- **RN-08:** os números do critério (98, 19, 89, 9 e as evangelísticas); Sara fora de novos membros e da busca; o vínculo de Tiago e de Ubiratan; `last_report_date` e `cells_pending` sem relatório excluído; DA-1.
+- **RN-09:** o nome do participante excluído na `cell_report_participants_view`; os eventos de Sara na Auditoria.
+- **RN-10:** o caso de Vera, Wagner e Xavier, nos dois sentidos; célula masculina; inativo não muda os totais.
+- **RN-11:** os 10 relatórios continuam com `cell_deleted`; a soma da semana conta o relatório e os 6 visitantes; a célula sai de pendentes e da contagem por tipo; editar e mexer nos participantes dá `report_cell_deleted`; excluir o relatório é aceito; um relatório novo dá `cell_deleted`; o relatório continua visível para um usuário de ministério (DT-05).
+- **RN-12:** o índice parcial libera a semana; a célula volta a pendente.
+- **RN-13:** a edição preserva Sara; retirar Sara pela RPC ou por DELETE direto dá `deleted_participant_removal`; incluir excluído novo é recusado.
+- **RN-14:**
+  - depois da exclusão, com o JWT de Ana: as views voltam vazias, `roles` volta vazia, `delete_member` de outro dá 42501, o INSERT dá 42501 e o PATCH do próprio cadastro volta com 0 linhas;
+  - `auth.users` fica com a senha vazia e banido, e as sessões somem;
+  - na restauração, o hash volta igual ao original.
+- **RN-15:** listas, ordem e escopo para `manage_roles`; sem a permissão, vazias e com 42501 na restauração; restaurar quem não está excluído dá `not_deleted`.
+- **RN-16:** sem líder (DA-3); dado em uso; função apagada volta com a padrão (DA-2); `restore_role_above`; inativo volta inativo; nível e totais recalculados.
+- **RN-17:** pessoa excluída (DA-5); semana ocupada, também numa semana passada; relatório de semana passada restaurado no domingo seguinte; relatório de célula excluída restaurado continua só para consulta.
+- **RN-18:** e-mail da conta, celular e CPF; o nome vem nulo para quem não é administrador; o INSERT direto com o e-mail da conta é recusado.
+- **RN-19:** os eventos `delete`, `restore` e do cônjuge desfeito. Se a auditoria falhar (por exemplo, com um `CHECK` que recusa a inserção em `events`, criado dentro do teste), a exclusão inteira volta atrás.
+- **Paridade do E1.08 com excluídos:** para cada persona P1 a P5, os ids de cada view são iguais aos da tabela sob RLS, e as views de excluídos usam o mesmo escopo. Inclui `view_own_ministry` com relatório de célula excluída.
+
+**Concorrência** (script com duas conexões e `pg_sleep` para forçar as intercalações, como em Escolas):
+- duas exclusões do mesmo membro;
+- exclusão de Gil × Gil como líder de Hugo, nas duas ordens;
+- dois administradores que se excluem ao mesmo tempo;
+- restauração de relatório × relatório novo na mesma semana;
+- restauração de célula × exclusão do anfitrião.
+
+Cada cenário termina num estado válido, com a mensagem amigável ou 40P01 nos casos aceitos.
+
+**Volume:** as metas do risco 14, com o `EXPLAIN` anexado ao PR.
+
+**Vitest:** `parseAppError`, `blockers.ts` (limites de 5, "e mais N", marcações, papéis, plural), `deleted-matches.ts` (administrador e não administrador, e-mail da conta, cadastros diferentes) e `session.ts` (rede × credencial, `shouldEndSession`).
+
+**Playwright:** os critérios de UX de cada PR, mais:
+- o *smoke* de login a cada PR;
+- a exclusão de um membro com a sessão dele aberta em outro contexto (UX-36);
+- o modo *offline*, que não encerra a sessão.
 
 ## Tarefas
 _Seção do `architect`._
 
-| # | Responsável | Descrição | Arquivos | RNs | Depende de |
-|---|---|---|---|---|---|
+Seis PRs no `mci-connect`. **Tudo começa depois do merge do PR 4 do E1.08.**
+- Dentro de cada PR, o banco vai primeiro, e os tipos são regenerados antes do front.
+- Cada desenvolvedor aciona o `code-reviewer` ao terminar a sua tarefa; esse passo não aparece na tabela.
+- Na coluna RNs, os números são das regras deste spec. Na coluna UX, os dos critérios `UX-`.
+
+| # | Responsável | Descrição | Arquivos | RNs | UX | Depende de |
+|---|---|---|---|---|---|---|
+| **PR 1: banco (neutro para o usuário)** | | | | | | |
+| 1 | backend-developer | Conferências **só de leitura** em produção, com autorização do usuário: (a) privilégios do `postgres` em `auth.users` (UPDATE), `auth.sessions` e `auth.refresh_tokens` (DELETE); (b) relatórios não excluídos duplicados por célula e semana; (c) `private` fora dos *Exposed schemas*. Se (a) falhar, parar e voltar ao `architect` (plano B do risco 1). | — | 14, 20 | — | merge do PR 4 do E1.08 |
+| 2 | backend-developer | Migrations 1 e 2: `restore` em `event_action`; colunas, CHECKs e FKs; `normalize_email` e `normalize_digits`; índices (parciais com o mesmo nome, de excluídos, único da semana com a checagem prévia, e-mail da conta); schema `private` e a tabela de suspensões; GRANT por coluna condicionado ao PR 5. | `supabase/migrations/<ts>_e201_01_enum.sql`, `supabase/migrations/<ts>_e201_02_schema.sql` | 01, 06, 12, 14, 16, 17, 18 | — | 1 |
+| 3 | backend-developer | Migration 3 (leitura): helpers de identidade e escopo, `viewer_covers_role`, `cell_in_viewer_ministry`, `member_names`, `is_leader_of_visible_member`; views do E1.08 com o filtro e `cell_deleted`/`member_deleted`; as 3 views de excluídos; políticas de SELECT, UPDATE e INSERT das quatro tabelas, e de SELECT de `roles` e `role_permissions`; `log_auth_event`; grants. | `supabase/migrations/<ts>_e201_03_read.sql` | 02, 07, 08, 09, 11, 13, 14, 15 | dados de UX-14, 15, 25, 29 | 2 |
+| 4 | backend-developer | Migration 4 (escrita): funções `_del_*`; triggers da RN-06, RN-11, RN-13 e RN-18, semana única, totais e auditoria; as 9 RPCs; grants; ordem das travas no cabeçalho. `get-user-email` ignorando excluídos. Regenerar o `types.ts`. | `supabase/migrations/<ts>_e201_04_write.sql`, `supabase/functions/get-user-email/index.ts`, `src/integrations/supabase/types.ts` | 01 a 07, 10 a 20 | — | 3 |
+| 5 | qa | pgTAP de todas as RNs no banco, paridade do E1.08 com excluídos, grants, concorrência (5 cenários) e volume com `EXPLAIN` ([Verificações](#verificações-obrigatórias-para-o-qa)). | `supabase/tests/database/e201_*.test.sql`, script de concorrência | 01 a 20 | — | 4 (escreve em paralelo com 3 e 4, a partir dos contratos) |
+| **PR 2: exclusão nas telas** | | | | | | |
+| 6 | backend-developer | Migration 5: retirar as políticas de DELETE de `members`, `cells` e `cell_reports`; `REVOKE DELETE, TRUNCATE` nas três e `TRUNCATE` em participantes. pgTAP do DELETE direto. | `supabase/migrations/<ts>_e201_05_no_physical_delete.sql`, `supabase/tests/database/e201_no_physical_delete.test.sql` | 01 | — | 4 (PR 1 mergeado) |
+| 7 | frontend-developer | Fundação e Membros:<br>- `parseAppError` e `isNetworkError`; `src/lib/deletion/{codes,texts,blockers}.ts`, com Vitest;<br>- `BlockedActionDialog` (P3), `StatusBadge` (P6), `ConfirmDeleteDialog` (T2, P9) e `RowActionsMenu` (T1, P8);<br>- `use-member-deletion`;<br>- em Membros: "⋯" no celular, pré-checagem (UXD-2), bloqueio (T3) com itens que abrem o cadastro, atalho "Marcar como inativo", toasts e "0 linhas" no `MemberForm`. | `src/lib/errors.ts`, `src/lib/deletion/*`, `src/components/{BlockedActionDialog,StatusBadge,ConfirmDeleteDialog,RowActionsMenu,MemberDeletionFlow}.tsx`, `src/hooks/use-member-deletion.ts`, `src/pages/Members.tsx`, `src/components/MemberForm.tsx` | 02, 03, 04, 07, 08 | 01 a 12, 24, 38, 39, 40 | 4 (tipos do PR 1); vai no mesmo PR da 6 |
+| 8 | frontend-developer | Células e Relatórios:<br>- exclusão (T1, T2) com `use-cell-deletion` e `use-cell-report-deletion`, e "Marcar como inativa" na célula;<br>- badge "Célula excluída" e sem "Editar" nas linhas de célula excluída;<br>- `CellReportForm`: grava com `set_cell_report_participants`; participantes excluídos fora do seletor, na linha só de leitura (T8); corrida no campo (UX-30); recusa da edição num `Alert` (UX-28);<br>- "0 linhas" no `CellForm` e no `CellReportForm`. | `src/hooks/use-cell-deletion.ts`, `src/hooks/use-cell-report-deletion.ts`, `src/pages/{Cells,CellReports}.tsx`, `src/components/{CellForm,CellReportForm}.tsx`, `src/lib/cell-reports/participants.ts` | 06, 07, 11, 12, 13 | 01 a 07, 25, 28, 29, 30 | 7 |
+| 9 | ux-designer | Revisão de UI do PR 2 (T1, T2, T3, T8, badge da T7, P3, P6, P8, P9) em 320, 360 e 1280 px, nos temas claro e escuro. | — | — | 01 a 12, 25, 28 a 30, 38 a 40 | 8 |
+| 10 | qa | Vitest (`blockers`, `parseAppError`, participantes); testes de componente (UX-02, 03, 04, 06, 08, 09, 11, 24); Playwright (RN-02, 03, 04, 06, 11, 12, 13; UX-01, 05, 07, 10, 12, 29) e *smoke* de login. | `src/**/*.test.ts(x)`, `e2e/exclusao-*.spec.ts` | 02 a 04, 06, 08, 11 a 13 | ver descrição | 8 |
+| **PR 3: Excluídos e restauração** | | | | | | |
+| 11 | frontend-developer | Rotas `/members/deleted`, `/cells/deleted` e `/cell-reports/deleted`, com permissão; item ativo e `aria-current` no `AppSidebar`; botão "Excluídos"/"Excluídas" nos cabeçalhos; hooks das listas e `use-restore`; páginas (T4) com avisos antecipados; confirmação e resultado da restauração de membro (T5); restauração de célula e relatório com as recusas (T6); "Restauração" em `Events.tsx`. | `src/App.tsx`, `src/components/AppSidebar.tsx`, `src/pages/{MembersDeleted,CellsDeleted,CellReportsDeleted,Members,Cells,CellReports,Events}.tsx`, `src/hooks/use-deleted-*-list.ts`, `src/hooks/use-restore.ts`, `src/components/{RestoreMemberDialog,DeletedListLayout}.tsx` | 09, 15, 16, 17, 19 | 13 a 24, 37 | PR 2 |
+| 12 | ux-designer | Revisão de UI do PR 3 (T4 a T6, P7). | — | — | 13 a 24, 37, 38, 40 | 11 |
+| 13 | qa | Testes de componente (UX-15 com fuso alterado, 18, 20, 23, 24, 37); Playwright (RN-15, 16, 17, 19; UX-13, 14, 16, 17, 19, 21, 22). | `src/**/*.test.tsx`, `e2e/excluidos-*.spec.ts` | 15 a 17, 19 | ver descrição | 11 |
+| **PR 4: consulta do relatório de célula excluída** | | | | | | |
+| 14 | frontend-developer | `CellReportSheet` (T7) com `?report=<id>`, só para relatório de célula excluída e com `edit_cell_report`; `use-cell-report`; "Ver relatório" no card e na tabela; "Ver células excluídas" para o administrador. | `src/components/CellReportSheet.tsx`, `src/hooks/use-cell-report.ts`, `src/pages/CellReports.tsx` | 09, 11, 13 | 26, 27 | PR 2 |
+| 15 | ux-designer | Revisão de UI do PR 4 (T7). | — | — | 26, 27, 38 | 14 |
+| 16 | qa | Playwright (RN-11 consulta; UX-26 com AD, LE com `edit_cell_report` e MB; UX-27). | `e2e/relatorio-celula-excluida.spec.ts` | 11 | 26, 27 | 14 |
+| **PR 5: cadastro com dados de excluído** | | | | | | |
+| 17 | backend-developer | `create-user-admin`: `confirmDeletedMatches`, chamada a `find_deleted_member_matches` com a sessão de quem chamou (antes do `createUser`), respostas 409 com `code` e `matches`, e tradução dos erros `app_error` do trigger de `members`. | `supabase/functions/create-user-admin/index.ts` | 18 | — | PR 1 |
+| 18 | frontend-developer | `src/lib/members/deleted-matches.ts` (Vitest); `DeletedMatchesDialog` (T9) para administrador e demais; erro no campo E-mail para o e-mail da conta; "Cadastrar mesmo assim" com `confirmDeletedMatches`; "Restaurar {Nome}" com `use-restore` e troca do formulário para edição com o `Alert`. | `src/lib/members/deleted-matches.ts`, `src/components/{DeletedMatchesDialog,MemberForm}.tsx` | 16, 18 | 31 a 34 | 11, 17 |
+| 19 | ux-designer | Revisão de UI do PR 5 (T9). | — | — | 31 a 34, 38 | 18 |
+| 20 | qa | Vitest (`deleted-matches`); Playwright (RN-18 com AD, LE e CM; UX-31 a 34); teste da `create-user-admin` com o 409 e a confirmação. | `e2e/cadastro-excluido.spec.ts` | 18 | 31 a 34 | 18 |
+| **PR 6: login e sessão** | | | | | | |
+| 21 | frontend-developer | `src/lib/auth/session.ts` (Vitest); `Login.tsx` com a mensagem única no `Alert` (T10); `AuthContext` com a releitura do próprio cadastro, o `SIGNED_OUT` não pedido, a volta do foco e o aviso no login; `QueryCache` e `MutationCache` com `onError`. | `src/lib/auth/session.ts`, `src/pages/Login.tsx`, `src/contexts/AuthContext.tsx`, `src/App.tsx` | 14 | 35, 36 | PR 1 (roda em paralelo com o PR 2) |
+| 22 | ux-designer | Revisão de UI do PR 6 (T10). | — | — | 35, 36, 38 | 21 |
+| 23 | qa | Playwright: RN-14 (login por e-mail, CPF e celular; recuperação; sessão aberta excluída em outro contexto; restauração com a mesma senha); UX-35, UX-36 com o modo *offline*. | `e2e/acesso-excluido.spec.ts` | 14 | 35, 36 | 21 |
+| **Fechamento** | | | | | | |
+| 24 | architect | Revisão final dos 6 PRs. Atualizar o `CLAUDE.md` (estado atual e armadilhas, ver o relatório do `architect`). O aceite da fase 2 é do `product-owner`. | `CLAUDE.md` | — | — | 5, 10, 13, 16, 20, 23 |
+
+**Ordem de execução:**
+- PR 1: 1 → 2 → 3 → 4. A 5 é escrita em paralelo com a 3 e a 4 e roda depois da 4.
+- PR 2: 6 → 7 → 8 → (9 ∥ 10).
+- Depois do PR 2, em paralelo:
+  - PR 3 (11 → 12 ∥ 13) e, em seguida, PR 5 (18 → 19 ∥ 20). A 17 pode ser feita a qualquer momento depois do PR 1, mas o PR 5 só é mergeado com a 18;
+  - PR 4 (14 → 15 ∥ 16).
+- PR 6 (21 → 22 ∥ 23) pode começar logo depois do PR 1, em paralelo com o PR 2.
+- 24 no fim.
+
+**Critérios de pronto**
+1. **Todas as tarefas de banco:**
+   - as migrations rodam num banco zerado depois das existentes e rodam de novo sem erro;
+   - nenhuma função nova tem EXECUTE para `anon`, e as `_del_*` não têm para `authenticated`;
+   - as views novas têm só SELECT para `authenticated` e dono `postgres`;
+   - o `types.ts` está regenerado;
+   - os testes do E1.08 (PR 1 a PR 4) continuam passando.
+2. **Tarefa 2:** os `CHECK`s, as FKs e os índices recusam as violações diretas feitas como `postgres` (autor sem data, duas semanas iguais não excluídas, exclusão física com referência). Num banco com duplicata da semana, a migration falha com a lista e não muda nada.
+3. **Tarefa 3:** paridade por persona (P1 a P5) entre cada view e a tabela sob RLS, com excluídos na massa. O relatório de célula excluída continua visível para `view_own_ministry`. O membro excluído não lê nada das views nem de `roles`.
+4. **Tarefa 4:**
+   - todo critério de aceite marcado "pela API" passa;
+   - cada RPC devolve 42501 sem a permissão, sem gravar nada;
+   - os erros seguem o formato contratado;
+   - os 5 cenários de concorrência terminam num estado válido;
+   - a suspensão e a restauração do acesso funcionam no Auth local (login recusado com `invalid_credentials`, depois aceito com a mesma senha).
+5. **Tarefas 7, 8, 11, 14, 18 e 21:**
+   - `npm run lint`, `npm test` e `npm run build` verdes;
+   - sem `any` e sem asserção de tipo (`as Tipo`) nos arquivos novos (`as const` é permitido);
+   - nenhuma regra de domínio dentro de componente (fica em `src/lib/`);
+   - nenhum texto do spec fora de `src/lib/deletion/texts.ts`, `src/lib/auth/session.ts` ou dos módulos de domínio;
+   - nenhuma leitura de `members` direto da tabela;
+   - toda exclusão e restauração por RPC.
+6. **Tarefa 8:** editar um relatório com participante excluído o preserva (UX-29) numa única chamada de participantes. Nenhum `delete()` em participantes no front.
+7. **Tarefa 11:** as listas de excluídos paginam no servidor com total. Uma rota sem `manage_roles` não faz nenhuma requisição de dados.
+8. **Tarefa 17:** sem `confirmDeletedMatches`, um cadastro com o celular de um excluído não cria conta no Auth. Com ele, cria. O e-mail da conta nunca cria.
+9. **Tarefa 21:** a sessão de um membro excluído termina na próxima requisição ou na volta do foco. Uma queda de rede não a encerra.
+10. **Tarefas 9, 12, 15, 19 e 22:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
 _Seção do `qa`._
