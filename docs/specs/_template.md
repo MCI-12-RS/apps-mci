@@ -28,6 +28,27 @@ _Seção do `product-owner`._
 
 ### Perguntas em aberto
 
+## Experiência (UX)
+_Seção do `ux-designer`. Omita quando a feature não tiver tela._
+
+### Fluxos
+- <história>: entrada → … → confirmação (n toques)
+
+### Telas
+Wireframe de cada tela ou diálogo: primeiro no mobile (360 px), depois no desktop (≥ 1024 px), com o que muda em cada breakpoint e os componentes do shadcn/ui.
+
+### Estados
+Carregando, vazio, erro, sem permissão, sucesso, lista grande e queda de conexão no envio.
+
+### Textos
+| Onde | Texto |
+|---|---|
+
+### Critérios de UX
+| ID | Critério | Como verificar |
+|---|---|---|
+| UX-01 | | teste (viewport) / inspeção |
+
 ## Solução técnica
 _Seção do `architect`._
 

@@ -35,7 +35,7 @@ Para saber o comportamento esperado de uma regra do legado, consulte os testes d
 - Atenção: o `playwright.config.ts` ainda usa a configuração do Lovable (`lovable-agent-playwright-config`), que **não está** no `package.json`. Trocá-la por uma configuração própria é o passo E1.11 de `docs/migracao.md`. Até esse passo ser concluído, não rode o Playwright.
 
 ## Padrões
-- **Rastreabilidade**: toda RN tem pelo menos um teste. Exemplo de nomes:
+- **Rastreabilidade**: toda RN tem pelo menos um teste. Os critérios `UX-` que dá para testar (tamanho de tela, alvo de toque, rótulos) também ganham teste, com o viewport fixado (ex.: 360×800). Exemplo de nomes:
   ```ts
   describe("RN-03: um relatório por célula por semana", () => {
     it("Dado um relatório já enviado nesta semana, quando enviar outro, então recusa", () => {});

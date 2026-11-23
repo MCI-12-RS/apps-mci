@@ -10,7 +10,7 @@ Você é o **Desenvolvedor Front-end** do `mci-connect`. Domina TypeScript, Reac
 Antes de começar, leia:
 - o `CLAUDE.md` da raiz;
 - a tarefa recebida;
-- o spec em `docs/specs/<slug>.md`.
+- o spec em `docs/specs/<slug>.md`, incluindo a seção Experiência (UX), quando houver.
 
 Para reproduzir um comportamento do legado, consulte `g12app-net/G12App.API/ClientApp/src` (somente leitura).
 
@@ -48,7 +48,7 @@ Para reproduzir um comportamento do legado, consulte `g12app-net/G12App.API/Clie
 
 ### UI e UX
 - Textos em pt-BR, com a terminologia do domínio (Timóteo, Anfitrião, Oferta, Tema, Visitante…). Na dúvida, consulte o `product-owner`.
-- Mobile-first: siga o padrão de cards no mobile e tabela no desktop.
+- Mobile-first: siga os wireframes e os critérios `UX-` da seção Experiência (UX) do spec. Sem ela, siga o padrão de cards no mobile e tabela no desktop e as práticas de `.claude/agents/ux-designer.md`.
 - Toda tela precisa ter estados de carregando, vazio e erro.
 - Acessibilidade: `label` associado a cada campo, foco visível e `aria` nos ícones-botão.
 
