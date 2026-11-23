@@ -1,6 +1,9 @@
 # E1.08: Paginação, contagem e máscara de dados sensíveis no servidor
 
-> Status: aprovado em 2026-11-15 (decisões D-1 a D-5 respondidas pelo usuário). Implementação em 5 PRs, começando pelo PR 1.
+> Status: aprovado em 2026-11-15 (decisões D-1 a D-5 respondidas pelo usuário). Implementação em 5 PRs.
+> - PR 1 em produção (2026-11-15, mci-connect#12).
+> - PRs 2, 3 e 4 implementados em 2026-11-23 e abertos, empilhados: mci-connect#14 (Células e Relatórios), #15 (Dashboard, sobre o #14) e #16 (Ministérios e seletores, sobre o #15). Entram nessa ordem.
+> - PR 5 só depois dos PRs 1 a 4 promovidos em produção.
 > Slug: `e1-08-paginacao-servidor` · Paridade com o legado: parcial. É um passo técnico da fase 1 e antecipa a MEM-14 e parte da DSH.
 
 ## Negócio
@@ -186,7 +189,7 @@ Sobre `select('*')`: todas as leituras de `members` no front passam para `member
 ### Modelo de dados e migrations
 Este passo não cria tabelas nem colunas. Cria funções, views, índices e grants, faz um backfill de permissão e altera uma função de trigger. Os nomes de arquivo abaixo são sugestões; o timestamp é o do momento da criação, sempre depois de `20261115000000`. Depois de cada migration, regenere o `types.ts`.
 
-#### PR 1: `<ts>_e108_read_foundation.sql`
+#### PR 1: `20261115120000_e108_read_foundation.sql`
 
 **1. Extensão e utilitários de data.** Ficam num lugar só e serão reaproveitados por E2.09 e E2.11.
 ```sql
@@ -358,7 +361,7 @@ CREATE INDEX IF NOT EXISTS cell_reports_date_id_idx ON public.cell_reports (date
 ```
 Hoje as tabelas são pequenas, então `CREATE INDEX` sem `CONCURRENTLY` não trava nada de forma perceptível.
 
-#### PR 2: `<ts>_e108_cells_reports_views.sql`
+#### PR 2: `20261122120000_e108_cells_reports_views.sql`
 
 **`cells_view`:**
 - Colunas da tabela, mais:
@@ -422,7 +425,9 @@ CREATE INDEX IF NOT EXISTS cell_report_participants_member_id_idx ON public.cell
 ```
 Grants iguais aos da `members_view`.
 
-#### PR 3: `<ts>_e108_dashboard_rpcs.sql`
+*Na implementação do PR 2 (front):* o `useClampPage`, que leva a lista para a última página quando a página da URL passou do fim, recebe `{ data, isPlaceholderData }` da consulta e ignora o total enquanto o dado é *placeholder* (`keepPreviousData`). Sem isso, voltar no navegador de uma busca curta (`?q=ana`, total 3) para `?page=5` levava para a página 1, porque o total ainda era o da busca anterior.
+
+#### PR 3: `20261123120000_e108_dashboard_rpcs.sql`
 
 As três funções são `STABLE SECURITY INVOKER SET search_path = public`, leem só das views e começam com a checagem da RN-09:
 ```sql
@@ -459,9 +464,21 @@ Definições, com `_local = _at AT TIME ZONE 'America/Sao_Paulo'`, `_ws = week_s
 - Células: a soma de `male_cells` e de `female_cells` dos integrantes de nível 1 do casal. Esses valores já acumulam a subárvore, então não há dupla contagem.
 - Ordem: `total_cells DESC`, depois `name`.
 
-#### PR 4: `<ts>_e108_ministry_tree.sql`
+*Como foi implementado (2026-11-23, mci-connect#15):*
+- As quatro funções são `plpgsql STABLE SECURITY INVOKER SET search_path = public` e leem só de `members_view`, `cells_view` e `cell_reports_view`. EXECUTE só para `authenticated`; `anon` e `PUBLIC` revogados.
+- A checagem da RN-09 fica num lugar só, `_dashboard_assert_access()`, chamada pelas três. Ela é interna, mas pode ser chamada por `/rpc` sem dano.
+- `_at` nulo vale como `now()`.
+- **Limite aceito de `cells_pending`:** com `_at` numa semana passada, uma célula que tem relatório numa semana posterior não conta, porque o cálculo usa `last_report_date`. Para a semana atual, o valor é exato. Documentado na migration; o E2.09 resolve com a CEL-05.
+- **Ranking:**
+  - o cônjuge só entra na chave e no nome se estiver visível e ativo, para não expor o id de um cônjuge invisível;
+  - nos empates, o casal do mesmo gênero vem com o menor id primeiro, e o casal sem homem vem com o integrante de nível 1 primeiro;
+  - ordem final: `total_cells DESC, name, couple_key`;
+  - cada célula conta uma vez, como na correção do mci-connect#13. O `lib/dashboard/g12-ranking.ts` saiu do front, e os cenários do teste dele foram para o pgTAP.
+- Os empates de nome seguem a collation do banco, e não o `localeCompare('pt-BR')` do front antigo. Só muda a ordem de casais com o mesmo total e nomes que diferem por acento.
 
-**`ministry_tree_nodes(_parent_ids uuid[] DEFAULT NULL)`**: `LANGUAGE sql STABLE SECURITY INVOKER`, lendo só de `members_view`.
+#### PR 4: `20261123180102_e108_ministry_tree.sql`
+
+**`ministry_tree_nodes(_parent_ids uuid[] DEFAULT NULL)`**: `LANGUAGE plpgsql STABLE SECURITY INVOKER` com `search_path` fixo, lendo só de `members_view`. É `plpgsql`, e não `sql`, porque o erro 22023 exige `RAISE`.
 ```sql
 RETURNS TABLE (
   member_id uuid, member_name text, member_gender text, g12_level integer, is_pastor boolean,
@@ -480,6 +497,16 @@ RETURNS TABLE (
 - `total_disciples` e `total_cells`: a soma dos totais guardados dos dois cônjuges. Os nós da árvore são subárvores disjuntas.
 - Ordem: pelo nome do integrante principal.
 
+*Como foi implementado (2026-11-23, mci-connect#16). Desvios aceitos na revisão final:*
+- **`_parent_ids`:** nulos e repetidos são ignorados, e `'{}'` devolve nenhuma linha. Até 100 ids; 101 dão o erro 22023.
+- **Candidatos:** `leader_id = ANY(_parent_ids) AND id <> ALL(_parent_ids)`, e o cônjuge também precisa estar fora de `_parent_ids`. Assim, a esposa liderada pelo marido não reaparece como filha do casal.
+- **Principal:** o homem; no empate, o candidato; no empate seguinte, o menor `(nome, id)`.
+- **Cônjuge invisível ou inativo:** `spouse_id` e `spouse_name` vêm nulos.
+- **`direct_disciples`:** exclui os integrantes do próprio nó. É calculado em duas etapas: uma leitura materializada da `members_view` por `leader_id = ANY(...)` e um FULL JOIN com os integrantes. O custo é linear e não depende das estatísticas. Na primeira versão, o tempo crescia com o cubo do número de nós quando as estatísticas estavam desatualizadas (800 nós em 4,4 s); com o FULL JOIN, 800 nós levam de 5,5 a 7,4 ms.
+- **Totais:** a soma dos dois cônjuges; quando um lidera o outro diretamente, valem só os totais do líder, com `total_disciples - 1`, para não contar o liderado em dobro.
+  - **Limite:** com o cônjuge abaixo de um discípulo do outro (aninhamento indireto), `total_disciples` e `total_cells` ainda somam em dobro. A tela não mostra esses totais, só `direct_disciples`. Documentado na migration; o E2.06 corrige com o caminho materializado.
+- Nenhuma tabela nem índice novo: os índices do PR 1 bastam.
+
 #### PR 5: `<ts>_e108_members_column_lock.sql` (só backend)
 ```sql
 REVOKE SELECT ON TABLE public.members FROM PUBLIC, anon, authenticated;
@@ -492,6 +519,8 @@ GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
 - INSERT, UPDATE e DELETE continuam no nível da tabela. O `UPDATE … WHERE id = …` e o `DELETE … WHERE id = …` só precisam de SELECT em `id`, que continua liberado.
 - Funções e triggers `SECURITY DEFINER`, a service role e as views não são afetados.
 - Na mesma PR, a `create-user-admin` passa a reler só o `id` do membro criado, em vez de `select('*')`, que devolvia a linha inteira a quem cadastrou.
+- **Se o PR 5 entrar depois do E2.01:** a lista do `GRANT SELECT (…)` precisa incluir `deleted_at` e `deleted_by`, senão a leitura dessas colunas falha fechada (risco 4). Se entrar antes, é a migration do E2.01 que faz o GRANT (DT-22 de [`e2-01-exclusao-logica.md`](e2-01-exclusao-logica.md)).
+- **Pré-condição conferida no PR 4:** depois dele, o front só escreve em `members` (`update` e `delete` por `id`, em `MemberForm.tsx` e `Members.tsx`) e não lê mais a tabela. O mesmo vale para `cells`.
 
 ### Pontos de extensão (para não refazer)
 | Passo | O que muda e onde |
@@ -517,7 +546,7 @@ GRANT SELECT (id, name, gender, birth_date, instagram, avatar_url, notes,
 | RN-06 | *Joins* de nome nas views (só o `name`) | Exibe |
 | RN-07 | Views + `range` de 21 linhas por página (a 21ª só indica que há mais) | Hooks de opções com `useInfiniteQuery`; carregar mais ao rolar até o fim |
 | RN-08 | `dashboard_*`, `sp_now`, `week_start`, `weekday_index`, `cells_view.last_report_date` e os flags de vínculo da `members_view` | Exibe; o rótulo da semana vem da RPC |
-| RN-09 | Checagem em `dashboard_*` (42501) | Mensagem de acesso negado |
+| RN-09 | Checagem em `_dashboard_assert_access()`, chamada pelas três `dashboard_*` (42501) | Mensagem de acesso negado; o 42501 não é repetido (`retryUnlessPermissionDenied`) |
 | RN-10 | `ministry_tree_nodes` | `Ministries.tsx`, uma chamada por expansão |
 | RN-11 | CASE em `members_view` + GRANT por coluna em `members` (PR 5) | Usa `sensitive_visible`, e não `hasPermission` |
 | RN-12 | Regra 6 em `enforce_member_write_rules` | Payload sem os campos que o usuário não vê |
@@ -557,6 +586,26 @@ Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
 - Componente `components/ListPagination.tsx`, sobre o `ui/pagination.tsx`: total, página X de Y e tamanho da página.
 - As chaves de query começam pela entidade (`["members", "list", params]`), para que o `invalidateQueries({ queryKey: ["members"] })` que já existe continue funcionando.
 
+*Acrescentados na implementação dos PRs 2 a 4:*
+- **Infra comum das listas (PR 2):**
+  - `hooks/use-list-search-params.ts`: `useListSearchParams` (página, tamanho e busca na URL) e `useClampPage(list, { data, isPlaceholderData })` (página além do fim);
+  - `lib/list-query.ts`: `ListParams`, `ListResult`, `withSearch` (um `ilike` por padrão) e `fetchListPage` (resposta 416, PGRST103, devolve a página vazia com o total atual).
+- **Células e relatórios (PR 2):** `lib/cells/fields.ts`, `lib/cells/labels.ts`, `lib/cells/host-address.ts`, `lib/cell-reports/fields.ts`, `lib/cell-reports/participants.ts` (`toParticipantOptions` desde o PR 4), `use-cell-report-participants.ts` e `use-member-address.ts`.
+- **Dashboard (PR 3):**
+  - `hooks/use-dashboard.ts`: `useDashboardSummary`, `useDashboardCellsByType` e `useDashboardG12Ranking`;
+  - `lib/errors.ts`: `PERMISSION_DENIED`, `isPermissionDenied` e `retryUnlessPermissionDenied` (o 42501 não é repetido);
+  - `lib/dashboard/week.ts`: `formatWeekRange`;
+  - `lib/format.ts`: `formatCount`, separador de milhar (também usado pelo `ListPagination`).
+  - **Removido:** `lib/dashboard/g12-ranking.ts`. A regra foi para o banco.
+- **Ministérios e seletores (PR 4):**
+  - `lib/selectors.ts`: `OPTIONS_PAGE_SIZE`, `OPTIONS_STALE_TIME_MS`, `optionsPageRange`, `toOptionsPage` e `flattenOptionPages`;
+  - `lib/cells/weekdays.ts`: `WEEKDAYS` e `weekdayIndex`, espelho de `public.weekday_index`;
+  - `lib/ministries/tree.ts`: `ministryNodeKey`, `ministryNodeParentIds`, `getLevelLabel` e `directDisciplesLabel`;
+  - `hooks/use-paginated-select.ts`: `useSelectSearch` e `useOptionsPagination`;
+  - `hooks/use-member-options.ts`, com `useMemberName` (RPC `member_names`), e `hooks/use-cell-options.ts`;
+  - `components/select/PaginatedSelect.tsx` e `FormPaginatedSelect.tsx` (react-select), com `select-styles.ts` e `select-a11y.ts`.
+  - "Carregar mais" é uma opção desativada do menu, e não um botão no `MenuList`, porque o react-select mantém o foco no input.
+
 ### Como cada tela passa a buscar dados
 | Tela ou componente | Hoje | Depois |
 |---|---|---|
@@ -567,7 +616,8 @@ Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
 | `CellForm.tsx` | Lê o endereço do anfitrião em `members` | Lê o endereço em `members_view`. Se `sensitive_visible` for falso, preenche só bairro, cidade e UF e avisa "Rua, número e CEP do anfitrião indisponíveis". |
 | `CellReports.tsx` | Todos os relatórios, com *embeds* e `count` | `cell_reports_view` paginada |
 | `CellReportForm.tsx` | Todas as células ativas e todos os membros ativos; participantes lidos da tabela | Seletores com `cells_view` e `members_view`, com busca e paginação de 20 em 20. Ao editar, os participantes (com nome) vêm de `cell_report_participants_view`. A gravação continua igual (E2.11). |
-| `AsyncMemberSelect.tsx` | `members` com `ilike` em `name`, limite de 20 | `members_view` com `search_text`, paginada de 20 em 20 ao rolar. Continua usando `member_names` para o valor selecionado. |
+| `AsyncMemberSelect.tsx` | `members` com `ilike` em `name`, limite de 20 | `members_view` com `search_text`, paginada de 20 em 20 ao rolar, pelo `PaginatedSelect` (react-select), com "Carregar mais", teclado e ARIA de combobox. Continua usando `member_names` para o valor selecionado. |
+| `MemberForm.tsx` e `CellForm.tsx` (PR 4) | Seletores de líder e cônjuge, e de líder, timóteo e anfitrião, com o `AsyncMemberSelect` antigo | O mesmo `PaginatedSelect`, com rótulos associados aos campos e placeholders |
 | `Dashboard.tsx` | Cerca de 12 consultas e cargas completas | `dashboard_summary`, `dashboard_cells_by_type` e `dashboard_g12_ranking` |
 | `Ministries.tsx` | `select('*')` + uma contagem por nó (N+1) | `ministry_tree_nodes`, uma chamada por expansão |
 
@@ -609,6 +659,13 @@ Todas com EXECUTE só para `authenticated`. As assinaturas estão acima.
 10. **Login depende da `members_view`.** Se a view quebrar, o `AuthContext` fica sem membro e sem permissões. Mitigação: um teste e2e de *smoke* de login a cada PR.
 11. **Banco local para os testes de banco.** Já existe outra stack do Supabase rodando nesta máquina, nas portas padrão. Para rodar o pgTAP, o `mci-connect` precisa de portas próprias no `config.toml` local ou da outra stack parada.
 12. **Máscara e funções.** Se alguém tirar `view_sensitive_data` da role Administrador na tela de Funções, o administrador deixa de ver os dados, porque a tela passa a seguir o banco via `sensitive_visible`. É o comportamento correto, mas vale avisar a liderança.
+13. **`cells_pending` numa semana passada (PR 3).** Com `_at` numa semana passada, uma célula com relatório numa semana posterior não conta como pendente, porque o cálculo usa `last_report_date`. Para a semana atual, o valor é exato. Limite aceito; o E2.09 resolve.
+14. **Custo do vínculo celular (PR 3).** O `attended_last_30_days` da `members_view` é o custo dominante do `dashboard_summary` (~63 ms no volume de referência). Está dentro da meta e fica como candidato a otimização no E2.07.
+15. **Corte de 1000 linhas numa expansão da árvore (PR 4).** O `max_rows` do PostgREST cortaria uma expansão com mais de 1000 nós filhos; a contagem exibida continuaria certa. Aceito, porque um casal com mais de 1000 discípulos diretos não é realista. Se acontecer, paginar a expansão.
+16. **Desempate de gênero na árvore (PR 4).** O `NOT EXISTS` do empate é quadrático: 800 casais sem gênero levam 35 ms. Está abaixo da meta e não é realista; o E2.15 reescreve as raízes.
+17. **Estatísticas depois de cargas grandes.** Com estatísticas desatualizadas, planos ruins aparecem (a primeira versão da árvore levava 4,4 s com 800 nós). Rodar `ANALYZE` nas tabelas depois de cargas grandes, como a carga do legado. Um `ANALYZE` dentro de uma transação desfeita grava `pg_class.reltuples` mesmo assim.
+18. **Contornos do `PaginatedSelect` dentro do Radix Dialog (PR 4).** O Esc na captura do `window`, o *blur* adiado, o ajuste de toque e o `onOptionHover` (público no tipo, mas não documentado) podem quebrar com uma atualização do react-select ou do Radix. Há testes cobrindo esses pontos: rodar ao atualizar as bibliotecas.
+19. **Versão da Supabase CLI.** O `npx supabase` resolve para a CLI 3.3.0, cujo `gen types` sai em outro formato (reescreveria o `types.ts` inteiro) e que não aceita mais a seção `[inbucket]` do `config.toml`. Os tipos dos PRs 3 e 4 foram gerados com a CLI do Homebrew (2.84.2): `supabase gen types typescript --db-url <banco local> --schema public`, mantendo o bloco `__InternalSupabase`. Recomendação: fixar a versão da CLI no projeto (devDependency) e atualizar o comando no `CLAUDE.md`.
 
 ### Verificações obrigatórias (para o QA transformar em testes)
 - **pgTAP, paridade (RN-05).** Para cada persona P1 a P5, com `request.jwt.claims` e `SET ROLE authenticated`:
@@ -674,9 +731,9 @@ Cada PR é independente e entra na ordem abaixo. Dentro de um PR, o backend vai 
 | 7 | frontend-developer | `use-dashboard.ts`. O `Dashboard.tsx` usa as três RPCs, sem agregação no cliente e sem o `WEEK_DAYS_MAP`. O rótulo da semana vem de `week_start`/`week_end`. Estado de acesso negado (42501). | `src/hooks/use-dashboard.ts`, `src/pages/Dashboard.tsx` | 02, 08, 09 | 6 |
 | **PR 4: Ministérios e seletores** (em paralelo com o PR 3) | | | | | |
 | 8 | backend-developer | Migration: `ministry_tree_nodes`, com grants. Regenerar os tipos. | `supabase/migrations/<ts>_e108_ministry_tree.sql`, `types.ts` | 02, 05, 10 | PR 2 |
-| 9 | frontend-developer | `use-ministry-tree.ts`; `Ministries.tsx` com uma chamada por expansão. `use-member-options.ts` e `use-cell-options.ts`. `AsyncMemberSelect` com busca no servidor e aviso. Seletores de célula e de participantes do `CellReportForm` assíncronos. `lib/cells/weekdays.ts` substituindo as listas de dias duplicadas no `CellForm` e no `CellReportForm`. | `src/hooks/use-ministry-tree.ts`, `src/hooks/use-member-options.ts`, `src/hooks/use-cell-options.ts`, `src/pages/Ministries.tsx`, `src/components/AsyncMemberSelect.tsx`, `src/components/CellReportForm.tsx`, `src/components/CellForm.tsx`, `src/lib/cells/weekdays.ts`, `src/lib/selectors.ts` | 07, 10 | 8 |
+| 9 | frontend-developer | `use-ministry-tree.ts`; `Ministries.tsx` com uma chamada por expansão. `use-member-options.ts` e `use-cell-options.ts`. `AsyncMemberSelect` com busca no servidor (o aviso saiu: a D-5 trocou o aviso pela paginação). Seletores de célula e de participantes do `CellReportForm` assíncronos. `lib/cells/weekdays.ts` substituindo as listas de dias duplicadas no `CellForm` e no `CellReportForm`. | `src/hooks/use-ministry-tree.ts`, `src/hooks/use-member-options.ts`, `src/hooks/use-cell-options.ts`, `src/hooks/use-paginated-select.ts`, `src/pages/Ministries.tsx`, `src/components/AsyncMemberSelect.tsx`, `src/components/select/*`, `src/components/CellReportForm.tsx`, `src/components/CellForm.tsx`, `src/components/MemberForm.tsx`, `src/lib/cells/weekdays.ts`, `src/lib/selectors.ts`, `src/lib/ministries/tree.ts` | 07, 10 | 8 |
 | **PR 5: trava da máscara** (só backend) | | | | | |
-| 10 | backend-developer | Migration com o REVOKE e o GRANT por coluna em `members`. A `create-user-admin` passa a reler só o `id`. Checar com grep que o front não lê `members` diretamente. | `supabase/migrations/<ts>_e108_members_column_lock.sql`, `supabase/functions/create-user-admin/index.ts` | 11 | PRs 1 a 4 **promovidos em produção** |
+| 10 | backend-developer | Migration com o REVOKE e o GRANT por coluna em `members`. Se entrar depois do E2.01, o GRANT inclui `deleted_at` e `deleted_by` (DT-22 do spec do E2.01). A `create-user-admin` passa a reler só o `id`. Checar com grep que o front não lê `members` diretamente. | `supabase/migrations/<ts>_e108_members_column_lock.sql`, `supabase/functions/create-user-admin/index.ts` | 11 | PRs 1 a 4 **promovidos em produção** |
 | 11 | architect | Revisão final. Atualizar o `CLAUDE.md` (estado atual: views e RPCs; armadilhas: sem `select('*')` em `members`, GRANT de coluna nova, *advisor* de view definer) e marcar o E1.08 em `docs/migracao.md`. | `CLAUDE.md`, `docs/migracao.md` | — | 10 |
 
 **Ordem de execução:** PR 1 (1 ∥ 2 → 3) → PR 2 (4 → 5) → { PR 3 (6 → 7) ∥ PR 4 (8 → 9) } → PR 5 (10) → 11.
@@ -714,5 +771,63 @@ Cada PR é independente e entra na ordem abaixo. Dentro de um PR, o backend vai 
 ## Testes
 _Seção do `qa`._
 
+Os testes de banco ficam em `mci-connect/supabase/tests/database/`. São autocontidos, com massa fictícia e ROLLBACK no fim, e rodam na stack local (`supabase test db` ou `psql`). O Vitest roda com `npm test`. Os e2e versionados (`e2e/*.spec.ts`) leem as credenciais de variáveis `E2E_*` e são pulados sem elas.
+
+**PR 1** (mci-connect#12): 18 testes Vitest, 60 verificações de banco e 20 verificações de tela, conforme a descrição do PR.
+
+### PR 2: Células e Relatórios (mci-connect#14)
+Totais: pgTAP `e108_pr2_cells_reports_views.test.sql` com 145 verificações; Vitest com 79 testes no total (61 novos); roteiro Playwright contra a stack local com 46 verificações (o roteiro ficou no scratchpad do QA e não foi versionado).
+
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01 | Vitest `use-list-search-params.test.tsx`: página, tamanho e busca na URL; valores padrão fora da URL; busca com 300 ms volta para a página 1; URL mudando por fora; `useClampPage` (página além do fim, total zero, carregando) e o caso do *placeholder* (voltar no navegador de `?q=ana` para `?page=5` não muda a página). `list-query.test.ts`: resposta 416 com e sem total. Playwright: trocar para 100 por página volta para a página 1; recarregar mantém página 3, 50 por página e a busca. | ✅ |
+| RN-02 | Playwright: Células com total exato de 1.036 (> 1000), "Página 1 de 42" e a última página (42) com 11 linhas; Relatórios com 1.102, "Página 1 de 45" e a última com 2 linhas. A página de Relatórios não pede `participants_count`; uma 2ª consulta pede só os 25 ids da página. | ✅ |
+| RN-03 | Playwright: a última linha de Células é a célula mais antiga. Hooks ordenam com o `id` como desempate (Vitest dos hooks, sequência exata das chamadas). | ✅ |
+| RN-04 | pgTAP: `search_text` sem acento e minúsculo, com os campos do spec; visitantes e observações não são pesquisáveis. Vitest: um `ilike` por palavra e `%` escapado. Playwright: "joao silva" acha "João da Silva"; `a,b)` e `%` sem erro; total da busca igual ao da view filtrada; busca de relatório pelo líder e pelo tema sem acento. | ✅ |
+| RN-05 | pgTAP, para 9 personas (só `view_members`; `view_all_church`; `view_own_ministry`; `view_own_ministry` + `view_own_reports`; só `view_own_reports`, o achado 3; só `view_all_reports`; sem permissão; usuário do Auth sem cadastro; pastor com `view_own_ministry`): os ids de `cells_view`, `cell_reports_view` e `cell_report_participants_view` são iguais aos das tabelas sob o RLS, e a `members_view` continua igual a `members` (regressão do PR 1). Mutação: alterar o predicado da `cell_reports_view` fez 10 verificações falharem. Playwright: Células e Relatórios não leem as tabelas `cells` nem `members`; o total de P3 é igual ao das células sob o RLS. | ✅ |
+| RN-06 | pgTAP: nomes do líder, do timóteo, do anfitrião, do G12, do líder da célula do relatório e dos participantes aparecem fora do escopo, sem que esses cadastros apareçam na `members_view`. Vitest `participants.test.ts`: participante salvo fora das opções mantém o nome. Playwright: ao editar um relatório, os participantes salvos aparecem com nome, inclusive o inativo, e salvar sem mudanças os mantém. | ✅ |
+| Colunas calculadas | pgTAP: G12 da célula ("Pastores" para líder pastor), dia da semana, `last_report_date` (fora do escopo, base do E2.09), semana, contagens de visitantes e participantes e os dados da célula no relatório. | ✅ |
+| RN-11 | Vitest `host-address.test.ts`: sem acesso (`sensitive_visible` falso ou nulo), o endereço do anfitrião preenche só bairro, cidade e UF. | ✅ |
+| Grants e contrato | pgTAP §1 e §2 (33): só SELECT para `authenticated`, nada para `anon`, dono `postgres`, `security_barrier` e `security_invoker = false`; ordem das colunas. A migration roda duas vezes sem erro. | ✅ |
+| Volume | `EXPLAIN ANALYZE` com 1.500 células e 100 mil relatórios: página com contagem entre 17 e 38 ms (meta < 300 ms); participantes de um relatório em 0,3 ms; `last_report_date` de uma célula em 0,1 ms, pelo índice `(cell_id, date DESC)`. | ✅ |
+
+### PR 3: Dashboard (mci-connect#15)
+Totais: pgTAP `e108_pr3_dashboard_rpcs.test.sql` com 204 verificações (349 com as do PR 2, pelo `pg_prove`); Vitest com 111 testes no total; `e2e/dashboard.spec.ts`.
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-02 | pgTAP §8: P1 por diferença, depois de inserir 1.103 membros, 1.100 células e 1.100 relatórios na semana; os totais crescem exatamente isso, a soma por tipo é igual a `count(cells)` acima de 1000 e `members_total` passa de 1000. `Dashboard.test.tsx`: faz só as três chamadas e mostra os números sem somar nada, com milhar ("1.530"). `e2e/dashboard.spec.ts`: só as três chamadas, e os números delas. | ✅ |
+| RN-05 | pgTAP §7: paridade para 7 personas (P1 de sistema, P2, P3, P3 só com `view_own_ministry_dashboard`, P4 com `view_all_reports`, P5 só com `view_dashboard`, e só `view_own_ministry_dashboard`), na semana fixa e hoje, contra as tabelas sob o RLS: cards de membros, relatórios, visitantes, não realizadas, pendentes, tipos e ids do ranking. Nenhuma `couple_key` expõe membro invisível ou inativo; as funções só leem as views. Comparação psql × API para dois usuários. | ✅ |
+| RN-08 | pgTAP §2: sábado 23:59 e 23:59:59 ficam na semana; domingo 00:00 muda a semana e os cards; 02:59:59 e 03:00 UTC; sessão em Asia/Tokyo e em UTC; sem `_at`, vale a semana de hoje em Brasília; `meeting_time` nulo entra às 23:59:59; dia desconhecido ou nulo nunca conta; célula inativa fica fora; relatórios, visitantes e não realizadas contam só os visíveis da semana. §3: cards de membros. Vitest `week.test.ts` (5 casos) e o rótulo vindo da RPC em qualquer fuso. | ✅ |
+| RN-08a | pgTAP: células de segunda a sexta às 20:00 não contam às 19:59 e contam às 20:00, também em UTC. É a regressão do `WEEK_DAYS_MAP`. | ✅ |
+| RN-08b | pgTAP §5: casal com 3 + 4 = 7, homem primeiro; total igual às células ativas da subárvore, com a inativa fora; os 3 cenários do antigo `g12-ranking.test.ts`; cônjuge inativo ou invisível gera linha sozinha, sem nome e sem id na chave; duas mulheres de nível 1 com o menor id primeiro; casais com 0 células aparecem; ordem; P3 vê só o próprio casal. | ✅ |
+| RN-08c | pgTAP: líder, timóteo, anfitriã, participação há 30 dias e participação em célula invisível contam como vínculo; há 31 dias não conta; inativo fica fora; usa `sp_today()`, e não `_at`; pastor fora. | ✅ |
+| RN-08d | pgTAP: um relatório invisível para P3 tira a célula das pendentes (a célula é visível e o relatório não). | ✅ |
+| RN-09 | pgTAP §6: sem as duas permissões, 42501 com a mensagem nas três RPCs, e `_at` não contorna; usuário sem cadastro e membro sem função também recebem 42501; só com `view_own_ministry_dashboard`, as três respondem no escopo da pessoa; `anon` negado nas quatro funções. Vitest: o 42501 não é repetido e mostra só "Você não tem acesso ao dashboard.". E2e: 403/42501 e a mensagem. | ✅ |
+| Contrato e grants | pgTAP §1: `anon` e `PUBLIC` sem EXECUTE, `authenticated` com; `prosecdef = false`, STABLE, `search_path = public`; colunas e argumentos. A migration roda duas vezes sem erro. pgTAP também passou num banco esvaziado dentro da transação. | ✅ |
+| UI (revisão de UX) | `Dashboard.test.tsx`: carregando sem mostrar 0, com 4 `role="status"` dentro de `aria-busy`; erro por seção num card com `role="alert"`; seções vazias ocultas. Contraste medido em 4,80:1; ranking cabe em 360 px. | ✅ |
+| Volume | 20 mil membros, 1.500 células, 100 mil relatórios e 800 mil participações, mediana de 5 execuções: `dashboard_summary` em 56 ms (P1) e 58 ms (P3), meta < 800 ms; `dashboard_cells_by_type` em 0,4 e 7 ms; `dashboard_g12_ranking` em 5 e 4 ms. | ✅ |
+
+### PR 4: Ministérios e seletores (mci-connect#16)
+Totais: pgTAP `e108_pr4_ministry_tree.test.sql` com 115 verificações (464 com as dos PRs 2 e 3); Vitest com 232 testes no total; `e2e/ministries-selectors.spec.ts` e `login.spec.ts` (5 de 5). Treze mutações aplicadas à função foram todas detectadas.
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-02 | pgTAP §9: o nó conta 1.100 discípulos diretos ativos, a expansão devolve os 1.100 e o conjunto bate com `members` sob o RLS, para P1 e para a P3 do ministério B. | ✅ (o corte de 1000 do PostgREST numa expansão não foi testado; ver risco 15) |
+| RN-05 | pgTAP §8, para P1, P2, P3, a P3 do ministério B, P4, P5 e o usuário sem cadastro: cada nível é igual aos ativos de `members` sob o RLS; nenhum id devolvido é invisível; `direct_disciples` bate com a contagem sob o RLS; `direct_disciples > 0` implica expansão não vazia. Mais o §3 (cônjuge invisível) e o §1 (não lê tabelas). Vitest `Ministries.test.tsx` (sem ler tabelas); e2e (nada lê `/rest/v1/members`). | ✅ |
+| RN-06 | Vitest `CellReportForm.test.tsx`: na edição, os participantes salvos aparecem com o nome, lido da `cell_report_participants_view`. | ✅ |
+| RN-07 | Vitest `AsyncMemberSelect.test.tsx`: 20 opções e "Carregar mais" quando vêm 21 linhas; Enter, clique e foco nas 3 últimas pedem o offset 20 uma vez só; nova busca volta ao offset 0; carregando, vazio ("Nenhum membro encontrado") e erro com "Tentar novamente"; Esc num Dialog fecha só o menu; Tab sai do campo; contraste no hover. `CellReportForm.test.tsx`: o participante mantém o nome depois de trocar a busca; só ativos; foco e `aria-describedby` na célula quando a validação falha. Também `select-a11y`, `use-member-options`, `use-cell-options`, `use-paginated-select` e `selectors`. E2e: 20 por vez, carregar mais sem repetir, busca recomeçando e Tab saindo do campo. | ✅ |
+| RN-10 | pgTAP: §2, o critério de aceite (12 discípulos, 2 casados entre si, 11 nós, homem primeiro, inativo oculto); §3, cônjuge inativo ou invisível, sem vazar o id; §4, um cônjuge lidera o outro; §5, regra do principal e independência da ordem dos ids; §6, ordem, `'{}'`, `'{NULL}'`, nulos e repetidos, 100 ids aceitos e 101 dando 22023. Vitest `Ministries.test.tsx`: 1 chamada ao abrir, 1 por expansão com `_parent_ids` sem nulos, nenhuma ao reabrir, folha sem botão, erros com o foco devolvido, vazio, 42501 sem novas tentativas. E2e: 1 requisição por expansão. | ✅ |
+| Contrato e grants | pgTAP §1: colunas e tipos, argumento padrão NULL, INVOKER, STABLE, `search_path`, `anon` e `PUBLIC` sem EXECUTE, `anon` recebe 42501. A migration roda duas vezes sem erro. | ✅ |
+| Critérios 9 e 10 | Volume (20 mil membros, 100 mil relatórios, 800 mil participações): P1 de 0,3 a 1,9 ms, P3 de 3,0 a 6,8 ms, pior caso 7,2 ms (meta < 100 ms); com estatísticas desatualizadas, 800 nós em 5,5 a 7,4 ms e 1.600 em 8 a 12 ms. Grep: os dias da semana só existem em `lib/cells/weekdays.ts`. Grep: o front não lê `members` nem `cells` diretamente. | ✅ |
+
+### O que não foi verificado
+- **Banco zerado:** nenhuma das migrations dos PRs 2 a 4 rodou num `db reset`, para preservar a massa da stack local. Elas rodaram duas vezes sobre as anteriores; o pgTAP do PR 3 também passou com os dados apagados dentro da transação.
+- **Banco remoto e produção:** nada foi aplicado nem lido. Os testes rodaram só na stack local.
+- **Aparelhos reais:** iPhone e Android não foram testados. O ajuste de toque do `PaginatedSelect` dentro do diálogo deve abrir o teclado no iPhone, mas só foi verificado com emulação. Conferir antes do promote.
+- **Leitores de tela reais** (VoiceOver, TalkBack, NVDA): só os atributos ARIA e as regiões vivas no DOM. Alguns leitores podem não anunciar um `role="status"` que já existe quando a área é montada.
+- **Outros navegadores e ajustes:** Firefox, Safari, zoom de 200%, fonte grande e paisagem; o tema escuro, que hoje não pode ser ligado.
+- **E2e sem permissão do dashboard:** não rodou depois das correções de UX, porque a stack não tem esse usuário. O caminho está coberto pelo Vitest.
+- **Badge "Meu Ministério"** com um usuário só com `view_own_ministry_dashboard`: não há esse usuário na massa.
+- **Carregar ao rolar no Vitest:** o jsdom não tem layout; está coberto no e2e.
+
