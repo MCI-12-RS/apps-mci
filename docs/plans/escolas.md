@@ -30,6 +30,37 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
   - Quem já concluiu a escola também pode refazê-la. Nesse caso, ele continua com **uma única** certificação daquela escola.
   - Todas as matrículas ficam no histórico.
 - **D-ESC-8, material:** o material é **um texto descritivo** (por exemplo, quais livros comprar), sem arquivos para baixar nem links externos. Ele é **informado no cadastro da turma**, não na escola, porque os materiais são atualizados de tempos em tempos e não ficam presos a uma escola. A escola não tem campo de material, e a turma não copia material nenhum dela.
+- **D-ESC-9, escopo da gestão:** quem tem "Gerenciar escolas" cuida das turmas da **igreja toda** e pode matricular qualquer membro ativo. No seletor, os membros fora do escopo dele aparecem só pelo nome.
+- **D-ESC-10, encerrar e reabrir:** a turma encerrada não aceita matrícula, chamada nem mudança de situação. O gestor pode reabrir a turma para corrigir algo.
+- **D-ESC-11, data de conclusão:** é o **dia da aprovação** (a data em que o gestor marcou "Aprovado", no horário de Brasília).
+- **D-ESC-12, propostas aceitas como estão:**
+  - **Membro inativo:** não pode ser matriculado. Se ficar inativo durante a turma, a matrícula, as presenças e a situação dele continuam.
+  - **Exclusão bloqueada:** uma escola com turmas, ou uma turma com alunos aprovados, não pode ser excluída. A mensagem diz o que resolver antes.
+  - **Dados da turma:**
+    - nome livre (ex.: "2027.1");
+    - dia, horário e local opcionais;
+    - material opcional;
+    - um ou mais professores, sempre membros.
+  - **Unicidade e casal:**
+    - o nome da escola é único;
+    - cada membro tem no máximo uma matrícula "Em andamento" por escola;
+    - uma escola inativa não recebe turma nova;
+    - matrícula e certificação são individuais, mesmo para casais.
+
+### Padrões adotados pelo plano (sem nova consulta)
+
+Detalhes de regra que o usuário não decidiu explicitamente. O PO usa estes padrões e os registra no spec como "definida pelo plano (2026-11-22)". O usuário pode mudar qualquer um na revisão do PR.
+- **Aula sem data:** aceita chamada a partir do início da turma (`start_date <= hoje`). Aula com data só aceita chamada a partir da própria data.
+- **Aulas da turma:** a quantidade fica fixa a partir da criação. Na turma, só o título e a data de cada aula podem ser editados. Mudar a lista de aulas da escola só afeta turmas novas.
+- **Motivo da situação:** é opcional, em texto, tanto ao aprovar quanto ao reprovar.
+- **Pré-requisitos:**
+  - Só certificações de outras escolas contam. Batismo e participação em célula ficam fora da v1.
+  - Não há exceção. Se a pessoa concluiu a escola exigida em outro lugar, o gestor registra a certificação manual (ESC-27).
+- **Quem vê o quê:**
+  - "Escolas concluídas" seguem o escopo de Membros.
+  - "Em andamento" e a chamada aparecem só para o próprio membro, para os gestores e para os professores da turma. O líder vê só as concluídas.
+- **Fora da v1:** filtros de Membros por escola, cards no Dashboard, certificação como requisito para liderar célula, e marcar "batizado" ao concluir a UV.
+- **Encontro e Reencontro:** se a liderança os tratar como escola, eles são cadastrados como escolas com 1 aula. Isso não muda o modelo.
 
 **Resultado desta etapa:** um PR no `apps-mci` com o spec (Negócio, Solução técnica e Tarefas) e os ponteiros no `CLAUDE.md` e no `docs/migracao.md`. Nada muda no `mci-connect` nem no banco.
 
@@ -37,8 +68,9 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
 
 1. **Branch.** Se o plano ainda não foi mergeado, continuar na `docs/plano-escolas`. Se já foi, criar a `docs/spec-escolas` a partir da `origin/main`. Não incluir o ponteiro do submódulo `mci-connect` no commit.
 2. **O `product-owner` escreve a seção Negócio** de `docs/specs/escolas.md`, a partir do rascunho em `escolas-pesquisa-po.md`, com estes ajustes:
-   - Status "em refinamento" e Paridade "não".
-   - Uma seção "Decisões" com D-ESC-1…8.
+   - Status "pronto para desenvolvimento (aguarda a fase 7 e as dependências)", depois que o architect terminar. Paridade "não".
+   - Uma seção "Decisões" com D-ESC-1…12 e os padrões adotados pelo plano.
+   - **Nenhuma regra fica "a confirmar".** Todas as regras ESC viram "definida pelo usuário (2026-11-22)", "definida pelo plano (2026-11-22)" ou D1/DEL. Os valores das propostas que o usuário aceitou (D-ESC-9…12) deixam de ter a marcação "(valor proposto)".
    - **ESC-20 reescrita:** a aprovação é manual e não há frequência mínima. A tela mostra presenças, faltas e o % de cada aluno.
    - **ESC-13 e ESC-22 reescritas (D-ESC-7):**
      - Reprovados e concluintes podem se matricular de novo na mesma escola.
@@ -57,18 +89,13 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
      - **ESC-27:** certificação manual.
      - **ESC-30:** mesmo escopo de Membros.
    - Uma seção curta "Pesquisa de domínio", com as fontes. O catálogo sugerido vai marcado como sugestão para a liderança. O catálogo é **dado**: o gestor cadastra as escolas, e isso não muda o schema.
-   - Respondidas em 2026-11-22: P-02 (D-ESC-5), P-05 (D-ESC-7), P-12 na parte dos não membros (D-ESC-6) e P-18 (D-ESC-8).
-   - As perguntas que continuam abertas, por prioridade. Cada uma traz a proposta do plano, que vale até a resposta da liderança:
-     - **P-01, catálogo e granularidade:** a CD é por nível ou por livro? A UV é uma escola só ou separada? Encontro e Reencontro são escolas? Proposta: é dado cadastrado pelo gestor, então não bloqueia o schema.
-     - **P-11, ciclo da turma:** proposta de encerrar e reabrir. A turma encerrada não aceita matrícula, chamada nem mudança de situação.
-     - **P-03, data de conclusão:** proposta de usar o dia em que o gestor aprovou. A alternativa é o fim da turma.
-     - **P-07, escopo da gestão:** proposta de valer para a igreja toda. A alternativa é cada ministério cuidar das suas turmas.
-     - **P-13, membro inativo:** proposta de não poder ser matriculado.
-     - **P-15, desfazer uma aprovação:** proposta conforme o ajuste da ESC-26 acima.
-     - **P-16, excluir com dependentes:** proposta de bloquear com uma mensagem.
-     - **P-17, dados da turma:** proposta de nome livre (ex.: "2027.1"). Dia, horário e local são opcionais.
-     - **P-20, rede G12 ou M12:** muda só os nomes do catálogo.
+   - Respondidas em 2026-11-22: P-02 (D-ESC-5), P-03 (D-ESC-2 e D-ESC-11), P-05 (D-ESC-7), P-07 (D-ESC-9), P-11 (D-ESC-10), P-12 na parte dos não membros (D-ESC-6), P-13, P-14, P-16 e P-17 (D-ESC-12), P-15 (ajuste da ESC-26 acima) e P-18 (D-ESC-8).
+   - Ficam como **informação para a liderança**. Elas não bloqueiam nada, porque são dados que o gestor cadastra pela tela:
+     - **P-01, catálogo:** a CD é por nível ou por livro? A UV é uma escola só ou separada?
+     - **P-20, rede G12 ou M12:** muda só os nomes das escolas.
 3. **O `architect` escreve "Solução técnica" e "Tarefas".** É só desenho, sem acionar os desenvolvedores. Ele parte do esboço abaixo e confere o schema real e o spec do E1.08.
+   - **Não volta ao usuário por dúvida técnica.** Um detalhe técnico que o plano não cobre (nomes, índices, bloqueios, ordem das migrations, formato dos erros) ele decide e registra em "Riscos" ou numa seção "Decisões técnicas" do spec.
+   - Só devolve à sessão principal o que **mudaria uma regra de negócio** acima. Se isso acontecer, ele adota o padrão mais conservador e lista o ponto no relatório, sem parar.
 4. **Ponteiros:**
    - `CLAUDE.md`: em "Features futuras > Escolas", trocar "o modelo ainda não está definido…" por um resumo de 3 a 4 linhas e o link do spec. No glossário, acrescentar Escola, Turma, Aula, Chamada e Certificação.
    - `docs/migracao.md`, linha 37: link para o spec, mantendo "só começa depois da fase 7".
@@ -98,7 +125,7 @@ Todas têm `id uuid`, `created_at` e `updated_at` (via `update_updated_at_column
 | `schools` | `name`, `description`, `is_active` | índice único parcial em `search_normalize(name)` `WHERE deleted_at IS NULL` |
 | `school_lessons` (modelo de aulas) | `school_id`, `position`, `title` | único em `(school_id, position)`; X é a quantidade de linhas; exclusão física, por ser configuração |
 | `school_prerequisites` | `school_id`, `required_school_id` | PK composta; `CHECK` contra autorreferência; ciclo bloqueado na RPC |
-| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `materials` (texto informado ao criar a turma, D-ESC-8), `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
+| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `meeting_day`, `meeting_time`, `location` (opcionais, D-ESC-12), `materials` (texto informado ao criar a turma, D-ESC-8), `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
 | `school_class_teachers` | `class_id`, `member_id` | tabela de ligação; exclusão física |
 | `school_class_lessons` | `class_id`, `position`, `title`, `lesson_date` | copiadas da escola quando a turma é criada (ESC-08); a data fica dentro do período |
 | `school_enrollments` (matrículas) | `class_id`, `school_id` (copiado, imutável), `member_id`, `status` (`in_progress`, `approved`, `failed`), `status_reason`, `status_changed_at`, `status_changed_by` | único parcial em `(class_id, member_id)`; único parcial em `(member_id, school_id) WHERE status = 'in_progress'` |
@@ -144,6 +171,9 @@ classDiagram
         +text name
         +date start_date
         +date end_date
+        +text meeting_day
+        +time meeting_time
+        +text location
         +text materials
         +timestamptz closed_at
         +timestamptz deleted_at
@@ -347,7 +377,7 @@ No `mci-connect`, depois da fase 7:
 ## Verificação
 
 - O spec segue o template: Negócio com RNs e critérios de aceite, e Solução técnica e Tarefas preenchidas pelo architect.
-- Toda RN tem origem: "definida pelo usuário (2026-11-22)", D1/DEL, ou "a confirmar" com a pergunta P-xx correspondente.
+- Toda RN tem origem: "definida pelo usuário (2026-11-22)", "definida pelo plano (2026-11-22)" ou D1/DEL. Nenhuma fica "a confirmar".
 - Toda RN "definida" tem o lugar onde é imposta no banco, na tabela "Onde cada regra é imposta".
 - Os links no `CLAUDE.md` e no `docs/migracao.md` abrem o spec.
 - `git diff origin/main --stat` mostra só os arquivos de docs, sem o ponteiro do `mci-connect`.
