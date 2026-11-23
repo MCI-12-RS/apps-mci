@@ -128,6 +128,11 @@ Cada agente começa sem o histórico da conversa e só sabe o que quem o chamou 
 - **Relatório de célula**: registro semanal de cada célula, com tema, data e hora, participantes (membros), visitantes (nomes livres), oferta e observações, ou então "não houve célula" com justificativa. É a base do controle de expansão.
 - **Vínculo celular**: se o membro é líder, timóteo ou anfitrião de alguma célula, ou se participou de um relatório recente.
 - **Consolidação**: feature futura (ver [Features futuras](#features-futuras-não-existem-em-nenhum-dos-dois)). ⚠️ No código do legado, "consolidation" (`MemberDataConsolidationRequested`, `ChildrenMembersComputed`, `/api/operation/member-consolidation`) quer dizer **recalcular campos computados** e não tem relação com o ministério de consolidação.
+- **Escola**: um curso da Escada do Sucesso (ex.: Universidade da Vida, Capacitação Destino), com uma lista de aulas e, opcionalmente, outras escolas como pré-requisito. Feature futura, ver [`docs/specs/escolas.md`](docs/specs/escolas.md).
+- **Turma**: uma edição de uma escola, com período, professores, material e alunos (membros matriculados). A situação de cada aluno é Em andamento, Aprovado ou Reprovado.
+- **Aula**: cada encontro de uma turma. A turma copia a lista de aulas da escola quando é criada, e cada aula pode ter uma data.
+- **Chamada**: a presença dos alunos numa aula: Presente, Ausente (com ou sem justificativa) ou Reposição, que conta como presença. É informativa, porque a aprovação é manual.
+- **Certificação**: o registro de que o membro concluiu uma escola, exibido como "Escolas concluídas" no cadastro. Há no máximo uma por membro e escola. Ela nasce da aprovação numa turma ou é concedida manualmente (carga histórica).
 
 ## Legado (`g12app-net`): funcionalidades e regras
 
@@ -374,7 +379,10 @@ Quando alguém visita uma reunião **na igreja** (não numa célula), os dados d
 - Quem consolida, quais são as etapas e como é o acompanhamento ainda não está definido. Pergunte antes de modelar.
 
 ### Escolas
-Escolas com **turmas**, **material por turma** e a situação de cada aluno na turma: **aprovado, reprovado ou em progresso**. Os alunos são membros. O modelo ainda não está definido (pré-requisitos entre escolas, frequência, professores…). Pergunte antes de modelar.
+Spec fechado em [`docs/specs/escolas.md`](docs/specs/escolas.md), com as regras `ESC-` e as decisões `D-ESC-`. A implementação só começa depois da fase 7 do `docs/migracao.md`. Em resumo:
+- A escola tem uma lista de aulas e pode exigir outras escolas como pré-requisito. A turma copia as aulas da escola e tem período, professores (membros), material em texto e alunos, que são sempre membros.
+- A chamada de cada aula é lançada pelo gestor ou pelo professor da turma e é só informativa. A aprovação é manual e gera **uma única certificação por membro e escola**, exibida em "Escolas concluídas" no cadastro, no mesmo escopo de Membros.
+- Permissão nova `manage_schools` ("Gerenciar escolas"), que vale para a igreja toda. As escritas são só por RPC, e a exclusão é lógica.
 
 ## Migração de dados (legado → Supabase)
 

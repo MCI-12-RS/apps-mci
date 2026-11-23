@@ -34,7 +34,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 
 - As fases 1 a 4 podem andar em paralelo, respeitando as dependências de cada passo.
 - O andamento é marcado na seção [Progresso](#progresso).
-- Consolidação e Escolas ficam fora deste documento. São features novas e só começam depois da fase 7.
+- Consolidação e Escolas ficam fora deste documento. São features novas e só começam depois da fase 7. O spec de Escolas está em [`specs/escolas.md`](specs/escolas.md).
 
 ## Progresso
 
