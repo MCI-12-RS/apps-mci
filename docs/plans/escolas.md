@@ -113,14 +113,14 @@ Para não poluir o diagrama, ele omite `id`, `created_at` e `updated_at`. `membe
 classDiagram
     direction LR
 
-    class members {
+    class members["members (Membro)"] {
         <<existente>>
         +uuid id PK
         +text name
         +bool is_active
     }
 
-    class schools {
+    class schools["schools (Escola)"] {
         +text name
         +text description
         +bool is_active
@@ -128,18 +128,18 @@ classDiagram
         +uuid deleted_by
     }
 
-    class school_lessons {
+    class school_lessons["school_lessons (Aula da escola)"] {
         +uuid school_id FK
         +int position
         +text title
     }
 
-    class school_prerequisites {
+    class school_prerequisites["school_prerequisites (Pré-requisito)"] {
         +uuid school_id PK FK
         +uuid required_school_id PK FK
     }
 
-    class school_classes {
+    class school_classes["school_classes (Turma)"] {
         +uuid school_id FK
         +text name
         +date start_date
@@ -150,19 +150,19 @@ classDiagram
         +uuid deleted_by
     }
 
-    class school_class_lessons {
+    class school_class_lessons["school_class_lessons (Aula da turma)"] {
         +uuid class_id FK
         +int position
         +text title
         +date lesson_date
     }
 
-    class school_class_teachers {
+    class school_class_teachers["school_class_teachers (Professor da turma)"] {
         +uuid class_id PK FK
         +uuid member_id PK FK
     }
 
-    class school_enrollments {
+    class school_enrollments["school_enrollments (Matrícula do aluno)"] {
         +uuid class_id FK
         +uuid school_id FK
         +uuid member_id FK
@@ -174,14 +174,14 @@ classDiagram
         +uuid deleted_by
     }
 
-    class school_attendance {
+    class school_attendance["school_attendance (Presença)"] {
         +uuid enrollment_id PK FK
         +uuid class_lesson_id PK FK
         +attendance_status status
         +text justification
     }
 
-    class member_certifications {
+    class member_certifications["member_certifications (Certificação)"] {
         +uuid member_id FK
         +uuid school_id FK
         +uuid enrollment_id FK
@@ -193,21 +193,21 @@ classDiagram
         +uuid deleted_by
     }
 
-    class enrollment_status {
+    class enrollment_status["enrollment_status (Situação do aluno)"] {
         <<enumeration>>
         in_progress
         approved
         failed
     }
 
-    class attendance_status {
+    class attendance_status["attendance_status (Presença na aula)"] {
         <<enumeration>>
         present
         absent
         makeup
     }
 
-    class certification_source {
+    class certification_source["certification_source (Origem da certificação)"] {
         <<enumeration>>
         enrollment
         manual
