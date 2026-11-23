@@ -275,7 +275,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `is_admin`: quem tem `manage_roles`.
   - `get_ministry_root`: o ancestral com `g12_level = 1`.
   - `is_in_same_ministry` (v2): o mesmo G12, incluindo o cônjuge do G12 e a subárvore dele.
-  - `is_leader_of_visible_member`: a política de SELECT de `members` também mostra os líderes de membros visíveis, com a linha inteira.
+  - `is_leader_of_visible_member`: ainda existe, mas a política de SELECT de `members` não a usa mais (E1.13). O nome de quem está fora do escopo vem de `member_names`.
   - `can_manage_own_cell`: é líder ou timóteo da célula.
 - Leitura pelo front (E1.08), sempre por views ou RPCs:
   - Views *security definer* cujo `WHERE` espelha a política de SELECT da tabela: `members_view` (com a máscara de dados sensíveis), `cells_view`, `cell_reports_view` e `cell_report_participants_view`. Têm colunas calculadas (nomes, G12 da célula, último relatório, contagens) e `search_text` sem acento.
@@ -289,12 +289,12 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Relatórios:
     - inserir: `edit_cell` ou `submit_any_visible_report` (em qualquer célula, sem checar visibilidade), ou `submit_own_cell_report` na própria célula;
     - editar: `edit_cell_report`; excluir: `delete_cell_report`. Ambos sem escopo.
-  - `view_sensitive_data`: imposta na `members_view` (E1.08). A tabela `members` ainda devolve as colunas sensíveis até o PR 5 do E1.08.
+  - `view_sensitive_data`: imposta na `members_view` e travada na tabela. `authenticated` só tem SELECT por coluna nas colunas não sensíveis de `members`, e `anon` não lê a tabela (E1.08 PR 5).
   - `view_own_ministry_dashboard`: libera as RPCs do dashboard, como `view_dashboard`. O escopo dos números vem das permissões de leitura; o selo "Meu Ministério" é só da UI.
 - No front, `hasPermission` retorna `true` para tudo quando a role é `is_system`. O RLS **não** tem esse atalho.
 
 ### Edge Functions
-- `create-user-admin`: cria o usuário no Auth (com service role) e a linha em `members`. É usada no cadastro de membro.
+- `create-user-admin`: exige JWT e `create_member`, valida a função atribuída, cria o usuário no Auth (com service role) e grava o membro com a sessão de quem chama (o RLS vale e a auditoria registra o autor). Devolve só o `id`. É usada no cadastro de membro.
 - `get-user-email`: converte CPF ou celular no e-mail correspondente, para o login.
 - `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
 
@@ -330,7 +330,11 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - A migration `20260426202511` repete a `20260326050000`, sinal de que o banco do Lovable não rodou as migrations manuais.
   - Antes de escrever uma migration, **confira o schema real no Supabase** e regenere os tipos.
 - Algumas migrations têm nome em UUID (geradas pelo Lovable) e outras têm nome legível (manuais). Nunca edite uma migration já aplicada; crie uma nova.
-- **`members_view` é *security definer* de propósito** (o advisor do Supabase acusa `security_definer_view`; não troque para `security_invoker`, que desliga a máscara). O `WHERE` dela espelha a política de SELECT de `members`: mudou uma, mude a outra (o teste de paridade do E1.08 confere). As colunas sensíveis estão listadas em três lugares: a view, a regra 6 de `enforce_member_write_rules` e `src/lib/members/fields.ts`.
+- **As quatro views de leitura são *security definer* de propósito** (`members_view`, `cells_view`, `cell_reports_view`, `cell_report_participants_view`). O advisor do Supabase acusa `security_definer_view`; não troque para `security_invoker`, que desliga a máscara e o escopo. O `WHERE` de cada uma espelha a política de SELECT da tabela: mudou uma, mude a outra (os testes de paridade do E1.08 conferem). As colunas sensíveis estão listadas em quatro lugares: a `members_view`, a regra 6 de `enforce_member_write_rules`, `src/lib/members/fields.ts` e o GRANT por coluna (migration `e108_members_column_lock` e o pgTAP dela, que amarra as listas).
+- **`members` tem SELECT só por coluna** (E1.08 PR 5):
+  - no front, nada de `select('*')` em `members`, e nada de `.select()` sem colunas depois de insert, update ou delete: o RETURNING de coluna sensível dá 42501 e a escrita é desfeita. Escreva sem `.select()` ou com `.select('id')`, e leia pela `members_view`;
+  - toda coluna nova em `members` precisa, na mesma migration, de `GRANT SELECT (coluna) ON public.members TO authenticated` se não for sensível. Uma coluna sensível nunca recebe o GRANT e entra na máscara. O pgTAP `e108_pr5_members_column_lock` falha se uma coluna ficar sem essa decisão;
+  - não siga a dica "GRANT SELECT ON public.members TO authenticated" da mensagem de erro 42501: ela desfaz a trava.
 - As funções chamadas por uma view rodam com os privilégios de quem consulta: as funções usadas pelas views precisam de `GRANT EXECUTE ... TO authenticated`.
 - O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. As listas, o dashboard, a árvore e os seletores já buscam no servidor (E1.08); em código novo, prefira `count`, paginação, views ou RPC.
 - As políticas da `20260326193800` nunca foram removidas. Se essa migration rodou, elas se somam às novas, por exemplo `edit_cell` com `FOR ALL` em participantes. Confira em `pg_policies` (E1.01).
@@ -410,11 +414,8 @@ Use esses IDs nos specs e nos testes. Em resumo:
 
 Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 
-- `create-user-admin` roda com `verify_jwt = false` e service role, e **não verifica quem está chamando**. Qualquer pessoa com a URL consegue criar usuários com qualquer `role_id`, inclusive Administrador. Exija JWT e cheque `create_member` (e quem pode atribuir cada role).
-- A policy de UPDATE em `members` para `edit_own_data` não restringe colunas: o usuário consegue alterar o próprio `role_id` ou `leader_id`, o que é escalada de privilégio. Restrinja via trigger ou RPC.
 - `get-user-email` devolve o e-mail de qualquer CPF ou celular para quem chamar (enumeração de dados pessoais).
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
 - As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
-- `view_sensitive_data` já vale na `members_view`, mas a tabela `members` ainda devolve CPF, e-mail, telefones e endereço a quem a lê direto pela API. O front não lê mais a tabela (E1.08 PR 4); fecha no PR 5 do E1.08, com GRANT por coluna.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
 - Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.

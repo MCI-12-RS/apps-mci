@@ -3,7 +3,7 @@
 > Status: aprovado em 2026-11-15 (decisões D-1 a D-5 respondidas pelo usuário). Implementação em 5 PRs.
 > - PR 1 em produção (2026-11-15, mci-connect#12).
 > - PRs 2, 3 e 4 em produção (2026-11-23): mci-connect#14 (Células e Relatórios), #15 (Dashboard) e #16 (Ministérios e seletores), promovidos no `14ee75f`.
-> - PR 5 (trava de colunas em `members`) liberado: os PRs 1 a 4 já estão em produção.
+> - PR 5 em produção (2026-11-23, mci-connect#17): trava por coluna em `members`. **E1.08 concluído.**
 > Slug: `e1-08-paginacao-servidor` · Paridade com o legado: parcial. É um passo técnico da fase 1 e antecipa a MEM-14 e parte da DSH.
 
 ## Negócio
@@ -821,6 +821,18 @@ Totais: pgTAP `e108_pr4_ministry_tree.test.sql` com 115 verificações (464 com 
 | Contrato e grants | pgTAP §1: colunas e tipos, argumento padrão NULL, INVOKER, STABLE, `search_path`, `anon` e `PUBLIC` sem EXECUTE, `anon` recebe 42501. A migration roda duas vezes sem erro. | ✅ |
 | Critérios 9 e 10 | Volume (20 mil membros, 100 mil relatórios, 800 mil participações): P1 de 0,3 a 1,9 ms, P3 de 3,0 a 6,8 ms, pior caso 7,2 ms (meta < 100 ms); com estatísticas desatualizadas, 800 nós em 5,5 a 7,4 ms e 1.600 em 8 a 12 ms. Grep: os dias da semana só existem em `lib/cells/weekdays.ts`. Grep: o front não lê `members` nem `cells` diretamente. | ✅ |
 
+### PR 5: trava da máscara (mci-connect#17)
+Totais: pgTAP `e108_pr5_members_column_lock.test.sql` com 134 verificações (598 com as dos PRs 2 a 4, pelo `pg_prove`); Vitest com 233 testes no total; e2e versionados 6 de 6 (1 pulado); roteiro de tela contra a stack local com 26 verificações (24 ok; as 2 falhas são um bug anterior ao PR 5, no campo Função do `MemberForm`, corrigido à parte).
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-11 (trava) | pgTAP §1: `anon`, `authenticated` e `PUBLIC` sem SELECT de tabela; `authenticated` com SELECT nas 26 colunas e sem SELECT nas 8 sensíveis; `anon` sem coluna nenhuma; `service_role` lê tudo; INSERT, UPDATE e DELETE mantidos. §4 e §7: ler, filtrar, ordenar ou juntar por coluna sensível e `select *` dão 42501, também para o P1 e para o próprio membro. PostgREST: `select=cpf` e `select=*` dão 403/42501; `select=id,name` dá 200. | ✅ |
+| Risco 4 | pgTAP §2: toda coluna do catálogo é sensível ou tem SELECT. §8: uma coluna nova sem GRANT faz o teste falhar (falha fechada); com o GRANT, passa. A simulação do E2.01 (`deleted_at` e `deleted_by` com GRANT) passa. | ✅ |
+| Amarração das listas | pgTAP §3: as colunas sem SELECT = as que a `members_view` mascara para P2 = as que a regra 6 preserva. Vitest: `SENSITIVE_MEMBER_FIELDS` são as mesmas 8. 11 mutações (grants, máscara, regra 6), todas detectadas. | ✅ |
+| RN-12 | pgTAP §3, §5 e §6: regra 6, `view_sensitive_data`, o próprio membro, a `service_role` e o cadastro com `create_member` (INSERT sem RETURNING grava os campos sensíveis). | ✅ |
+| Critério 11 | pgTAP §5: UPDATE e DELETE por id, `RETURNING id` ok; `RETURNING cpf`/`*` e `SET notes = cpf` dão 42501. PostgREST: PATCH sem `Prefer` dá 204; com `return=representation` sem `select=` dá 42501 e a escrita é desfeita. `create-user-admin` servida localmente: 200 com só o id. Tela: listas, dashboard e árvore sem erro, edição dos próprios dados e de outro membro, cadastro e exclusão; nenhum GET à tabela `members`. Em produção (2026-11-23, só leitura): só as 8 colunas sensíveis sem SELECT, `select cpf`/`select *` dão 42501, `anon` sem leitura, views e RPCs respondem. | ✅ |
+| Regressões | pgTAP §6: regra 5, `g12_level`, cônjuge, totais, auditoria com autor, views, `member_names`, `dashboard_*` e `ministry_tree_nodes`. A migration roda de novo sem erro. | ✅ |
+
 ### O que não foi verificado
 - **Banco zerado:** nenhuma das migrations dos PRs 2 a 4 rodou num `db reset`, para preservar a massa da stack local. Elas rodaram duas vezes sobre as anteriores; o pgTAP do PR 3 também passou com os dados apagados dentro da transação.
 - **Banco remoto e produção:** nada foi aplicado nem lido. Os testes rodaram só na stack local.
@@ -830,4 +842,3 @@ Totais: pgTAP `e108_pr4_ministry_tree.test.sql` com 115 verificações (464 com 
 - **E2e sem permissão do dashboard:** não rodou depois das correções de UX, porque a stack não tem esse usuário. O caminho está coberto pelo Vitest.
 - **Badge "Meu Ministério"** com um usuário só com `view_own_ministry_dashboard`: não há esse usuário na massa.
 - **Carregar ao rolar no Vitest:** o jsdom não tem layout; está coberto no e2e.
-
