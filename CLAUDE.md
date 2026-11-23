@@ -73,6 +73,7 @@ O Claude Code encontra os agentes subindo a partir do diretório atual, então a
 | Agente | Papel |
 |---|---|
 | `product-owner` | Negócio e Visão G12: requisitos, regras (RN) com critérios de aceite, paridade com o legado, terminologia |
+| `ux-designer` | Experiência mobile-first: fluxos, wireframes responsivos, estados, textos e acessibilidade (seção Experiência (UX) do spec, critérios `UX-`) e revisão da UI implementada |
 | `architect` | Revisa as RNs, desenha a solução, quebra em tarefas e faz a revisão final (padrões, escala, segurança, race conditions) |
 | `backend-developer` | Migrations, RLS, RPC, triggers, Edge Functions e scripts de migração de dados MySQL → Supabase |
 | `frontend-developer` | Telas, formulários, listagens e integração do `mci-connect` com o Supabase |
@@ -83,22 +84,23 @@ O Claude Code encontra os agentes subindo a partir do diretório atual, então a
 
 | Agente | Pode acionar |
 |---|---|
-| Sessão principal | `product-owner` e `architect` (e qualquer agente, para tarefas avulsas) |
-| `architect` | `backend-developer`, `frontend-developer` e `qa` |
+| Sessão principal | `product-owner`, `ux-designer` e `architect` (e qualquer agente, para tarefas avulsas) |
+| `architect` | `backend-developer`, `frontend-developer`, `qa` e `ux-designer` (revisão da UI) |
 | `backend-developer`, `frontend-developer` | só o `code-reviewer` |
-| `product-owner`, `code-reviewer`, `qa` | ninguém; devolvem o resultado para quem chamou |
+| `product-owner`, `ux-designer`, `code-reviewer`, `qa` | ninguém; devolvem o resultado para quem chamou |
 
-Para `product-owner`, `code-reviewer` e `qa`, a restrição está na configuração: eles não têm a ferramenta `Agent`. Para os desenvolvedores, ela está nas instruções.
+Para `product-owner`, `ux-designer`, `code-reviewer` e `qa`, a restrição está na configuração: eles não têm a ferramenta `Agent`. Para os desenvolvedores, ela está nas instruções.
 
 **Fluxo de uma feature.**
 
 1. Sessão principal → `product-owner`: cria ou atualiza `docs/specs/<slug>.md` (modelo em `docs/specs/_template.md`), seção Negócio. As perguntas em aberto vão para o usuário; RN "a confirmar" não segue adiante.
-2. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas" e coordena a implementação:
+2. Sessão principal → `ux-designer`, quando a feature tem tela nova ou muda uma tela: escreve a seção Experiência (UX) do spec (fluxos, wireframes do celular ao desktop, estados, textos e critérios `UX-`). Dúvidas de negócio voltam para a sessão principal, que leva ao PO ou ao usuário.
+3. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas" e coordena a implementação:
    1. Aciona o `backend-developer` (primeiro, se houver schema ou RPC) e o `frontend-developer`. Tarefas independentes rodam em paralelo.
    2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Achados de outro papel voltam no relatório dele.
-   3. Aciona o `qa`. Bugs encontrados voltam ao desenvolvedor responsável, para uma nova rodada.
+   3. Aciona o `qa` e, se a tarefa mudou tela, o `ux-designer` para revisar a UI (os dois em paralelo). Bugs e achados voltam ao desenvolvedor responsável, para uma nova rodada.
    4. Faz a revisão final e devolve um relatório consolidado.
-3. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
+4. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
    - a matriz de paridade deste arquivo;
    - o status das regras na seção 3 de `docs/migracao.md`;
    - o passo correspondente (`E2.xx`) na seção Progresso do mesmo documento.
