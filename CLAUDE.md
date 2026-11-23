@@ -389,7 +389,7 @@ O plano completo está em **[`docs/migracao.md`](docs/migracao.md)**:
 Use esses IDs nos specs e nos testes. Em resumo:
 - A origem é o **MySQL de produção** do legado (`Members`, `Addresses`, `Cells`, `Reports`, `ReportMembers`).
 - Carga ELT: cópia bruta para o schema `legacy` (fora da API) → SQL de transformação idempotente com `legacy_id` → backfill → validação.
-- **Senhas:** o legado guarda MD5 sem salt, que o Supabase Auth não importa. O plano é a migração transparente no primeiro login: uma Edge Function confere o MD5 guardado em `private.legacy_credentials` e grava a senha no Auth.
+- **Senhas:** o legado guarda MD5 sem salt, que o Supabase Auth não importa. O plano é a migração transparente no primeiro login: uma Edge Function confere o MD5 guardado em `private.legacy_credentials` e grava a senha no Auth. Não há prazo (D6): a senha antiga vale até o primeiro login de cada usuário.
 
 ## Problemas conhecidos
 

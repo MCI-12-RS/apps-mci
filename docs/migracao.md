@@ -30,7 +30,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | 4. Ferramentas de migração | Scripts de cópia, saneamento, carga e validação (seção 5) | Passos E4 concluídos |
 | 5. Ensaios | Migração completa em homologação (5.7) | Go/no-go aprovado |
 | 6. Cutover | Congelar o legado, migrar a produção e liberar o novo (7.2) | Novo no ar |
-| 7. Desligamento | Fim da janela de senhas, limpeza e desligamento do legado (7.4) | Legado desligado e backup arquivado |
+| 7. Desligamento | Limpeza e desligamento do legado (7.4) | Legado desligado e backup arquivado |
 
 - As fases 1 a 4 podem andar em paralelo, respeitando as dependências de cada passo.
 - O andamento é marcado na seção [Progresso](#progresso).
@@ -53,29 +53,29 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 
 | Fase | Status | Pode começar quando |
 |---|---|---|
-| 0. Decisões | 🔄 1 de 10 | Já |
+| 0. Decisões | ✅ | Já |
 | 1. Preparação | 🔄 8 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
 | 6. Cutover | ⬜ | E5.05 (go/no-go) |
-| 7. Desligamento | ⬜ | Fim do prazo de senhas (D6) |
+| 7. Desligamento | ⬜ | Fim do plantão de suporte (E6.07) |
 
 ### Fase 0: Decisões (seção 4)
 
 Responsável: liderança da igreja, com o `product-owner`.
 
 - [x] **E0.01** D1: exclusão lógica. (2026-11-14)
-- [ ] **E0.02** D2: os totais contam inativos? · bloqueia E2.06
-- [ ] **E0.03** D3: quem pode lançar relatório · bloqueia E2.11
-- [ ] **E0.04** D4: timóteo e anfitrião obrigatórios na célula · bloqueia E2.08
-- [ ] **E0.05** D5: identificadores de login aceitos · bloqueia E1.04 e E2.04
-- [ ] **E0.06** D6: prazo da migração de senhas · bloqueia E7.01
-- [ ] **E0.07** D7: domínio dos e-mails fictícios · bloqueia E1.06 e E4.08
-- [ ] **E0.08** D8: retenção do banco legado · bloqueia E7.04
-- [ ] **E0.09** D9: lista de pastores revisada · bloqueia E4.06
-- [ ] **E0.10** D10: exclusão de membro com discípulos ou células · bloqueia E2.01
+- [x] **E0.02** D2: os totais contam inativos? **Não.** Libera o E2.06 (2026-11-23)
+- [x] **E0.03** D3: quem pode lançar relatório: **líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo.** Libera o E2.11 (2026-11-23)
+- [x] **E0.04** D4: timóteo e anfitrião obrigatórios na célula: **sim, como no legado.** Libera o E2.08 (2026-11-23)
+- [x] **E0.05** D5: identificadores de login aceitos: **e-mail real, celular ou CPF, cada um único.** Libera o E1.04 e o E2.04 (2026-11-23)
+- [x] **E0.06** D6: prazo da migração de senhas: **sem prazo.** O E7.01 não será feito (2026-11-23)
+- [x] **E0.07** D7: domínio dos e-mails fictícios: **um domínio controlado pela igreja.** Libera o E1.06 e o E4.08 (2026-11-23)
+- [x] **E0.08** D8: retenção do banco legado: **backup criptografado por 12 meses, depois descartado** (2026-11-23)
+- [x] **E0.09** D9: pastores: **Samuel Colares e Magda Colares** (casal). Libera o E4.06 (2026-11-23)
+- [x] **E0.10** D10: exclusão de membro com discípulos ou células: **bloquear até reatribuir.** Libera o E2.01 (2026-11-23)
 
 ### Fase 1: Preparação (seção 2)
 
@@ -185,7 +185,7 @@ Data marcada: _a definir_
 
 ### Fase 7: Desligamento (7.4)
 
-- [ ] **E7.01** Credenciais legadas restantes apagadas, no fim do prazo D6
+- [x] **E7.01** ~~Credenciais legadas restantes apagadas, no fim do prazo D6~~ · **Não será feito.** Decisão D6: a migração de senhas não tem prazo (2026-11-23)
 - [ ] **E7.02** Schema `legacy` apagado
 - [ ] **E7.03** Infraestrutura do legado desligada
 - [ ] **E7.04** Backup final criptografado guardado conforme a D8
@@ -207,7 +207,7 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
   - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`).
-  - Confirmar se o domínio `mci12fakemail.com` pertence à igreja. Quem controlar esse domínio recebe os e-mails das contas fictícias, inclusive os de redefinição de senha. Ver decisão D7.
+  - Trocar o domínio dos e-mails fictícios (`mci12fakemail.com`) por um domínio controlado pela igreja (D7, E1.06). Quem controla esse domínio recebe os e-mails das contas fictícias, inclusive os de redefinição de senha.
   - Configurar SMTP próprio no Supabase Auth. O envio padrão tem limite baixo e não serve para produção.
 - **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar.
 - **Perfis e escopo** configurados conforme a seção 6.5.
@@ -239,7 +239,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | MEM-01 | Nome com nome **e** sobrenome. | `UI/pages/Members/details.js`; `Domain/Validators/MemberDtoValidator.cs` | ❌ | Banco (CHECK) + zod |
-| MEM-02 | Pelo menos um identificador de login real: e-mail ou celular (❓ D5: aceitar também CPF). | `UI/pages/Members/details.js` | ❌ (o novo gera e-mail fictício) | Banco (CHECK) |
+| MEM-02 | Pelo menos um identificador de login real: e-mail, celular ou CPF (D5). | `UI/pages/Members/details.js` | ❌ (o novo gera e-mail fictício) | Banco (CHECK) |
 | MEM-03 | E-mail único, sem diferenciar maiúsculas; celular único. | `MemberDtoValidator.cs` | ❌ | Índices únicos (`lower(email)`, `mobile_whatsapp`) |
 | MEM-04 | CPF válido (dígitos verificadores) quando informado. | `UI/shared/utils.js` (`ValidateCPF`) | ❌ | Função SQL + CHECK; zod |
 | MEM-05 | CPF único quando informado. Regra nova, necessária porque o novo aceita login por CPF. | — | ❌ | Índice único parcial |
@@ -261,13 +261,13 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | HIE-01 | Sem ciclos: ninguém pode ser discípulo de um discípulo seu, nem de si mesmo. | `MemberService.cs` (`UpdateComputedValues`) | ❌ | Trigger |
 | HIE-02 | O nível ministerial vem da profundidade na árvore. Ao trocar o líder de alguém, a subárvore inteira é recalculada. | `MemberService.cs` + `App/EventHandlers/DomainEvents/MemberChangedHandler.cs` | 🟡 calcula o nível, mas não propaga para os descendentes | Trigger |
 | HIE-03 | Líder direto, G12 e caminho da liderança ("Pastor / G12 / … / líder") disponíveis para exibir e filtrar. | `Member.LeadershipTree`, `ComputedG12Leader` | 🟡 o G12 é calculado no cliente, só na tela de Células | View ou colunas mantidas por trigger |
-| HIE-04 | Totais por pessoa: discípulos em todos os níveis, e células lideradas na subárvore, incluindo as da própria pessoa. | `MemberChangedHandler.cs`, `CellChangedHandler.cs` | ✅ trigger (❓ D2: o legado conta inativos, o novo não) | Trigger |
+| HIE-04 | Totais por pessoa: discípulos em todos os níveis, e células lideradas na subárvore, incluindo as da própria pessoa. | `MemberChangedHandler.cs`, `CellChangedHandler.cs` | ✅ trigger (D2: não conta inativos, como o novo já faz; o legado contava) | Trigger |
 
 ### 3.4 Células (CEL)
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (❓ D4) | NOT NULL |
+| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (D4: os três obrigatórios) | NOT NULL |
 | CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | 🟡 têm valor padrão, mas aceitam nulo | NOT NULL + CHECK |
 | CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | 🟡 texto livre | CHECK ou enum |
 | CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | 🟡 Vale para a igreja toda. A UI exige `edit_cell`, mas o RLS ainda deixa líder e timóteo editarem a própria célula. | RLS |
@@ -296,7 +296,7 @@ Definição da situação do relatório (CEL-05):
 | REL-08 | Visitantes são nomes livres, e só os nomes preenchidos contam. | `ReportService.cs` | ✅ | RPC |
 | REL-09 | O relatório guarda um snapshot de líder, anfitrião, timóteo e tipo da célula no momento do lançamento. | `Domain/Model/Report.cs` | ❌ | Colunas + RPC |
 | REL-10 | Relatório e participantes são gravados juntos (tudo ou nada). | Transação do EF | ❌ chamadas separadas | RPC |
-| REL-11 | Quem lança: qualquer usuário com a célula no escopo (❓ D3). Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 Há permissões próprias (`submit_*`, `edit_cell_report`, `delete_cell_report`), mas sem escopo. `submit_any_visible_report` não confere se a célula está visível. | RLS / RPC |
+| REL-11 | Quem lança (D3): líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo. No legado, qualquer usuário com a célula no escopo. Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 Há permissões próprias (`submit_*`, `edit_cell_report`, `delete_cell_report`), mas sem escopo. `submit_any_visible_report` não confere se a célula está visível. | RLS / RPC |
 | REL-12 | Oferta em reais, maior ou igual a zero. | `Report.Contribution` | 🟡 Só no zod; não há CHECK no banco. | CHECK |
 | REL-13 | Listagem com filtros (líder, G12, período) e atalhos para esta semana, a passada e a retrasada. | `UI/pages/Report/index.js`, `UI/components/NavMenu` | ❌ | RPC + UI |
 | REL-14 | **Exportação para Excel**, uma linha por célula no período, ordenada por G12. Colunas: Célula #, G12, Líder, Endereço, Bairro, Situação, Data/Hora, Oferta, Nº de participantes, Nº de visitantes e Observações. Situação: "Relatório não entregue.", "Não houve célula." ou "Célula realizada.". | `App/Services/ExportService.cs`, `ColumnFormatter.cs` | ❌ | Edge Function ou geração no cliente |
@@ -338,7 +338,7 @@ Continuam com exclusão física as tabelas de configuração (`roles`, `role_per
 | DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ❌ | RPC de exclusão |
 | DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | ❌ | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
 | DEL-07 | Excluir uma célula preserva os relatórios dela, que continuam no histórico e nas somas de períodos passados. | `IsDeleted` em `Cells` e `Reports` | ❌ hoje apaga em cascata | FKs sem cascata |
-| DEL-08 | Um membro com discípulos ativos, ou que é líder, timóteo ou anfitrião de célula ativa, só pode ser excluído depois que essas ligações forem reatribuídas. | Nova (❓ D10) | ❌ | RPC de exclusão |
+| DEL-08 | Um membro com discípulos ativos, ou que é líder, timóteo ou anfitrião de célula ativa, só pode ser excluído depois que essas ligações forem reatribuídas. | Nova (D10) | ❌ | RPC de exclusão |
 | DEL-09 | Administradores podem reativar um registro excluído. Ao cadastrar alguém com o e-mail, o celular ou o CPF de um membro excluído, o sistema oferece reativar o cadastro existente em vez de criar outro. | Nova | ❌ | RPC + UI |
 
 Pontos de atenção para o `architect`:
@@ -359,15 +359,15 @@ Pontos de atenção para o `architect`:
 | # | Decisão | Opções | Recomendação |
 |---|---|---|---|
 | D1 | Exclusão no novo | Exclusão lógica (`deleted_at`) ou física | ✅ **Decidido em 2026-11-14:** exclusão lógica em membros, células e relatórios, e em toda entidade de negócio nova. Os excluídos do legado migram com `deleted_at`. Regras na seção 3.8. |
-| D2 | Os totais de discípulos e células contam inativos? | O legado conta; o novo não | Não contar. Confirmar com a liderança. |
-| D3 | Quem pode lançar relatório | Legado: qualquer pessoa com a célula no escopo. Novo: líder ou timóteo, ou quem tem `edit_cell` | Líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo |
-| D4 | Timóteo e anfitrião obrigatórios na célula | O legado obriga; o novo não | Seguir o legado, salvo decisão contrária da liderança |
-| D5 | Identificadores de login aceitos | E-mail ou celular (legado); também CPF (novo) | E-mail real, celular ou CPF, com unicidade dos três |
-| D6 | Prazo da migração transparente de senhas (6.3) | 60, 90 ou 180 dias | 90 dias |
-| D7 | Domínio dos e-mails fictícios | Manter `mci12fakemail.com` ou usar um domínio da igreja | Domínio controlado pela igreja (ex.: um subdomínio do site) |
-| D8 | Retenção do banco legado depois do desligamento | — | Backup criptografado por um prazo definido pela igreja (ex.: 12 meses) e depois descarte |
-| D9 | Quem é pastor | Lista dos membros sem líder e sem "não tem liderança" | Revisão manual pela liderança antes do primeiro ensaio |
-| D10 | Excluir um membro que tem discípulos ou células ativas (DEL-08) | Bloquear até reatribuir; permitir e deixar os discípulos sem líder; ou passar os discípulos automaticamente para o líder de quem foi excluído | Bloquear até reatribuir, com uma mensagem que diga o que falta |
+| D2 | Os totais de discípulos e células contam inativos? | O legado conta; o novo não | ✅ **Decidido em 2026-11-23:** não contar. Os totais consideram só membros e células ativos, como o novo já faz. |
+| D3 | Quem pode lançar relatório | Legado: qualquer pessoa com a célula no escopo. Novo: líder ou timóteo, ou quem tem `edit_cell` | ✅ **Decidido em 2026-11-23:** líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo. |
+| D4 | Timóteo e anfitrião obrigatórios na célula | O legado obriga; o novo não | ✅ **Decidido em 2026-11-23:** seguir o legado. Os três são obrigatórios. |
+| D5 | Identificadores de login aceitos | E-mail ou celular (legado); também CPF (novo) | ✅ **Decidido em 2026-11-23:** e-mail real, celular ou CPF, com unicidade dos três. |
+| D6 | Prazo da migração transparente de senhas (6.3) | 60, 90 ou 180 dias | ✅ **Decidido em 2026-11-23:** **sem prazo.** A senha antiga vale até o primeiro login de cada usuário no novo, sem data para acabar. As credenciais legadas não são apagadas em lote (6.3, 7.4). |
+| D7 | Domínio dos e-mails fictícios | Manter `mci12fakemail.com` ou usar um domínio da igreja | ✅ **Decidido em 2026-11-23:** um domínio controlado pela igreja (ex.: um subdomínio de `mci12rs.com.br`). O nome final é escolhido no E1.06. |
+| D8 | Retenção do banco legado depois do desligamento | — | ✅ **Decidido em 2026-11-23:** backup criptografado guardado por 12 meses e depois descartado. |
+| D9 | Quem é pastor | Lista dos membros sem líder e sem "não tem liderança" | ✅ **Decidido em 2026-11-23:** os pastores são **Samuel Colares e Magda Colares** (casal). Os demais membros sem líder e sem "não tem liderança" seguem o saneamento (5.4). |
+| D10 | Excluir um membro que tem discípulos ou células ativas (DEL-08) | Bloquear até reatribuir; permitir e deixar os discípulos sem líder; ou passar os discípulos automaticamente para o líder de quem foi excluído | ✅ **Decidido em 2026-11-23:** bloquear até reatribuir, com uma mensagem que diga o que falta (DEL-08). |
 | D11 | Senha inicial de quem é cadastrado pelo app | Manter `123456` como padrão, ou exigir uma senha no cadastro (como no legado) | ✅ **Decidido em 2026-11-15:** manter `123456` como senha inicial padrão. |
 
 ## 5. Migração dos dados
@@ -426,7 +426,7 @@ Rode depois da cópia bruta para o schema `legacy`. O que precisar de decisão h
 | E-mails inválidos | Importar como nulo; a conta usa e-mail fictício (6.2) |
 | Membros sem e-mail e sem celular | Migram sem conta de acesso; listar |
 | Membros sem senha | Migram com conta, sem credencial legada; precisam de redefinição (6.4) |
-| Sem líder e sem "não tem liderança" | Confirmar quem é pastor (D9) |
+| Sem líder e sem "não tem liderança" | Só Samuel Colares e Magda Colares são pastores (D9). Os demais são listados para a liderança indicar o líder no legado (E4.05). Quem não for corrigido migra sem liderança |
 | "Não tem liderança" marcado, mas com líder preenchido | O líder é descartado |
 | Referência para registro excluído | Cônjuge excluído: o vínculo é desfeito (DEL-05). Membro ativo com líder excluído: listar para reatribuição (D10). Célula ou relatório excluído: migra com `deleted_at`, e a referência é mantida. |
 | Cônjuge não recíproco | Corrigir no legado |
@@ -505,7 +505,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 Regras para `has_leadership`, `leader_id` e `is_pastor`:
 - `HasNoLeadership = 1` → `has_leadership = false`, `leader_id = NULL`, `is_pastor = false`.
 - `HasNoLeadership = 0` e com líder → `has_leadership = true`, `is_pastor = false`.
-- `HasNoLeadership = 0` e sem líder → pastor, a confirmar pela lista da D9.
+- `HasNoLeadership = 0` e sem líder → `is_pastor = true` só para Samuel Colares e Magda Colares (D9), identificados na carga pelo `Id` do legado, e não pelo nome. Os demais seguem o saneamento (5.4) e, se não forem corrigidos, migram como `HasNoLeadership = 1`.
 
 #### Cells → `cells`
 
@@ -553,7 +553,7 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - Os cônjuges são recíprocos.
   - Não há ciclos.
   - `12 ^ g12_level = MinistryLevel` para todos os que têm liderança.
-- **Totais.** `total_disciples` e `total_cells` batem com o legado. Se a D2 for aprovada, a diferença esperada é só a de membros inativos; o script calcula essa diferença e confere.
+- **Totais.** `total_disciples` e `total_cells` batem com o legado. Como a D2 decidiu não contar inativos, a diferença esperada é só a de membros inativos; o script calcula essa diferença e confere.
 - **Relatórios.**
   - Participantes por relatório = `NumMembers`.
   - Visitantes = `NumVisitors`.
@@ -628,7 +628,9 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 
 **A validar pelo `architect`:** como todos os logins saem do IP da função, conferir os limites de taxa de login do Supabase Auth e ajustar se for preciso.
 
-**Prazo (D6):** ao fim da janela, as credenciais legadas que sobraram são apagadas e esses usuários seguem o caminho da 6.4.
+**Sem prazo (D6):** a conferência do MD5 fica disponível enquanto houver credencial legada. Cada credencial é apagada só no primeiro login bem-sucedido do usuário; não há apagamento em lote. A qualquer momento, o usuário também pode seguir o caminho da 6.4.
+
+**A validar pelo `architect` no E3.01:** sem prazo, o hash de quem nunca entrar fica guardado por tempo indeterminado. Recomendação: guardar na `legacy_credentials` o MD5 embrulhado em bcrypt (`bcrypt(md5)`), e não o MD5 puro. A `sign-in` continua recebendo a senha, calcula o MD5 e confere o bcrypt. Diferente da alternativa descartada abaixo, nada muda no Supabase Auth nem no front, e um vazamento dessa tabela deixa de expor MD5 sem salt.
 
 **Alternativas descartadas:**
 - **Redefinição obrigatória para todos.** É simples, mas quem não tem e-mail real não recebe o link, o que gera suporte manual em massa.
@@ -660,7 +662,7 @@ O usuário `AdminUser` vem da configuração e não é membro, então **não mig
 A mensagem, enviada pela liderança antes do cutover, deve dizer:
 - o novo endereço do sistema;
 - que o login e a senha são os mesmos de antes, e que agora o CPF também funciona;
-- o prazo para entrar pela primeira vez (D6);
+- que não há prazo para o primeiro acesso: a senha antiga vale até ser usada uma vez no novo (D6);
 - que, em caso de problema, o caminho é falar com o próprio líder (redefinição assistida).
 
 ## 7. Cutover e desligamento do legado
@@ -691,9 +693,9 @@ A mensagem, enviada pela liderança antes do cutover, deve dizer:
 
 ### 7.4 Desligamento
 
-Ao fim da janela de senhas (D6) e com o sistema estável:
+Com o sistema estável, depois do plantão de suporte (E6.07):
 
-- Apagar as credenciais legadas que sobraram (`private.legacy_credentials`).
+- **Não** apagar as credenciais legadas (`private.legacy_credentials`). Pela D6, elas ficam até o primeiro login de cada usuário. Elas não dependem do legado nem do schema `legacy`.
 - Apagar o schema `legacy` do Postgres de destino.
 - Desligar a infraestrutura do legado.
 - Gerar o backup final criptografado do MySQL e guardá-lo conforme a D8.
