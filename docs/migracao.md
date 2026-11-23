@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | ✅ | Já |
-| 1. Preparação | 🔄 8 de 14 | Já |
+| 1. Preparação | 🔄 9 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -91,14 +91,14 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
-- [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
+- [x] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_ (concluído em 2026-11-23)
   - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
   - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
   - PRs 2 a 4 em produção (2026-11-23, promote do `14ee75f`):
     - PR 2 (mci-connect#14): Células e Relatórios paginados no servidor, pelas views `cells_view`, `cell_reports_view` e `cell_report_participants_view`;
     - PR 3 (mci-connect#15): Dashboard calculado no banco, em três RPCs. Corrige as células de segunda a sexta em "Células sem relatório";
     - PR 4 (mci-connect#16): árvore de Ministérios no banco (`ministry_tree_nodes`, uma chamada por expansão) e seletores com busca e paginação no servidor. Depois dele, o front não lê mais as tabelas `members` e `cells` diretamente.
-  - Falta o PR 5 (GRANT por coluna em `members`), já liberado: os PRs 1 a 4 estão em produção.
+  - PR 5 em produção (2026-11-23, mci-connect#17): SELECT por coluna em `members` para `authenticated`, sem as 8 colunas sensíveis; `anon` sem leitura; a `create-user-admin` devolve só o `id`.
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
@@ -208,12 +208,12 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - `members`: impedir que `edit_own_data` altere `role_id`, `auth_user_id`, `leader_id` e as demais colunas restritas (regra AUT-05).
   - `get-user-email`: parar de devolver o e-mail de qualquer CPF ou celular. Ele será substituído pela função de login da seção 6.3.
   - `change-member-password`: checar o escopo e o perfil do alvo.
-  - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis.
+  - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis. ✅ Feito no E1.13.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
-  - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`).
+  - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`). ✅ Feito no E1.03 (`assign_role`) e no E1.08 (`view_sensitive_data`, com a trava por coluna).
   - Trocar o domínio dos e-mails fictícios (`mci12fakemail.com`) por um domínio controlado pela igreja (D7, E1.06). Quem controla esse domínio recebe os e-mails das contas fictícias, inclusive os de redefinição de senha.
   - Configurar SMTP próprio no Supabase Auth. O envio padrão tem limite baixo e não serve para produção.
-- **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar.
+- **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar. ✅ Feito no E1.08, exceto a Auditoria (`Events.tsx` carrega os 500 eventos mais recentes).
 - **Perfis e escopo** configurados conforme a seção 6.5.
 - **Exclusão lógica** (seção 3.8) implementada antes de existir histórico real. Hoje, excluir uma célula apaga todos os relatórios dela, e excluir um membro apaga as participações dele.
 
@@ -411,6 +411,7 @@ Estas migrations são feitas pelo `backend-developer` (passos E2.01, E2.05, E3.0
 - Colunas de snapshot em `cell_reports`: `leader_id`, `host_id`, `timothy_id`, `cell_type` (REL-09).
 - `deleted_at` e `deleted_by` em `members`, `cells` e `cell_reports`; FKs sem `ON DELETE CASCADE` ou `SET NULL`; índices únicos parciais (`WHERE deleted_at IS NULL`); helpers de RLS, triggers e funções de totais ignorando excluídos (seção 3.8).
 - `created_by` / `updated_by` (MEM-12).
+- Toda coluna nova em `members` (`legacy_id`, `deleted_at`, `deleted_by`, `created_by`, `updated_by`…) precisa de `GRANT SELECT (coluna) ON public.members TO authenticated` na própria migration, por causa da trava por coluna do E1.08 PR 5.
 - Tabela `private.legacy_credentials` (6.3).
 - CHECKs de domínio (`gender`, `meeting_day`, `type`) e os índices únicos (MEM-03, MEM-05, REL-03), criados **antes** da carga para barrar dados ruins.
 
