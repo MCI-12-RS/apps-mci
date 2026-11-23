@@ -3,7 +3,7 @@
 Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir para o novo sistema (`mci-connect`, React + Supabase).
 
 > **Status:** ✅ feito · 🟡 parcial · ❌ falta · ❓ depende de decisão (seção 4)
-> **Última revisão:** 2026-11-14
+> **Última revisão:** 2026-11-23
 
 ## Sumário
 
@@ -94,7 +94,11 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
   - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
   - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
-  - Faltam: PR 2 (Células e Relatórios), PR 3 (Dashboard), PR 4 (Ministérios e seletores com paginação) e PR 5 (GRANT por coluna em `members`, só depois dos PRs 2 a 4 em produção).
+  - PRs 2 a 4 implementados em 2026-11-23 e abertos, empilhados. Entram nesta ordem:
+    - PR 2 (mci-connect#14): Células e Relatórios paginados no servidor, pelas views `cells_view`, `cell_reports_view` e `cell_report_participants_view`;
+    - PR 3 (mci-connect#15): Dashboard calculado no banco, em três RPCs. Corrige as células de segunda a sexta em "Células sem relatório";
+    - PR 4 (mci-connect#16): árvore de Ministérios no banco (`ministry_tree_nodes`, uma chamada por expansão) e seletores com busca e paginação no servidor. Depois dele, o front não lê mais as tabelas `members` e `cells` diretamente.
+  - Falta o PR 5 (GRANT por coluna em `members`), só depois dos PRs 1 a 4 promovidos em produção.
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
@@ -307,7 +311,7 @@ Definição da situação do relatório (CEL-05):
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | DSH-01 | Todos os números respeitam o escopo do usuário. | `App/Services/DashboardService.cs` (repositórios com escopo) | 🟡 depende do RLS (AUT-03) | RLS / RPC |
-| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células; o cálculo de pendentes ignora células de segunda a sexta (bug no mapa de dias) | RPC |
+| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células; o cálculo de pendentes ignora células de segunda a sexta (bug no mapa de dias), corrigido pelo PR 3 do E1.08 (mci-connect#15, a entrar) | RPC (`dashboard_summary`, E1.08) |
 | DSH-03 | **Geral**: membros ativos, células evangelísticas, células discipuladoras, inativos, não batizados, sem liderança e sem vínculo celular. | `DashboardService.cs` | 🟡 | RPC |
 | DSH-04 | Gráfico da semana: células realizadas × canceladas × sem relatório. | `UI/pages/Home` | 🟡 | UI |
 | DSH-05 | Cada card abre a listagem correspondente já filtrada. | `UI/pages/Home` | ❌ depende de MEM-13, CEL-06 e REL-13 | UI |
@@ -317,9 +321,9 @@ Definição da situação do relatório (CEL-05):
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| MIN-01 | Árvore de casais com o total de discípulos e de células, carregada sob demanda. | `App/Services/MinistryService.cs` | ✅ | — |
+| MIN-01 | Árvore de casais com o total de discípulos e de células, carregada sob demanda. | `App/Services/MinistryService.cs` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
 | MIN-02 | A raiz é o nível mais alto visível no escopo do usuário: quem tem escopo de ministério começa pelo próprio ministério. | `MemberRepository.GetChildrenWithSpouseAsync` | ❌ começa sempre nos pastores | RPC |
-| MIN-03 | Só membros ativos aparecem na árvore. | `GetChildrenWithSpouseAsync` | ✅ | — |
+| MIN-03 | Só membros ativos aparecem na árvore. | `GetChildrenWithSpouseAsync` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
 
 ### 3.8 Exclusão lógica (DEL)
 
@@ -475,6 +479,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 6. **Backfill.**
    - `g12_level`, `is_pastor` e `has_leadership` (CTE recursiva a partir dos pastores).
    - Totais (`total_disciples`, `total_cells`, `male_cells`, `female_cells`), usando **a mesma função SQL** que os triggers usam, para não duplicar a fórmula.
+   - `ANALYZE` nas tabelas carregadas. Com estatísticas desatualizadas, as views e RPCs do E1.08 podem escolher planos ruins (risco 17 do spec do E1.08).
 7. **Validação das FKs.** Como o modo `replica` não checa FKs, toda referência precisa ser conferida explicitamente.
 8. **Contas de acesso** (6.2).
 
@@ -554,6 +559,8 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - Não há ciclos.
   - `12 ^ g12_level = MinistryLevel` para todos os que têm liderança.
 - **Totais.** `total_disciples` e `total_cells` batem com o legado. Como a D2 decidiu não contar inativos, a diferença esperada é só a de membros inativos; o script calcula essa diferença e confere.
+  - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o backfill deixa os totais zerados, e o ranking G12 mostra 0 células.
+  - A soma de `total_cells` do ranking G12 (`dashboard_g12_ranking`) bate com as células ativas sob os G12.
 - **Relatórios.**
   - Participantes por relatório = `NumMembers`.
   - Visitantes = `NumVisitors`.
@@ -683,6 +690,7 @@ A mensagem, enviada pela liderança antes do cutover, deve dizer:
 | D−1 | Backup completo do MySQL e do Supabase de produção. |
 | D0, início | Tirar o legado do ar (parar o serviço ou pôr página de manutenção) para impedir novas escritas. |
 | D0 | Dump final do MySQL → cópia para `legacy` → transformação → contas → validação (5.6). |
+| D0, antes do go/no-go | `ANALYZE` nas tabelas carregadas, antes de liberar o acesso (já faz parte do backfill da 5.5). |
 | D0, go/no-go | Se a validação passar: liberar o novo e redirecionar o endereço do legado para ele. Se não passar: rollback (7.3). |
 | D+1 a D+30 | Plantão de suporte de login. Acompanhar erros e a porcentagem de senhas migradas. |
 
