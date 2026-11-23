@@ -94,11 +94,11 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [ ] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_
   - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
   - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
-  - PRs 2 a 4 implementados em 2026-11-23 e abertos, empilhados. Entram nesta ordem:
+  - PRs 2 a 4 em produção (2026-11-23, promote do `14ee75f`):
     - PR 2 (mci-connect#14): Células e Relatórios paginados no servidor, pelas views `cells_view`, `cell_reports_view` e `cell_report_participants_view`;
     - PR 3 (mci-connect#15): Dashboard calculado no banco, em três RPCs. Corrige as células de segunda a sexta em "Células sem relatório";
     - PR 4 (mci-connect#16): árvore de Ministérios no banco (`ministry_tree_nodes`, uma chamada por expansão) e seletores com busca e paginação no servidor. Depois dele, o front não lê mais as tabelas `members` e `cells` diretamente.
-  - Falta o PR 5 (GRANT por coluna em `members`), só depois dos PRs 1 a 4 promovidos em produção.
+  - Falta o PR 5 (GRANT por coluna em `members`), já liberado: os PRs 1 a 4 estão em produção.
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
 - [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
 - [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
@@ -311,7 +311,7 @@ Definição da situação do relatório (CEL-05):
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | DSH-01 | Todos os números respeitam o escopo do usuário. | `App/Services/DashboardService.cs` (repositórios com escopo) | 🟡 depende do RLS (AUT-03) | RLS / RPC |
-| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células; o cálculo de pendentes ignora células de segunda a sexta (bug no mapa de dias), corrigido pelo PR 3 do E1.08 (mci-connect#15, a entrar) | RPC (`dashboard_summary`, E1.08) |
+| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células. O cálculo de pendentes, que ignorava células de segunda a sexta, foi corrigido no PR 3 do E1.08 (mci-connect#15, em produção) | RPC (`dashboard_summary`, E1.08) |
 | DSH-03 | **Geral**: membros ativos, células evangelísticas, células discipuladoras, inativos, não batizados, sem liderança e sem vínculo celular. | `DashboardService.cs` | 🟡 | RPC |
 | DSH-04 | Gráfico da semana: células realizadas × canceladas × sem relatório. | `UI/pages/Home` | 🟡 | UI |
 | DSH-05 | Cada card abre a listagem correspondente já filtrada. | `UI/pages/Home` | ❌ depende de MEM-13, CEL-06 e REL-13 | UI |

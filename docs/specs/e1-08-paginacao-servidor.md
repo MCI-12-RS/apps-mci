@@ -2,8 +2,8 @@
 
 > Status: aprovado em 2026-11-15 (decisões D-1 a D-5 respondidas pelo usuário). Implementação em 5 PRs.
 > - PR 1 em produção (2026-11-15, mci-connect#12).
-> - PRs 2, 3 e 4 implementados em 2026-11-23 e abertos, empilhados: mci-connect#14 (Células e Relatórios), #15 (Dashboard, sobre o #14) e #16 (Ministérios e seletores, sobre o #15). Entram nessa ordem.
-> - PR 5 só depois dos PRs 1 a 4 promovidos em produção.
+> - PRs 2, 3 e 4 em produção (2026-11-23): mci-connect#14 (Células e Relatórios), #15 (Dashboard) e #16 (Ministérios e seletores), promovidos no `14ee75f`.
+> - PR 5 (trava de colunas em `members`) liberado: os PRs 1 a 4 já estão em produção.
 > Slug: `e1-08-paginacao-servidor` · Paridade com o legado: parcial. É um passo técnico da fase 1 e antecipa a MEM-14 e parte da DSH.
 
 ## Negócio
