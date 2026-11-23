@@ -29,7 +29,7 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
   - O reprovado pode ser matriculado em outra turma da mesma escola.
   - Quem já concluiu a escola também pode refazê-la. Nesse caso, ele continua com **uma única** certificação daquela escola.
   - Todas as matrículas ficam no histórico.
-- **D-ESC-8, material:** o material da turma é **só um texto descritivo** (por exemplo, quais livros comprar). Não há arquivos para baixar nem links externos.
+- **D-ESC-8, material:** o material é **um texto descritivo** (por exemplo, quais livros comprar), sem arquivos para baixar nem links externos. Ele é **informado no cadastro da turma**, não na escola, porque os materiais são atualizados de tempos em tempos e não ficam presos a uma escola. A escola não tem campo de material, e a turma não copia material nenhum dela.
 
 **Resultado desta etapa:** um PR no `apps-mci` com o spec (Negócio, Solução técnica e Tarefas) e os ponteiros no `CLAUDE.md` e no `docs/migracao.md`. Nada muda no `mci-connect` nem no banco.
 
@@ -47,7 +47,7 @@ A feature nova **Escolas e Turmas** cobre a Escada do Sucesso da Visão G12 (Uni
      - Ao desfazer a aprovação que gerou a certificação (ESC-26):
        - se houver outra matrícula aprovada na mesma escola, a certificação passa a apontar para ela;
        - se não houver, a certificação recebe exclusão lógica.
-   - **RN nova, ESC-36, material da turma (D-ESC-8):** texto livre na turma, com os livros e o que precisa ser comprado. Os alunos da turma também veem esse texto.
+   - **RN nova, ESC-36, material da turma (D-ESC-8):** texto livre preenchido no cadastro da turma, com os livros e o que precisa ser comprado. Pode ser alterado depois. Mudar o material de uma turma não afeta as outras turmas da mesma escola. Os alunos da turma também veem esse texto.
    - Passam a "definida pelo usuário (2026-11-22)":
      - **ESC-03, ESC-08 e ESC-17 (D-ESC-5):** lista de aulas com título, data por aula e nenhuma chamada de aula futura.
      - **ESC-04:** os pré-requisitos bloqueiam a matrícula e não podem formar ciclo.
@@ -98,7 +98,7 @@ Todas têm `id uuid`, `created_at` e `updated_at` (via `update_updated_at_column
 | `schools` | `name`, `description`, `is_active` | índice único parcial em `search_normalize(name)` `WHERE deleted_at IS NULL` |
 | `school_lessons` (modelo de aulas) | `school_id`, `position`, `title` | único em `(school_id, position)`; X é a quantidade de linhas; exclusão física, por ser configuração |
 | `school_prerequisites` | `school_id`, `required_school_id` | PK composta; `CHECK` contra autorreferência; ciclo bloqueado na RPC |
-| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `materials` (texto: livros etc., D-ESC-8), `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
+| `school_classes` (turmas) | `school_id`, `name`, `start_date`, `end_date`, `materials` (texto informado ao criar a turma, D-ESC-8), `closed_at` | `CHECK (end_date >= start_date)`; a escola não muda depois que a turma tem alunos |
 | `school_class_teachers` | `class_id`, `member_id` | tabela de ligação; exclusão física |
 | `school_class_lessons` | `class_id`, `position`, `title`, `lesson_date` | copiadas da escola quando a turma é criada (ESC-08); a data fica dentro do período |
 | `school_enrollments` (matrículas) | `class_id`, `school_id` (copiado, imutável), `member_id`, `status` (`in_progress`, `approved`, `failed`), `status_reason`, `status_changed_at`, `status_changed_by` | único parcial em `(class_id, member_id)`; único parcial em `(member_id, school_id) WHERE status = 'in_progress'` |
@@ -239,7 +239,7 @@ Leitura do diagrama:
   - Quem refaz uma escola (D-ESC-7) acumula matrículas aprovadas, mas não certificações.
 - **Membro ↔ turma (N:N, U2):** a ligação é `school_enrollments`, com no máximo uma matrícula não excluída por membro e turma.
 - **Matrícula em andamento:** no máximo uma por membro e escola. É por isso que `school_id` é copiado para a matrícula.
-- **Material (D-ESC-8):** é só o texto `school_classes.materials`. Não há tabela de arquivos nem de links.
+- **Material (D-ESC-8):** é só o texto `school_classes.materials`, informado ao criar a turma. A escola (`schools`) não tem material, e não há tabela de arquivos nem de links.
 - **Presença (U4):** é a ligação entre matrícula e aula da turma. Se não há linha, a presença está "Não lançada".
 - **Origem da certificação:**
   - `source = enrollment`: tem `enrollment_id` e foi gerada ao aprovar a matrícula.
@@ -263,7 +263,7 @@ As RPCs são `SECURITY DEFINER`, com mensagens em pt-BR e erros `42501`/`22023`.
   - `save_school` grava dados, aulas e pré-requisitos, com detecção de ciclo.
   - `delete_school` faz exclusão lógica e recusa se houver turma ativa.
 - **Turmas:**
-  - `save_school_class` copia as aulas e define professores e datas.
+  - `save_school_class` grava o material (texto), copia as aulas da escola e define professores e datas.
   - `close_school_class` / `reopen_school_class` encerram e reabrem a turma.
   - `delete_school_class` exclui a turma.
 - **Matrículas:**
