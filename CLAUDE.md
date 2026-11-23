@@ -54,7 +54,7 @@ npm run test:e2e   # Playwright (e2e/)
 ```
 - **Acesso ao banco:** as credenciais ficam no `local.config` (`SUPABASE_PROJECT_REF`, `SUPABASE_HOST`, `SUPABASE_PORT`, `SUPABASE_DB`, `SUPABASE_USER`, `SUPABASE_PASS`). Use o **Session pooler** (`aws-…pooler.supabase.com`, usuário `postgres.<ref>`): a conexão direta `db.<ref>.supabase.co` só tem IPv6 e não funciona nesta máquina. Antes de qualquer comando, confira que o `SUPABASE_PROJECT_REF` é o `gkhnjhmgeceoaqeynhrj`.
 - O project ref do Supabase fica em `supabase/config.toml`. O front lê do `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_PROJECT_ID`.
-- Depois de mudar o schema, regenere os tipos: `npx supabase gen types typescript --project-id <ref> > src/integrations/supabase/types.ts`.
+- Depois de mudar o schema, regenere os tipos com a CLI do Homebrew (2.84.2), não com `npx supabase` (3.3.0, outro formato): `supabase gen types typescript --project-id <ref> > src/integrations/supabase/types.ts`, ou `--db-url <banco local> --schema public` antes de a migration ir para produção. Mantenha o bloco `__InternalSupabase`.
 - As Edge Functions ficam em `supabase/functions/*` (Deno).
 
 ### Legado (`g12app-net/`)
@@ -277,6 +277,11 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `is_in_same_ministry` (v2): o mesmo G12, incluindo o cônjuge do G12 e a subárvore dele.
   - `is_leader_of_visible_member`: a política de SELECT de `members` também mostra os líderes de membros visíveis, com a linha inteira.
   - `can_manage_own_cell`: é líder ou timóteo da célula.
+- Leitura pelo front (E1.08), sempre por views ou RPCs:
+  - Views *security definer* cujo `WHERE` espelha a política de SELECT da tabela: `members_view` (com a máscara de dados sensíveis), `cells_view`, `cell_reports_view` e `cell_report_participants_view`. Têm colunas calculadas (nomes, G12 da célula, último relatório, contagens) e `search_text` sem acento.
+  - RPCs do dashboard (`dashboard_summary(_at)`, `dashboard_cells_by_type`, `dashboard_g12_ranking`): `SECURITY INVOKER`, leem só das views e herdam o escopo. `_dashboard_assert_access` devolve 42501 sem `view_dashboard` nem `view_own_ministry_dashboard`.
+  - `ministry_tree_nodes(_parent_ids)`: `SECURITY INVOKER` sobre a `members_view`; devolve um nível da árvore de casais, com as contagens, numa chamada só.
+  - Funções de escopo sobre a sessão atual: `viewer_member_id`, `viewer_has`, `viewer_ministry_member_ids`; utilitários `sp_today`, `week_start`, `weekday_index`, `search_normalize`; nomes de referência por `member_names`.
 - O que cada permissão libera:
   - `view_members` e `view_all_church`: veem a igreja inteira.
   - `view_own_ministry`: vê só o próprio ministério (mesmo G12).
@@ -285,7 +290,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
     - inserir: `edit_cell` ou `submit_any_visible_report` (em qualquer célula, sem checar visibilidade), ou `submit_own_cell_report` na própria célula;
     - editar: `edit_cell_report`; excluir: `delete_cell_report`. Ambos sem escopo.
   - `view_sensitive_data`: imposta na `members_view` (E1.08). A tabela `members` ainda devolve as colunas sensíveis até o PR 5 do E1.08.
-  - `view_own_ministry_dashboard`: só a UI respeita.
+  - `view_own_ministry_dashboard`: libera as RPCs do dashboard, como `view_dashboard`. O escopo dos números vem das permissões de leitura; o selo "Meu Ministério" é só da UI.
 - No front, `hasPermission` retorna `true` para tudo quando a role é `is_system`. O RLS **não** tem esse atalho.
 
 ### Edge Functions
@@ -305,14 +310,14 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - Membro sem e-mail recebe um e-mail fictício `<nome>_<hash>@mci12fakemail.com`, porque o Auth exige e-mail. A UI esconde esses e-mails.
 - Se a senha não for informada no cadastro, a inicial é `123456`. Isso é uma decisão (D11 em `docs/migracao.md`), não um problema.
 - O CEP preenche o endereço via ViaCEP. A célula puxa o endereço do anfitrião.
-- Dashboard:
+- Dashboard: os números vêm das três RPCs `dashboard_*`, sem agregação no cliente.
   - Membros: total, ativos, batizados, inativos, não batizados e sem líder.
   - Células por tipo.
-  - Ranking dos casais G12 por número de células (masculinas e femininas).
-  - Sem vínculo celular (janela de 4 semanas).
-  - Estatísticas da semana.
-- Ministérios: árvore de casais a partir dos pastores (`is_pastor`), expandindo sob demanda.
-- Membros é paginada no servidor pela `members_view` (busca sem acento, total exato, estado na URL). Células, Relatórios, Dashboard e Ministérios ainda carregam tudo no cliente; mudam nos PRs 2 a 4 do E1.08 (`docs/specs/e1-08-paginacao-servidor.md`).
+  - Ranking dos casais G12 por número de células (masculinas e femininas); cada célula conta uma vez.
+  - Sem vínculo celular (janela de 30 dias).
+  - Estatísticas da semana (domingo a sábado, horário de Brasília).
+- Ministérios: árvore de casais a partir dos pastores, pela `ministry_tree_nodes`, com uma chamada por expansão.
+- Membros, Células e Relatórios são paginadas no servidor pelas views (busca sem acento, total exato, estado na URL, via `useListSearchParams`). Os seletores de membro e de célula usam o `PaginatedSelect`: 20 opções por vez, busca no servidor e "Carregar mais". Ver `docs/specs/e1-08-paginacao-servidor.md`.
 
 ### Armadilhas do novo
 - **As migrations e o `types.ts` divergem.**
@@ -327,11 +332,13 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - Algumas migrations têm nome em UUID (geradas pelo Lovable) e outras têm nome legível (manuais). Nunca edite uma migration já aplicada; crie uma nova.
 - **`members_view` é *security definer* de propósito** (o advisor do Supabase acusa `security_definer_view`; não troque para `security_invoker`, que desliga a máscara). O `WHERE` dela espelha a política de SELECT de `members`: mudou uma, mude a outra (o teste de paridade do E1.08 confere). As colunas sensíveis estão listadas em três lugares: a view, a regra 6 de `enforce_member_write_rules` e `src/lib/members/fields.ts`.
 - As funções chamadas por uma view rodam com os privilégios de quem consulta: as funções usadas pelas views precisam de `GRANT EXECUTE ... TO authenticated`.
-- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. Isso ainda acontece em Cells, CellReports, no seletor de células do `CellReportForm` e no Dashboard (ranking G12 e "sem vínculo"). Prefira `count`, paginação, views ou RPC.
+- O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. As listas, o dashboard, a árvore e os seletores já buscam no servidor (E1.08); em código novo, prefira `count`, paginação, views ou RPC.
 - As políticas da `20260326193800` nunca foram removidas. Se essa migration rodou, elas se somam às novas, por exemplo `edit_cell` com `FOR ALL` em participantes. Confira em `pg_policies` (E1.01).
 - O trigger de semana atual também barra a carga dos relatórios antigos do legado. Na migração, os triggers são desligados (`session_replication_role = replica`).
 - `gender` usa 'M'/'F', mas as funções de stats também aceitam 'Masculino'/'Feminino'. Padronize em 'M'/'F'. Células de líder sem gênero ficam fora de `total_cells`.
-- `meeting_day` é salvo como 'Segunda', 'Terça'…, mas o `WEEK_DAYS_MAP` do `Dashboard.tsx` usa 'Segunda-feira'… Com isso, células de segunda a sexta nunca entram em "células sem relatório". É um bug.
+- `meeting_day` é salvo como 'Segunda', 'Terça'…. A lista de dias fica só em `src/lib/cells/weekdays.ts`, espelho de `public.weekday_index`; não crie outra.
+- O `PaginatedSelect` tem contornos para funcionar dentro do Dialog do Radix (Esc, blur, toque, `onOptionHover`), cobertos por testes. Rode esses testes ao atualizar o react-select ou o Radix.
+- Gere os tipos com a CLI do Homebrew (2.84.2). O `npx supabase` resolve para a 3.3.0, que muda o formato do `types.ts` inteiro.
 - `has_leadership` no novo quer dizer "tem líder", o inverso de `HasNoLeadership` no legado.
 - Um membro sem líder que não é pastor fica com `g12_level = 0`, igual a pastor.
 - `get_ministry_root` devolve NULL para pastores, então `view_own_ministry` não funciona para eles. Pastores precisam de `view_all_church`.
@@ -363,8 +370,8 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Snapshot de líder, anfitrião, timóteo e tipo no relatório | não existe | ❌ |
 | Relatórios por período e atalhos para a semana atual, passada e retrasada | só busca por texto | ❌ |
 | Exportação dos relatórios para Excel | não existe | ❌ |
-| Dashboard semanal com cards clicáveis (novos membros e células da semana, visitantes, pendentes) | parcial, sem drill-down | 🟡 |
-| Árvore de ministérios (casais) | sim | ✅ |
+| Dashboard semanal com cards clicáveis (novos membros e células da semana, visitantes, pendentes) | números calculados no banco (E1.08) | 🟡 faltam novos membros e novas células da semana e o drill-down (E2.14) |
+| Árvore de ministérios (casais) | sim, calculada no banco (E1.08) | ✅ |
 | Changelog (`/last-changes`) | não existe | baixa prioridade |
 
 Ao fechar um item, atualize esta tabela. As regras detalhadas de cada item estão na seção 3 de `docs/migracao.md`.
@@ -406,9 +413,8 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - `create-user-admin` roda com `verify_jwt = false` e service role, e **não verifica quem está chamando**. Qualquer pessoa com a URL consegue criar usuários com qualquer `role_id`, inclusive Administrador. Exija JWT e cheque `create_member` (e quem pode atribuir cada role).
 - A policy de UPDATE em `members` para `edit_own_data` não restringe colunas: o usuário consegue alterar o próprio `role_id` ou `leader_id`, o que é escalada de privilégio. Restrinja via trigger ou RPC.
 - `get-user-email` devolve o e-mail de qualquer CPF ou celular para quem chamar (enumeração de dados pessoais).
-- O bug do `WEEK_DAYS_MAP` no Dashboard (descrito acima).
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
 - As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
-- `view_sensitive_data` já vale na `members_view`, mas a tabela `members` ainda devolve CPF, e-mail, telefones e endereço a quem a lê direto pela API (o `AsyncMemberSelect` e outras telas ainda leem a tabela). Fecha no PR 5 do E1.08, com GRANT por coluna, depois que todas as leituras passarem para as views. `view_own_ministry_dashboard` só existe na UI.
+- `view_sensitive_data` já vale na `members_view`, mas a tabela `members` ainda devolve CPF, e-mail, telefones e endereço a quem a lê direto pela API. O front não lê mais a tabela (E1.08 PR 4); fecha no PR 5 do E1.08, com GRANT por coluna.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
 - Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.
