@@ -134,9 +134,9 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - PR 1 em produção (2026-11-24, mci-connect#19): banco da exclusão lógica (colunas, FKs sem cascata, RPCs, views de excluídos, índice único da semana, suspensão da conta). Faltam os PRs 2 a 6.
 - [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4
-- [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5
+- [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12
-- [ ] **E2.06** Hierarquia e totais · HIE-01 a HIE-04 · depende de D2
+- [ ] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 (a HIE-01 foi para o E2.04) · depende de D2
 - [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15
 - [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4
 - [ ] **E2.09** Situação do relatório por célula · CEL-05
