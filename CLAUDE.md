@@ -256,17 +256,29 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Roles semeadas: Administrador (`is_system`), Líder e Membro. Das permissões novas, as migrations só concedem `view_audit_log`, e só a quem tem `manage_roles`. As demais dependem de configuração na tela de Funções.
 - `events` (auditoria): `occurred_at`, `actor_user_id`, `actor_label`, `action`, `entity`, `entity_id`, `entity_label`, `description`, `changed_fields`, `metadata`, `success`, `error_reason`. Tem só política de SELECT (`view_audit_log`).
 - Confirmar no banco real (E1.01): `male_cells` e `female_cells` existem? `cells.name` foi removida? Qual definição de `cell_reports` / `cell_report_participants` valeu?
+- **Exclusão lógica (E2.01 PR 1):**
+  - `deleted_at` e `deleted_by` (→ `members`) em `members`, `cells` e `cell_reports`. As FKs entre essas tabelas e os participantes são `NO ACTION`: nada é apagado em cascata nem zerado. `role_id` e `auth_user_id` continuam `SET NULL`.
+  - Índices parciais `WHERE deleted_at IS NULL` nas listas e o índice único `cell_reports_cell_week_key` (`cell_id`, `week_start(date)`) entre os não excluídos.
+  - Views de excluídos (`members_deleted_view`, `cells_deleted_view`, `cell_reports_deleted_view`), só para `manage_roles`; `cell_reports_view.cell_deleted` e `cell_report_participants_view.member_deleted`.
+  - Schema `private` (fora da API, sem privilégios) com `member_access_suspensions`: o hash da senha de quem foi excluído, para a restauração.
+  - `normalize_email` e `normalize_digits`: a única normalização de e-mail, celular e CPF.
 
 ### Lógica no banco
 - `compute_g12_level` (BEFORE INSERT ou UPDATE de `leader_id` / `is_pastor`): pastor → 0; com líder → nível do líder + 1; sem líder → 0. **Não propaga** para os descendentes.
 - Cônjuge: **dois triggers** mantêm o vínculo simétrico, `sync_spouse_trigger` (antigo) e `sync_spouse_relationship` (novo, que também proíbe casar consigo). Eles usam proteções diferentes contra recursão e precisam ser consolidados.
 - Relatórios:
-  - `enforce_unique_weekly_cell_report` (BEFORE INSERT/UPDATE de `cell_id`, `date`): um relatório por célula por semana, de domingo a sábado. Consulta antes de gravar, então há risco de race condition.
+  - Um relatório por célula por semana (domingo a sábado), entre os não excluídos: garantido pelo índice único `cell_reports_cell_week_key`. O trigger `enforce_unique_weekly_cell_report` só dá a mensagem amigável, com trava consultiva (célula, semana).
   - `enforce_cell_report_current_week` (BEFORE INSERT/UPDATE de `date`): só a semana atual, em `America/Sao_Paulo`. Também dispara na edição.
 - Auditoria:
   - Triggers AFTER em `members`, `cells`, `cell_reports` e participantes chamam `_log_event` (`SECURITY DEFINER`). Os erros são engolidos com WARNING.
-  - `log_auth_event` pode ser chamada por `anon` e `authenticated`: o próprio front registra login, falha de login e logout.
-- `refresh_member_stats_v2` (triggers em `members` e `cells`): recalcula toda a cadeia de ancestrais.
+  - A exclusão, a restauração (ação `restore`) e o cônjuge desfeito são gravados sem engolir erro (E2.01).
+  - `log_auth_event`: só `authenticated` executa (E1.13), só login e logout, com o autor tirado da sessão.
+- Exclusão e restauração (E2.01), só por RPC `SECURITY DEFINER`: `check_member_deletion`, `delete_member`, `restore_member`, `delete_cell`, `restore_cell`, `delete_cell_report`, `restore_cell_report`; `set_cell_report_participants` (INVOKER) grava os participantes pela diferença.
+  - Membro com discípulos ou células (mesmo inativos) não é excluído até reatribuir (D10). A exclusão suspende a conta no Auth na mesma transação; a restauração devolve.
+  - Triggers `BEFORE` (`ab_enforce_member_links`, `aa_enforce_cell_links`, `aa_enforce_cell_report_rules`, `aa_enforce_participant_rules`) impedem apontar para um excluído e alterar registro excluído, valendo também para a service role.
+  - Os helpers de permissão e escopo ignoram quem consulta se o cadastro estiver excluído; `roles` e `role_permissions` exigem cadastro não excluído.
+  - Erros de regra: 22023 com `HINT = 'app_error'` e `DETAIL` em JSON (`{ code, … }`); 42501 só para falta de permissão.
+- `refresh_member_stats_v2` (triggers em `members` e `cells`): recalcula toda a cadeia de ancestrais, ignorando excluídos.
   - `total_disciples`: descendentes ativos.
   - `male_cells` / `female_cells`: células ativas lideradas na subárvore, separadas pelo gênero do líder.
   - `total_cells = male_cells + female_cells`.
@@ -295,7 +307,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 
 ### Edge Functions
 - `create-user-admin`: exige JWT e `create_member`, valida a função atribuída, cria o usuário no Auth (com service role) e grava o membro com a sessão de quem chama (o RLS vale e a auditoria registra o autor). Devolve só o `id`. É usada no cadastro de membro.
-- `get-user-email`: converte CPF ou celular no e-mail correspondente, para o login.
+- `get-user-email`: converte CPF ou celular no e-mail correspondente, para o login. Ignora cadastros excluídos (E2.01). Sai no E1.04, trocada pela `sign-in`.
 - `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
 
 ### Front
@@ -339,6 +351,8 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - O PostgREST devolve no máximo 1000 linhas por padrão. Listagens e contagens feitas no cliente **cortam os dados sem avisar** acima disso. As listas, o dashboard, a árvore e os seletores já buscam no servidor (E1.08); em código novo, prefira `count`, paginação, views ou RPC.
 - As políticas da `20260326193800` nunca foram removidas. Se essa migration rodou, elas se somam às novas, por exemplo `edit_cell` com `FOR ALL` em participantes. Confira em `pg_policies` (E1.01).
 - O trigger de semana atual também barra a carga dos relatórios antigos do legado. Na migração, os triggers são desligados (`session_replication_role = replica`).
+- O índice único da semana (`cell_reports_cell_week_key`) vale mesmo com `session_replication_role = replica`: relatórios do legado duplicados por célula e semana precisam ser tratados antes da carga.
+- Excluir é só pelas RPCs. Um `DELETE` físico falha pelas FKs `NO ACTION`, e um `UPDATE deleted_at` direto (service role) não suspende a conta no Auth.
 - `gender` usa 'M'/'F', mas as funções de stats também aceitam 'Masculino'/'Feminino'. Padronize em 'M'/'F'. Células de líder sem gênero ficam fora de `total_cells`.
 - `meeting_day` é salvo como 'Segunda', 'Terça'…. A lista de dias fica só em `src/lib/cells/weekdays.ts`, espelho de `public.weekday_index`; não crie outra.
 - O `PaginatedSelect` tem contornos para funcionar dentro do Dialog do Radix (Esc, blur, toque, `onOptionHover`), cobertos por testes. Rode esses testes ao atualizar o react-select ou o Radix.
@@ -358,7 +372,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 já inclui o cônjuge do G12. Faltam o cônjuge do próprio usuário, o anfitrião nos relatórios, o escopo nas escritas e os pastores; as roles semeadas não usam escopo |
 | CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
 | Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
-| Exclusão lógica de membros, células e relatórios | exclusão física, apagando relatórios e participações em cascata | ❌ |
+| Exclusão lógica de membros, células e relatórios | banco pronto (E2.01 PR 1): RPCs, FKs sem cascata, views e totais sem excluídos | 🟡 as telas ainda excluem fisicamente (PR 2 do E2.01) |
 | Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | nenhuma no banco | ❌ |
 | Cônjuge simétrico | trigger | ✅ |
 | Campos computados: árvore de liderança, G12, líder direto | só `g12_level`; o G12 é calculado no cliente, na tela de Células | 🟡 |
@@ -369,7 +383,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Filtros de células: G12, endereço, tipo, dia, situação do relatório, data de cadastro | só busca por texto | ❌ |
 | Situação do relatório por célula (em dia, pendente, atrasado de 1 a 4+ semanas) | não existe | ❌ |
 | Lançamento de relatório | sim | 🟡 |
-| Regras do relatório: semana atual, sem data futura, um por semana, depois do horário da célula, justificativa quando não houve | triggers de semana atual e de semana única | 🟡 aceita data futura dentro da semana, ignora o horário da célula, tem race condition e bloqueia a edição de relatórios antigos |
+| Regras do relatório: semana atual, sem data futura, um por semana, depois do horário da célula, justificativa quando não houve | triggers de semana atual e índice único da semana | 🟡 aceita data futura dentro da semana, ignora o horário da célula e bloqueia a edição de relatórios antigos |
 | Líder, timóteo e anfitrião como participantes automáticos | não existe | ❌ |
 | Snapshot de líder, anfitrião, timóteo e tipo no relatório | não existe | ❌ |
 | Relatórios por período e atalhos para a semana atual, passada e retrasada | só busca por texto | ❌ |
