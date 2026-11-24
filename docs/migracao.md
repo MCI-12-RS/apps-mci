@@ -136,7 +136,8 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
     - PR 2 (mci-connect#20): exclusão nas telas de Membros, Células e Relatórios, sem exclusão física no banco;
     - PR 3 (mci-connect#21): listas de excluídos e restauração;
     - PR 4 (mci-connect#22): consulta do relatório de célula excluída.
-  - Faltam o PR 5 (cadastro com dados de excluído), o PR 6 (encerramento da sessão, depois do PR 2 do E1.04) e a revisão final.
+  - PR 5 em produção (2026-11-24, mci-connect#23): aviso no cadastro de membro novo com o e-mail, o celular ou o CPF de um excluído (RN-18), com "Restaurar" para o administrador e "Cadastrar mesmo assim"; o e-mail de login de um excluído nunca entra. Sem migration; `create-user-admin` republicada.
+  - Faltam o PR 6 (encerramento da sessão, depois do PR 2 do E1.04) e a revisão final.
 - [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
