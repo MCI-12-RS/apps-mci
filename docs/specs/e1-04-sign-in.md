@@ -1,6 +1,7 @@
 # E1.04: Função de login `sign-in`
 
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23), sem perguntas em aberto. A implementação começa depois do PR 1 do E2.01 em produção. Ficam para o usuário revisar no PR: os padrões P-LOG-01 a P-LOG-16, a DT-01 (caminho único com o provedor de e-mail e senha do Auth desligado) e as DA-1 a DA-13, definidas pelo `architect`. Falta só a seção Testes.
+> **Nota de 2026-11-24 (E2.03):** o desenho do [E2.03](e2-03-senha.md) (DT-01) tira a senha do Supabase Auth e a guarda no cofre `private.account_passwords`, com um trigger em `auth.users` recusando senha gravada pelo Auth. Ao implementar o E1.04, o `architect` decide se a `sign_in_attempt` já nasce lendo o cofre (evita migrar duas vezes) ou se o E2.03 faz essa troca, como está desenhado lá.
 > Slug: `e1-04-sign-in` · Paridade com o legado: sim (AUT-01, DEL-06), com regras novas: login por CPF (D5), celular escrito de qualquer jeito, resposta única, limite de tentativas e registro das falhas na Auditoria.
 
 ## Negócio
