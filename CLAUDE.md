@@ -95,12 +95,13 @@ Para `product-owner`, `ux-designer`, `code-reviewer` e `qa`, a restrição está
 
 1. Sessão principal → `product-owner`: cria ou atualiza `docs/specs/<slug>.md` (modelo em `docs/specs/_template.md`), seção Negócio. As perguntas em aberto vão para o usuário; RN "a confirmar" não segue adiante.
 2. Sessão principal → `ux-designer`, quando a feature tem tela nova ou muda uma tela: escreve a seção Experiência (UX) do spec (fluxos, wireframes do celular ao desktop, estados, textos e critérios `UX-`). Dúvidas de negócio voltam para a sessão principal, que leva ao PO ou ao usuário.
-3. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas" e coordena a implementação:
+3. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas".
+4. Sessão principal → `architect`, **uma execução por PR**: coordena a implementação daquele PR.
    1. Aciona o `backend-developer` (primeiro, se houver schema ou RPC) e o `frontend-developer`. Tarefas independentes rodam em paralelo.
-   2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Achados de outro papel voltam no relatório dele.
-   3. Aciona o `qa` e, se a tarefa mudou tela, o `ux-designer` para revisar a UI (os dois em paralelo). Bugs e achados voltam ao desenvolvedor responsável, para uma nova rodada.
-   4. Faz a revisão final e devolve um relatório consolidado.
-4. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
+   2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Da 2ª rodada em diante, o reviewer confere só as correções. Achados de outro papel voltam no relatório do desenvolvedor.
+   3. Aciona o `qa`. O `ux-designer` revisa a UI **uma vez por passo**, em paralelo com o QA, só no PR que traz tela nova ou padrão novo de UI. Bugs e achados voltam ao desenvolvedor responsável, para uma nova rodada.
+   4. Devolve um relatório consolidado. A revisão final completa é **uma por passo**, no último PR, sobre o diff acumulado. Num PR intermediário com migration, o `architect` confere só as migrations.
+5. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
    - a matriz de paridade deste arquivo;
    - o status das regras na seção 3 de `docs/migracao.md`;
    - o passo correspondente (`E2.xx`) na seção Progresso do mesmo documento.
@@ -108,9 +109,25 @@ Para `product-owner`, `ux-designer`, `code-reviewer` e `qa`, a restrição está
 Para uma mudança pequena (bug pontual, texto, estilo): sessão principal → desenvolvedor (que aciona o `code-reviewer`) → `qa`.
 
 Cada agente começa sem o histórico da conversa e só sabe o que quem o chamou passou no prompt. Por isso:
-- passe sempre o caminho do spec e os números das tarefas;
+- passe sempre o caminho do spec, os números das tarefas e **as seções e os IDs (RN, UX, DT) que o agente deve ler**;
 - os specs em `docs/specs/` funcionam como a memória compartilhada entre os agentes;
 - a sessão principal só vê o relatório final de cada agente que ela acionou, então esse relatório precisa trazer arquivos alterados, achados pendentes e resultados de testes.
+
+**Economia de tokens** (medida em 2026-11-24: de 55% a 60% do que o `architect`, o `product-owner` e o `ux-designer` leem é spec).
+- Este arquivo já vai no contexto de todo agente. Nenhum prompt ou instrução pede para relê-lo.
+- **Specs são lidos por seção, nunca inteiros.** Cada um tem de 50 a 100 mil tokens: o agente lista os títulos (`grep -n '^#'`), lê só as seções da tarefa e acha regras e decisões pelo ID. As instruções de cada agente detalham isso.
+- **Teto de 60 KB por spec novo**: Negócio até 20 KB, UX até 15 KB, Solução técnica e Tarefas até 20 KB, Testes até 5 KB (ver `docs/specs/_template.md`). Padrões e decisões de outros specs são citados pelo ID, não copiados. Os specs já escritos ficam como estão.
+- Comandos de teste, lint e build rodam com a saída filtrada (`| tail`). O trecho do erro só é aberto se algo falhar.
+- **Modelo e esforço por agente** (campos `model` e `effort` no frontmatter):
+
+  | Agente | Modelo | Esforço |
+  |---|---|---|
+  | `architect`, `backend-developer`, `product-owner` | o da sessão (`inherit`) | `high` |
+  | `frontend-developer` | o da sessão (`inherit`) | `medium` |
+  | `qa`, `ux-designer` | `sonnet` (em teste desde 2026-11-24) | `medium` |
+  | `code-reviewer` | `sonnet` | o da sessão |
+
+  Se a qualidade do `qa` ou do `ux-designer` cair no Sonnet (testes que não pegam bug, revisão rasa), volte o `model` deles para `inherit`.
 
 ## Glossário do domínio
 
