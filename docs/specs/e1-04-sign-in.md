@@ -894,7 +894,7 @@ Pontos que as RNs não respondem por inteiro. O `architect` adotou a leitura mai
 | DA-6 | A identificação leva só a cadastros excluídos, mais de um | Motivo "Cadastro excluído", sem ligação a nenhum deles. | A RN-15 liga o registro só quando a identificação leva a um único cadastro. |
 | DA-7 | Número que é CPF válido e tem a forma de um celular | Conta na chave do CPF e na do celular. O bloqueio de qualquer uma vale para o número. Um sucesso zera as duas. | RN-10: as formas que levam à mesma identificação não podem somar mais de 5 tentativas. |
 | DA-8 | Ligação do bloqueio ao cadastro (UX T2) | O bloqueio por identificação fica ligado ao cadastro quando a falha que o disparou estava ligada. O bloqueio por origem nunca fica. | O bloqueio por origem não é de um cadastro, e ligá-lo induziria quem audita a erro. |
-| DA-9 | Conta com hash de senha num formato que não é bcrypt | "Conta de acesso indisponível" (falha de credencial). | RN-08: um erro que só acontece com um cadastro é falha de credencial. Uma mudança geral de formato aparece no *smoke*. |
+| DA-9 | Conta com hash de senha num formato que não é bcrypt | "Conta de acesso indisponível" (falha de credencial). Só `$2a$` conta como bcrypt: o `pgcrypto` trata `$2b$` como DES (o Auth grava `$2a$`). | RN-08: um erro que só acontece com um cadastro é falha de credencial. Uma mudança geral de formato aparece no *smoke*. |
 | DA-10 | Tempo-limite do app | 20 s. A tentativa que chegou ao servidor conta, mesmo que a tela já tenha desistido. | O servidor não sabe que a tela desistiu (AQ-2). |
 | DA-11 | Método da sessão | A sessão sai com `amr` = `otp`. | Consequência da DT-01. Nenhuma regra depende do método. |
 | DA-12 | "Login realizado" sem sessão | O registro só é gravado depois que a sessão é emitida. Se a emissão falhar, não há registro, e a tela mostra o erro do servidor. | RN-15 (a): um registro por login, e login é receber a sessão. |
@@ -1012,7 +1012,7 @@ CREATE TABLE IF NOT EXISTS private.sign_in_throttle (
   blocked_until timestamptz,
   expires_at    timestamptz   NOT NULL,                -- quando a linha pode ser apagada
   PRIMARY KEY (kind, key_hash),
-  CHECK (cardinality(failures) <= 20)
+  CHECK (cardinality(failures) <= 100)   -- teto folgado: os limites de verdade são constantes da sign_in_attempt (risco 16)
 );
 CREATE INDEX IF NOT EXISTS sign_in_throttle_expires_at_idx ON private.sign_in_throttle (expires_at);
 ALTER TABLE private.sign_in_throttle ENABLE ROW LEVEL SECURITY;     -- sem políticas
@@ -1043,6 +1043,7 @@ SELECT cron.schedule('e104-sign-in-purge', '*/10 * * * *', 'SELECT private.sign_
 | `private.sign_in_lookup(_p ...)` | A busca em dois estágios ([Busca pelo cadastro](#busca-pelo-cadastro-rn-01-a-rn-06)). Devolve `outcome`, `member_id`, `member_name` e `identifier_type`. |
 | `private.sign_in_check_legacy(_member_id uuid, _password text) RETURNS text` | Ponto do E3.02 (RN-17 b). Neste passo, devolve sempre `NULL`, que quer dizer "não se aplica". |
 | `private.sign_in_purge()` | A limpeza do item 5 |
+| `private.sign_in_assert_duration(_max interval)` | O teto da DT-19, chamado antes de cada `RETURN` da `sign_in_attempt` |
 
 **RPCs** (`public`, `SECURITY DEFINER`, `SET search_path = public`):
 - `REVOKE EXECUTE … FROM PUBLIC, anon, authenticated` e `GRANT EXECUTE … TO service_role`. Os privilégios padrão do Supabase dão EXECUTE a `anon` em toda função nova de `public`, então o `REVOKE` é obrigatório.
@@ -1463,6 +1464,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
    - A implantação liga o encaminhamento e sobe o limite antes do promote.
    - A função exige a chave secreta em produção. Conferido na tarefa 1: `SUPABASE_SECRET_KEYS` (com a chave `default`) existe nas Edge Functions, e o campo `security_sb_forwarded_for_enabled` existe e hoje está `false` (o passo A liga).
    - O E5 (ensaios) deve incluir uma rajada de logins.
+   - A chave secreta nova não pôde ser testada na stack local (a CLI não injeta `SUPABASE_*` pelo `--env-file`): o *smoke* do passo A é a primeira chamada real com `sb_secret_…` na RPC, no `generateLink` e no `/verify` com `Sb-Forwarded-For`. Se falhar, a função responde 500 e nada muda para os usuários (a tela ainda usa a `get-user-email`).
 8. **Dois logins da mesma conta ao mesmo tempo.** O segundo `generateLink` troca o *token* do primeiro, e a nova tentativa resolve (DT-18). Se as duas falharem, a tela mostra o erro do servidor, e a pessoa tenta de novo.
 9. **Código de uso único pendente.** Se a emissão falhar depois do `generateLink`, o código da conta valeria por 1 hora pelo `/verify` com e-mail e código. Em produção, o código tem 8 dígitos (`mailer_otp_length = 8`) e vale 1 hora (`mailer_otp_exp = 3600`), conferidos na tarefa 1.
    - A `sign_in_discard_link` o apaga.
@@ -1488,7 +1490,9 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 16. **Rede compartilhada e CGNAT (RN-11).** Hoje todos chegam por IPv4, e um IPv4 é uma origem.
     - Na rede da igreja, todos saem pelo mesmo IP público. No dia do cutover, 20 senhas erradas de pessoas diferentes em 15 minutos bloqueiam **todos** os logins daquela rede por 15 minutos, inclusive os de senha certa (o bloqueio vem antes da conferência), e não há desbloqueio (RN-12).
     - No 4G, as operadoras dividem um IPv4 entre muitos assinantes (CGNAT). O efeito é o mesmo, mas raro: só contam falhas no login do MCI.
+    - Fila na mesma origem (risco 4), medida na stack local: 80 logins simultâneos com senha certa passam; com 120, 5 dão 500 pelo `lock_timeout`. Na instância de produção o bcrypt é mais lento, então o ponto de corte cai; o E5 mede.
     - **Para o PO:** manter 20, subir o limite da origem (o de identificação, 5, continua protegendo cada conta), subir só durante o cutover, ou orientar quem estiver na igreja a usar o 4G. Os limites são constantes no começo da `sign_in_attempt`: mudar é uma migration de uma linha. Não bloqueia o PR 1.
+17. **Máscara da identificação inválida.** Ela guarda o primeiro e o último caractere (AQ-5). Se a pessoa colar a senha no campo de identificação, dois caracteres da senha vão para a Auditoria. **Para o PO:** aceitar, ou mascarar a inválida só como `***`.
 
 ### Ordem em relação ao E2.01
 **Recomendação:**
@@ -1697,5 +1701,39 @@ Três PRs no `mci-connect`. **Tudo começa depois do PR 1 do E2.01 em produção
 ## Testes
 _Seção do `qa`._
 
-| RN | Testes | Resultado |
+Arquivos em `mci-connect/supabase/tests/` (PR 1, tarefa 4):
+- pgTAP (`database/`): `e104_01_structure_grants` (grants, Vault, job, índices com EXPLAIN, normalização, origem, limpeza, `sign_in_discard_link`), `e104_02_parse_identifier` (gerado do JSON), `e104_03_sign_in_attempt` (busca e decisão), `e104_04_throttle_audit` (limites, retenção, Auditoria, P-LOG-12, DT-19);
+- `fixtures/login-identifier-cases.json` + `fixtures/generate-login-identifier-cases.mjs`; sincronia em `src/test/login-identifier-cases-sync.test.ts` (o PR 2 acrescenta o Vitest do `classifyIdentifier` sobre o mesmo JSON);
+- `concurrency/e104_concurrency.sh` (20 por CPF, 30 por origem, limpeza durante as tentativas, trava além do `lock_timeout`);
+- `edge/sign-in.edge.test.mjs` (contrato, sessão, origem DT-06, 500, piso, logs) e `edge/timing.mjs` (RN-07, 20 tentativas por caso) e `edge/concurrent-success.mjs` (N logins certos da mesma origem).
+
+| RN | Testes (arquivo) | Resultado |
 |---|---|---|
+| RN-01 a RN-04 | `e104_02` (formatos), `e104_03` (RN-01 a RN-04), `e104_01` (normalização e índices), edge (CPF, e-mail, celular) | PR 1: passou |
+| RN-05, RN-06 | `e104_03` (Davi e Elisa, Otávio e Paula, Rita, Sílvia, Ulisses, Nina, Samuel, Lia, Quintino, Rosa restaurada, contas indisponíveis) | PR 1: passou |
+| RN-07 | `e104_03` (casos a a g, mesmo `{"result":"invalid"}`), edge (mesmo corpo e piso), `edge/timing.mjs` | PR 1: passou |
+| RN-08, RN-09, RN-13, RN-17 | `e104_03`, edge (400, sessão mínima, logs sem dado) | PR 1: passou |
+| RN-10, RN-11, RN-12 | `e104_04`, `e104_01` (limpeza), `e104_concurrency.sh`, edge (origem, 429) | PR 1: passou |
+| RN-15 | `e104_04` (eventos, máscaras, tipos, bloqueios, Lia, CHECK em `events`), edge (login gravado) | PR 1: passou |
+| DT-06, DT-19, P-LOG-12 | edge (origem), `e104_04` (57014, Vault, CHECK), `e104_concurrency.sh` (55P03) | PR 1: passou |
+| RN-14, RN-16 | PR 2 e PR 3 | — |
+
+Resultados por PR (stack local isolada, CLI 2.84.2):
+- **PR 1**: `supabase test db` PASS, 15 arquivos, 1858 testes (E1.08 e E2.01 inclusos; `e104_01` 113, `e104_02`, `e104_03` 105, `e104_04` 129); `npm test` 75 arquivos, 815 testes; `vitest login-identifier-cases-sync` 3; `e104_concurrency.sh` todos os 4 cenários; `node --test supabase/tests/edge/sign-in.edge.test.mjs` 20/20 (função servida com `supabase functions serve sign-in`).
+- Concorrência: 20 com o CPF de Ana = 5 conferidas, 4 `invalid`, 16 `locked`, 1 bloqueio, 0 erros; 30 de uma origem = 20 conferidas (19 `invalid` + a que bloqueia), 11 `locked`, 0 erros; limpeza durante as tentativas sem deadlock; trava além do `lock_timeout` dá 55P03 em 3 s e nada é contado.
+- Tempo (RN-07, `node supabase/tests/edge/timing.mjs --n 20`), em ms, mediana / p99 (diferença para "g"):
+
+| Caso | Banco | HTTP |
+|---|---|---|
+| a inválida | 42 / 48 (-0) | 710 / 714 (+0) |
+| b não encontrada | 41 / 46 (-0) | 710 / 714 (+0) |
+| c ambígua | 43 / 46 (+1) | 709 / 754 (-0) |
+| d excluída | 41 / 46 (-0) | 710 / 717 (+1) |
+| e sem conta | 41 / 46 (-0) | 709 / 715 (-0) |
+| f indisponível | 41 / 46 (-0) | 711 / 714 (+1) |
+| g senha errada (ref.) | 42 / 48 | 709 / 714 |
+| h bloqueada (429) | 0 / 2 | 709 / 712 (-0) |
+
+  Menor HTTP: 705 ms (piso 700). Critérios cumpridos (diferença < 100 ms; p99 do banco < piso).
+- Risco 4/16, logins com senha certa simultâneos da mesma origem (`concurrent-success.mjs`): N=10 -> 10x200, último em 480 ms; N=30 -> 30x200, 1385 ms; N=50 -> 50x200, 2267 ms; N=80 -> 80x200, 3618 ms; N=120 -> 115x200 e 5x500, 5223 ms. O `lock_timeout` de 3 s só vira 500 acima de ~100 simultâneos da mesma origem, na máquina local.
+- Bugs da implementação: nenhum. Os erros da primeira rodada eram dos testes (INSERT sem `id` em `auth.one_time_tokens`, `next_origin()` depois do `SET ROLE`, precedência de `->`/`-`, `57014` não é pego por `WHEN OTHERS`, `ip: undefined` caindo no valor padrão, INSERT duplicado do bloqueio).
