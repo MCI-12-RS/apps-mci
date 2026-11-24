@@ -2,7 +2,8 @@
 
 > Status: em implementação. Negócio, Experiência (UX), Solução técnica e Tarefas escritos em 2026-11-23 (DA-1 a DA-10 para revisão).
 > - PR 1 (banco) em produção (2026-11-24, mci-connect#19): tarefas 1 a 5 concluídas. A conferência em produção (14 blocos, só leitura) bateu em 2026-11-24.
-> - Faltam os PRs 2 a 6 (tarefas 6 a 23) e a tarefa 24. O PR 6 fica reduzido e entra depois do PR 2 do E1.04 (ver Tarefas).
+> - PRs 2 a 4 em produção (2026-11-24, mci-connect#20, #21 e #22): tarefas 6 a 16 concluídas.
+> - Faltam o PR 5 (tarefas 17 a 20), o PR 6 (tarefas 21 a 23) e a tarefa 24. O PR 6 fica reduzido e entra depois do PR 2 do E1.04 (ver Tarefas).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
 ## Negócio
