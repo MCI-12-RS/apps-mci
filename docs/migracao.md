@@ -131,7 +131,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO → architect → desenvolvedores → code-reviewer → QA → aceite do PO.
 
 - [ ] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos. Spec: [`specs/e2-01-exclusao-logica.md`](specs/e2-01-exclusao-logica.md) (desenho pronto; implementação depois do PR 4 do E1.08)
-- [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5
+- [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12
