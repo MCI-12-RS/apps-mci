@@ -135,7 +135,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
-- [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12
+- [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
 - [ ] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 (a HIE-01 foi para o E2.04) · depende de D2
 - [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15
 - [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4
