@@ -1,6 +1,8 @@
 # E2.01: Exclusão lógica
 
-> Status: desenho pronto para revisão. Negócio e Experiência (UX) escritos em 2026-11-23, com as pendências PO-UX-1 a PO-UX-9 resolvidas pelo PO. Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto; os pontos "definidos pelo architect" (DA-1 a DA-10) ficam para revisão no PR. A implementação começa depois do merge do PR 4 do E1.08. Falta a seção Testes (QA).
+> Status: em implementação. Negócio, Experiência (UX), Solução técnica e Tarefas escritos em 2026-11-23 (DA-1 a DA-10 para revisão).
+> - PR 1 (banco) em produção (2026-11-24, mci-connect#19): tarefas 1 a 5 concluídas. A conferência em produção (14 blocos, só leitura) bateu em 2026-11-24.
+> - Faltam os PRs 2 a 6 (tarefas 6 a 23) e a tarefa 24. O PR 6 fica reduzido e entra depois do PR 2 do E1.04 (ver Tarefas).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
 ## Negócio
@@ -1548,7 +1550,7 @@ São `SECURITY DEFINER SET search_path = public`, com `REVOKE ALL … FROM PUBLI
 | Função | O que faz |
 |---|---|
 | `_del_raise(_code text, _message text, _detail jsonb DEFAULT '{}')` | Levanta o erro estruturado ([Formato dos erros](#formato-dos-erros-aq-2)) |
-| `_del_lock_members(_target uuid, _actor uuid)` | Trava com `FOR UPDATE`, em ordem de id, o alvo, o cônjuge atual dele e quem exclui. Relê o cônjuge depois da trava e repete se ele mudou (DT-09, DT-21). |
+| `_del_lock_members(_target uuid, _actor uuid)` | Trava, em ordem de id, o alvo e o cônjuge atual dele com `FOR UPDATE`, e quem exclui com `FOR KEY SHARE`. Relê o cônjuge depois da trava e repete se ele mudou (DT-09, DT-21). Quem exclui ficou com `FOR KEY SHARE` na implementação (PR 1): o `FOR UPDATE` dava 40P01 com o recálculo de totais quando quem exclui é ancestral do alvo. |
 | `_del_member_blockers(_member_id uuid) RETURNS jsonb` | `NULL` se a exclusão pode seguir. Senão, devolve o objeto de recusa, na ordem: inexistente, excluído ou fora da `members_view` (`not_found_or_deleted`) → próprio cadastro (`self_delete`) → função não coberta (`role_above`) → ligações (`member_has_links`). Usada pela pré-checagem e pela exclusão (DT-11). |
 | `_del_suspend_access(_member_id uuid, _auth_user_id uuid)` | Suspende a conta (DT-13): guarda a senha e o banimento anterior em `private.member_access_suspensions`, esvazia `auth.users.encrypted_password`, põe `banned_until` 100 anos à frente e apaga as sessões e os *refresh tokens* |
 | `_del_resume_access(_member_id uuid)` | Devolve a senha e o banimento guardados e apaga a suspensão. Sem suspensão guardada, só limpa `banned_until`. |
@@ -1726,6 +1728,7 @@ O PostgREST devolve `{ code: "22023", message, details: "<json>", hint: "app_err
 | `deleted_member_chosen` | `field` (`leader_id`, `spouse_id`, `timothy_id`, `host_id` ou `member_id`) e `member_id` |
 | `cell_deleted`, `report_cell_deleted` | `cell_id` |
 | `deleted_participant_removal` | `member_id` |
+| `too_many_participants` | — (acrescentado no PR 1 pela `set_cell_report_participants`) |
 | `restore_value_in_use` | `fields` (`email`, `mobile`, `cpf`) |
 | `restore_person_deleted` | `people`: `[{ role, member_id, member_name }]` |
 | `restore_week_taken` | `report_id` (o outro relatório) e `week_start` |
@@ -1744,7 +1747,7 @@ Nenhuma operação pega uma trava de um nível acima depois de uma de nível aba
 
 | Operação | Relatório | Célula | Membros | (célula, semana) |
 |---|---|---|---|---|
-| `delete_member` | — | — | alvo, cônjuge e quem exclui `FOR UPDATE` | — |
+| `delete_member` | — | — | alvo e cônjuge `FOR UPDATE`; quem exclui `FOR KEY SHARE` | — |
 | `restore_member` | — | — | alvo `FOR UPDATE`; líder `FOR KEY SHARE` | — |
 | `delete_cell` | — | `FOR UPDATE` | — | — |
 | `restore_cell` | — | `FOR UPDATE` | líder, timóteo e anfitrião `FOR KEY SHARE` | — |
@@ -1907,8 +1910,8 @@ Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica n
 | DT-18 | RN-18: `find_deleted_member_matches`, mais a `create-user-admin` com `confirmDeletedMatches`, mais o trigger de INSERT para o e-mail da conta. | O aviso é parte do salvar (P-DEL-22). A recusa definitiva vale pela API. |
 | DT-19 | A edição de um registro excluído por PATCH direto volta com 0 linhas e sem erro. A tela pede `select('id')` e traduz. | O RLS não revela registros escondidos. |
 | DT-20 | A tela encerra a sessão quando o próprio cadastro não volta da `members_view` (depois de um 42501, de "0 linhas", do `SIGNED_OUT` não pedido ou da volta do foco). Falha de rede nunca encerra. | AQ-8, sem endpoint novo. |
-| DT-21 | `delete_member` trava também quem exclui e confere a permissão de novo depois da trava. | RN-03: sempre sobra um administrador, mesmo com exclusões cruzadas ao mesmo tempo. |
-| DT-22 | O GRANT por coluna de `deleted_at` e `deleted_by` em `members` só é feito se o PR 5 do E1.08 já estiver aplicado. Se o E2.01 vier antes, o PR 5 inclui as duas na lista dele. | Risco 4 do E1.08, nas duas ordens. |
+| DT-21 | `delete_member` trava também quem exclui (`FOR KEY SHARE`, que ainda conflita com outra exclusão que o tenha como alvo) e confere a permissão de novo depois da trava. | RN-03: sempre sobra um administrador, mesmo com exclusões cruzadas ao mesmo tempo. Com `FOR UPDATE`, quem exclui sendo ancestral do alvo gerava 40P01 com o recálculo de totais (achado do QA no PR 1). |
+| DT-22 | O GRANT por coluna de `deleted_at` e `deleted_by` em `members` é feito sem condição (desvio aceito no PR 1: o PR 5 do E1.08 já estava em produção). | Risco 4 do E1.08. |
 | DT-23 | Trava consultiva (célula, semana) no trigger de semana única e em `restore_cell_report`. O índice único é a garantia. | Mensagem amigável também na corrida (RN-17, RN-20). |
 | DT-24 | `refresh_member_stats_v2` ignora membros e células excluídos, dispara em `UPDATE OF deleted_at` e ganha `SET search_path`. | RN-10 na mesma transação. |
 | DT-25 | `roles` e `role_permissions` só são lidas por quem tem cadastro não excluído, e `log_auth_event` não grava para excluído. | DA-9. |
@@ -1929,6 +1932,7 @@ Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica n
    - Mitigação: paridade por persona com excluídos na massa.
    - A view de excluídos usa o mesmo predicado da principal, e o teste confere que, para cada persona, os ids da principal mais os da de excluídos (para `manage_roles`) cobrem os registros do escopo.
 3. **Deadlocks residuais** (cônjuge, o mesmo usuário em duas abas, totais na mesma subárvore). O Postgres detecta e aborta um deles com 40P01, e a tela mostra "tente de novo". São pré-existentes ou raros. O E2.06 pode ordenar as travas dos totais.
+   - Caso residual conhecido (PR 1, fora dos 5 cenários do spec): quem exclui é o cônjuge do alvo e, ao mesmo tempo, ancestral de um membro que o alvo está excluindo em outra sessão. Um dos dois recebe 40P01, e o estado final fica válido.
 4. **Custo da exclusão e da restauração de membro.** O recálculo de totais percorre a subárvore de cada ancestral, até a igreja inteira para o pastor. É o mesmo custo de hoje ao trocar um líder. Meta: menos de 1 s no volume de referência; o E2.06 otimiza.
 5. **Unicidade sem índice até o E2.04.** A RN-16 (e) e a RN-18 conferem antes de gravar. Uma corrida rara pode gerar duplicidade entre não excluídos até o E2.04, que fecha com os índices. A RPC já traduz o `unique_violation`.
 6. **O índice único da semana não é criado se houver duplicatas.** A migration falha cedo, com a lista, e nada muda. A tarefa 1 confere em produção antes.
@@ -1950,8 +1954,9 @@ Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica n
      - lista de excluídos abaixo de 300 ms;
      - `check_member_deletion` abaixo de 100 ms.
    - O `EXPLAIN` das listas padrão precisa mostrar os índices parciais.
-   - Impacto esperado no `EXPLAIN` das listas do E1.08:
-     - o filtro novo fica dentro da view, antes da barreira, então o predicado `deleted_at IS NULL` implica o do índice parcial, e o *planner* continua usando o índice de ordenação (`members_name_id_idx`, `cell_reports_date_id_idx`);
+   - Medido no PR 1 (Docker local): páginas com contagem das 3 views entre 1,4 e 32,5 ms; `dashboard_summary` 58 ms; listas de excluídos entre 0,8 e 14,6 ms; `check_member_deletion` até 0,4 ms; excluir e restaurar entre 18 e 26 ms.
+   - Impacto no `EXPLAIN` das listas do E1.08:
+     - **plano real (PR 1):** pela view `security_barrier`, as páginas usam Seq Scan com *top-N heapsort*, e não o índice de ordenação. Já era assim no E1.08, e os tempos ficam muito abaixo da meta;
      - `last_report_date` e a contagem de pendentes usam `cell_reports_cell_id_date_idx` parcial;
      - o vínculo celular ganha um filtro a mais nas buscas por índice que já faz;
      - a contagem exata continua varrendo as linhas visíveis, como hoje.
@@ -1990,6 +1995,14 @@ Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica n
 | 5 (RN-18) | merge → "Deploy: banco" (publica a `create-user-admin`) → promote | Entre os dois, o front em produção recebe o 409 num cadastro com dado de excluído e mostra o texto do `error`, sem "Cadastrar mesmo assim". A janela é de minutos. |
 
 - O promote já recusa rodar com migration pendente.
+- **Efeito do PR 1 em produção (2026-11-24):** até o PR 2, a exclusão física pela tela antiga falha com 23503, sem apagar nada, para membro casado, com discípulos ou com participações; célula com relatórios; e relatório com participantes.
+- **Desvios aceitos no PR 1:**
+  - DT-22 sem condição;
+  - `set_cell_report_participants` devolve `not_found_or_deleted` se o relatório não está visível, tem o código `too_many_participants`, dá 42501 numa retirada sem política de DELETE e grava em ordem de `member_id`;
+  - a mensagem de reserva de `member_has_links` usa o plural correto;
+  - `refresh_member_stats_v2` passa a recalcular também o líder antigo quando o novo líder é nulo (bug que já existia ao tirar o líder de alguém);
+  - no E1.08, o pgTAP do PR 2 espera `cell_deleted` e `member_deleted` no fim das views, e um relatório do fixture do PR 3 mudou de célula por causa do índice único da semana.
+- **Recuperação de senha com conta excluída:** o `/recover` responde igual para excluído e inexistente, mas o e-mail ainda chega à caixa do excluído, e o link termina em `user_banned`, sem abrir sessão. Com a DT-01 do E1.04 (provedor de e-mail desligado), o `/recover` sai de uso.
 - **Rollback:** o front volta pelo promote do commit anterior. As migrations do PR 1 podem ficar, porque só filtram o que não existe. Se a migration 5 precisar voltar, uma migration nova recria as políticas de DELETE (a exclusão física não volta a apagar em cascata, por causa da DT-03).
 
 ### Verificações obrigatórias (para o QA)
@@ -2125,6 +2138,15 @@ Seis PRs no `mci-connect`. **Tudo começa depois do merge do PR 4 do E1.08.**
 
 ## Testes
 _Seção do `qa`._
+
+### PR 1: banco (mci-connect#19)
+- **pgTAP:** 714 verificações em 5 arquivos (`e201_01` a `e201_05`); 1.312 com as do E1.08, todas passando (`supabase test db`).
+- **Concorrência** (`supabase/tests/concurrency/e201_concurrency.sh`): os 5 cenários do spec nas duas ordens, mais "restaurar membro × excluir o líder dele"; 71/71 em três execuções seguidas, sem 40P01, depois da correção do QA-E201-1.
+- **GoTrue real da stack local (RN-14, DT-13):** 29/29. O login do excluído responde igual, byte a byte, ao de um e-mail inexistente; o refresh token antigo é recusado; o token de acesso antigo lê vazio e recebe 42501; depois de restaurar, o login funciona com a mesma senha. A `get-user-email` responde `{"email":null}` igual para excluído e inexistente.
+- **Volume** (20 mil membros com 10% excluídos, ~101 mil relatórios com 5% excluídos, 800 mil participações): todas as metas atendidas (ver risco 14).
+- **Mutações:** 17 de 20 detectadas; as 3 restantes são defesas redundantes.
+- **Front:** Vitest 233/233; `tsc` e `npm run build` ok.
+- **Produção (2026-11-24, só leitura):** os 14 blocos de `e201_pr1_prod_check.sql` com o resultado esperado.
 
 | RN | Testes | Resultado |
 |---|---|---|
