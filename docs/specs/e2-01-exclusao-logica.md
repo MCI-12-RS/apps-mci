@@ -2152,3 +2152,21 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+
+### PR 5: cadastro com dados de excluído (mci-connect#23, tarefa 20)
+- **Stack local:** `create-user-admin` servida com `supabase functions serve` (a stack `mci-e108-pr2` já traz as migrations até `20261124021500`). Os E2E rodam com `--workers=1` (o arquivo da UI cria a função padrão da stack se faltar).
+- **Vitest (dev):** `src/lib/members/deleted-matches.test.ts` (22), `supabase/functions/create-user-admin/lib/*.test.ts` (29) e `errors.test.ts`; cobrem os dois 409, a confirmação booleana, a máscara de nome/id para quem não é administrador e o e-mail fictício. Sem lacuna encontrada; nada acrescentado.
+- **Playwright:** `e2e/create-user-admin.spec.ts` (10, contra a função servida) e `e2e/cadastro-excluido.spec.ts` (10, AD, LE e CM, tela de 360×800 e desktop).
+
+| RN / UX / critério | Teste | Resultado |
+|---|---|---|
+| RN-18, 8 de pronto: sem confirmação, o celular ou CPF de um excluído não cria conta nem membro; com `confirmDeletedMatches: true`, cria; confirmação não booleana vale como ausente | `create-user-admin.spec.ts` | passou |
+| RN-18: e-mail da conta de um excluído nunca cria (AD, CM e LE, com e sem confirmação, caixa alta); nenhuma conta nova | `create-user-admin.spec.ts` | passou |
+| RN-18, DA-8: CM não recebe nome, id nem data (nem no texto cru da resposta); AD recebe; sem `create_member` 403, sem login 401 | `create-user-admin.spec.ts` | passou |
+| UX-31 (AD): diálogo com nome, data e "Restaurar {Nome}"; sem "Cadastrar mesmo assim" no e-mail da conta; "Voltar ao formulário" mantém o digitado e tem o foco inicial; dois excluídos; 360×800 | `cadastro-excluido.spec.ts` | passou |
+| UX-32: "Restaurar" abre "Editar Membro" com os dados do restaurado, `role="status"` com foco, nada do digitado gravado; salvar edita o restaurado | `cadastro-excluido.spec.ts` | passou |
+| UX-33 (LE, CM): e-mail da conta vira erro no campo (`aria-invalid`, foco, sem diálogo); celular e CPF abrem o aviso sem nome; nome ausente do DOM e da resposta; 360×800 | `cadastro-excluido.spec.ts` | passou |
+| UX-34: "Cadastrar mesmo assim" cria com um toque (respostas 409 e 200) e mostra o toast normal; sair do campo não confere | `cadastro-excluido.spec.ts` | passou |
+
+- **Resultados:** `npm test` 681/681 (71 arquivos); `npm run build` ok; `npm run lint` 15 erros e 8 avisos, igual à base; Playwright completo `--workers=1`: 84 passaram, 5 pulados (dashboard e ministérios, que pedem outras variáveis; fora do PR).
+- **Não verificado:** administrador com escopo restrito (DA-8, "fora do escopo" pela tela); produção.
