@@ -2178,6 +2178,8 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
   - as migrations do PR 1 não voltam sozinhas: uma migration nova reabre o que for preciso, por exemplo o EXECUTE de uma função;
   - o PR 6 volta com uma migration que recria as políticas de leitura do E2.01.
 
+> **Atenção para a implementação (2026-11-24, achado do desenho do E2.08):** `_del_raise` (E2.01) só tem EXECUTE para `postgres` e `service_role`. Um trigger `SECURITY INVOKER` que recusa chamando `_del_raise` falha com 42501 para qualquer usuário logado. Os triggers de escopo deste passo (`ac_enforce_member_scope`, `ab_enforce_cell_scope`, `ab_enforce_cell_report_scope`) foram desenhados INVOKER: ao implementar, torná-los *definer*, dar EXECUTE a `authenticated` ou levantar o erro direto. O PR 2 do E2.01 também criou `a0_check_insert_permission` e as `viewer_can_insert_*`: o escopo de escrita das políticas de INSERT deve entrar nelas, que são a fonte única da política e do trigger.
+
 ### Conferências em produção (tarefa 1)
 
 > **Resultado em 2026-11-23 (sessão principal, só leitura).** Nenhum caso de parada:
