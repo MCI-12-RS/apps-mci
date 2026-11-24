@@ -142,7 +142,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E2.09** Situação do relatório por célula · CEL-05. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md) (desenho pronto)
 - [ ] **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07. Spec: [`specs/e2-10-listagem-celulas.md`](specs/e2-10-listagem-celulas.md) (desenho pronto; depende também do E2.07)
 - [ ] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3. Inclui: trocar o trigger de semana única por índice único, validar a semana atual só no lançamento e corrigir a data sugerida no formulário. Spec: [`specs/e2-11-lancamento-relatorio.md`](specs/e2-11-lancamento-relatorio.md) (desenho pronto; o retrato vira `snapshot_*`)
-- [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13
+- [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13. Spec: [`specs/e2-12-listagem-relatorios.md`](specs/e2-12-listagem-relatorios.md) (desenho pronto; entra depois do E2.10 e do E2.11)
 - [ ] **E2.13** Exportação dos relatórios para Excel · REL-14
 - [ ] **E2.14** Dashboard, incluindo a correção do mapa de dias da semana · DSH-01 a DSH-06. A dupla contagem no ranking G12 já foi corrigida (2026-11-22, mci-connect#13)
 - [ ] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02
