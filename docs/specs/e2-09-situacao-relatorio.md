@@ -2,6 +2,7 @@
 
 > Status: desenho pronto. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-7 foram resolvidas pelo PO no mesmo dia (P-SIT-12 a P-SIT-18). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, só como desenho, sem nada implementado. Ficam para o usuário revisar no PR os padrões P-SIT-01 a P-SIT-18, as decisões DA-1 a DA-8 do `architect` e as perguntas Q-1 a Q-6, que não bloqueiam (a T6 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). O PR de banco precisa só do PR 1 do E2.01 em produção. Falta a seção Testes.
 > Slug: `e2-09-situacao-relatorio` · Paridade com o legado: sim (CEL-05 e o card de pendentes da DSH-02). Tem regras novas: o prazo exato de 1 hora, as semanas que contam (célula nova, reativada ou restaurada), a célula sem nenhum relatório, a situação na lista de Células e o detalhe de "Não houve célula".
+> **Coordenação (2026-11-24, E2.10):** o critério "nenhuma leitura da `cells_view` fora da lista pedindo `report_status`" passa a ser "fora da lista e do detalhe da célula" (E2.10). Recomendação: a `sp_day_start` do E2.07 passa a usar a `sp_instant` (DT-08), para o fuso ficar num lugar só. A lista de Células troca cartão por tabela em 1280 px (P74), o que o E2.10 adota (DA-5 de lá).
 
 ## Negócio
 _Seção do `product-owner`. Escrita em 2026-11-24 e atualizada no mesmo dia com as decisões do PO sobre as pendências PO-UX-1 a PO-UX-7 da seção Experiência (UX) (P-SIT-12 a P-SIT-18). Fontes:_

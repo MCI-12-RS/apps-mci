@@ -2,6 +2,7 @@
 
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos; desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-FIL-16 a P-FIL-25). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, que respondeu às AQ-1 a AQ-7 e não devolveu nenhuma RN ao PO. Ficam para revisão do usuário no PR os padrões P-FIL-01 a P-FIL-25, as decisões DA-1 a DA-8 do `architect` e as perguntas Q-1 a Q-4, que não bloqueiam (cada uma já tem um padrão adotado; a T9 da UX mostra a tela de cada resposta, e a Solução técnica dá o custo de cada alternativa). O PR 1 (banco) entra depois do banco do E2.05 e do PR 1 do E2.06 em produção. Faltam os Testes.
 > Slug: `e2-07-filtros-membros` · Paridade com o legado: sim (MEM-13, MEM-14 e MEM-15), com regras novas: célula inativa não dá vínculo, "Não houve célula" não conta como participação, filtros de múltipla escolha, pessoa indisponível no filtro de liderança e o equivalente de cada card do Dashboard na lista.
+> **Coordenação (2026-11-24, E2.10):** a função de cache que o DT-14 chama de `refreshAfterCellReportWrite` é a mesma `refreshAfterReportWrite` do E2.09 (DT-12). Vale o nome do E2.09: o passo implementado primeiro cria, o outro reaproveita.
 
 ## Negócio
 _Seção do `product-owner`. Escrita em 2026-11-24 a partir destas fontes:_
