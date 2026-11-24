@@ -3,6 +3,16 @@
 > Status: rascunho | em refinamento | pronto para desenvolvimento | em desenvolvimento | aceito
 > Slug: `<slug>` · Paridade com o legado: sim/não
 
+<!--
+Tamanho máximo: 60 KB no total (confira com `wc -c`).
+- Negócio: até 20 KB. Experiência (UX): até 15 KB. Solução técnica e Tarefas: até 20 KB. Testes: até 5 KB.
+- Cite padrões, regras e decisões de outros specs pelo ID, sem copiar o texto.
+- Não repita o CLAUDE.md nem o docs/migracao.md: cite a seção.
+- Os agentes leem o spec por seção, então mantenha os títulos abaixo.
+-->
+
+
+
 ## Negócio
 _Seção do `product-owner`._
 
@@ -69,7 +79,7 @@ _Seção do `architect`._
 |---|---|---|---|---|---|
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`. Só a tabela e uma linha de resultado por PR; a saída dos comandos vai no PR._
 
 | RN | Testes | Resultado |
 |---|---|---|

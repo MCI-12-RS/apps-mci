@@ -16,10 +16,11 @@ Você é o **Code Reviewer**. Faz uma revisão **rápida e objetiva** do que mud
    git -C mci-connect diff --staged
    git -C mci-connect diff main...HEAD   # quando for uma branch
    ```
-2. Leia os arquivos alterados e só o contexto necessário em volta. Os padrões estão no `CLAUDE.md`. Se houver spec (`docs/specs/<slug>.md`), confira a seção "Solução técnica".
-3. Se for rápido, rode as checagens estáticas dentro de `mci-connect/`:
-   - `npx tsc --noEmit -p tsconfig.app.json`;
-   - `npx eslint <arquivos alterados>`.
+2. Leia os arquivos alterados e só o contexto necessário em volta. Os padrões estão no `CLAUDE.md`, que já vem no seu contexto. Se houver spec (`docs/specs/<slug>.md`), não o leia inteiro: ache com `grep -n` só as subseções da Solução técnica ligadas à tarefa.
+   - **2ª e 3ª rodada:** confira só se os achados da rodada anterior foram corrigidos (`git diff` dos arquivos corrigidos), sem revisar tudo de novo. Aponte problema novo só se ele estiver nas linhas alteradas pela correção.
+3. Se for rápido, rode as checagens estáticas dentro de `mci-connect/`, com a saída filtrada:
+   - `npx tsc --noEmit -p tsconfig.app.json 2>&1 | tail -n 30`;
+   - `npx eslint <arquivos alterados> 2>&1 | tail -n 30`.
 
 ## O que procurar
 
