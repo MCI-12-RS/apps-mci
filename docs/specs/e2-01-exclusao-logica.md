@@ -537,6 +537,7 @@ Relatórios
 │ Rua das Flores, 120 · Centro         │
   ⋯ : Excluir relatório
 ```
+- **Nota (2026-11-23):** o "G12: Vera e Wagner" do card de Células é anterior ao E2.06. O G12 da célula é um nome só, nunca o casal (RN-11 e P-HIE-23 do [E2.06](e2-06-hierarquia-totais.md)).
 - O "⋯" é um `DropdownMenu`. O gatilho é um `Button variant="ghost" size="icon"` com `h-11 w-11` e `aria-label`:
   - "Ações de {Nome}" em Membros;
   - "Ações da célula de {Líder}" em Células;

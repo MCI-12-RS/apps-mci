@@ -1085,6 +1085,7 @@ Fábio (Membro): vê C1 e C2, sem ser pessoa delas
 Pedro (Líder)
 │ André Souza          [📄+] [✎] [⋯]   │  44×44 cada
 ```
+- **Nota (2026-11-23):** o "G12: Pedro e Paula" e o "G12: Tiago e Tânia" dos cards são anteriores ao E2.06. O G12 da célula é um nome só, nunca o casal: "G12: Pedro Alves" (RN-11 e P-HIE-23 do [E2.06](e2-06-hierarquia-totais.md)).
 - **"Novo relatório" no card (RN-13):** aparece para a pessoa da célula (líder, timóteo ou **anfitrião**) cuja função tem "Enviar Relatório das Próprias Células", e para quem tem "Editar Célula" ou "Enviar Relatório de Qualquer Célula Visível", nas células que vê. Hoje o anfitrião e quem tem só "Editar Célula" ficam de fora. A tela usa o mesmo cálculo do banco (AQ-4).
 - **"Editar":** só com "Editar Célula", como hoje. Ser líder ou timóteo da célula não basta (RN-12).
 - **Subtítulo:** "Células do seu ministério" ou "Células de toda a igreja".
