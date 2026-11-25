@@ -1,6 +1,6 @@
 # E2.02: Perfis e escopo de visibilidade e escrita
 
-> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A implementação começa depois de todo o E2.01 em produção. Falta só Testes.
+> Status: **concluído e aceito pelo PO em 2026-11-25**, junto com o E2.15 (MIN-02, pela DA-6 e a DT-24). PRs mci-connect#29 a #34 em produção em 2026-11-25 (o #29 e o #34 por "Deploy: banco"), com smoke de produção só leitura; revisão final (tarefa 20) APROVADO, com o backlog em [Revisão final](#revisão-final-do-passo-tarefa-20). Os P-PER-01 a P-PER-29 e as DA-1 a DA-12 ficam como aceitos; a P-PER-15 foi superada pela DA-6. Resultados por PR em [Testes](#testes).
 > Slug: `e2-02-perfis-escopo` · Paridade com o legado: sim (AUT-02, AUT-03, AUT-04, AUT-05, AUT-07, CEL-04 e a parte "quem lança" da REL-11), com regras novas (D3, funções semeadas, função padrão, exclusão de funções e privacidade das consultas de permissão).
 
 ## Negócio
@@ -101,7 +101,7 @@ Pontos que as fontes não respondem. O PO adotou a opção mais conservadora e c
 - **P-PER-12, administradores.** O sistema garante pelo menos um administrador. "Pelo menos dois" (6.6) é regra de operação do E3.04, e o sistema não bloqueia ter só um (RN-21).
 - **P-PER-13, permissões redundantes.** "Visualizar Membros (legado)" e "Visualizar Dashboard do seu ministério" saem da tela de Funções, trocadas por "Visualizar Toda a Igreja" e "Visualizar Dashboard", com o mesmo efeito de hoje. Os rótulos mudam (RN-22).
 - **P-PER-14, privacidade das consultas.** O conserto das funções do RLS que aceitam o id de qualquer pessoa ("Problemas conhecidos") entra neste passo, que já reescreve o escopo (RN-23).
-- **P-PER-15, publicação junto com o E2.15.** Com o escopo novo, quem vê só o ministério deixa de ver os pastores, e a árvore de Ministérios, que hoje começa nos pastores, fica vazia para essas pessoas. Por isso, o E2.02 só vai para produção junto com o E2.15 (MIN-02) ou depois dele (ver [Impactos](#impactos-em-outros-passos)).
+- **P-PER-15, publicação junto com o E2.15.** Com o escopo novo, quem vê só o ministério deixa de ver os pastores, e a árvore de Ministérios, que hoje começa nos pastores, fica vazia para essas pessoas. Por isso, o E2.02 só vai para produção junto com o E2.15 (MIN-02) ou depois dele (ver [Impactos](#impactos-em-outros-passos)). **Superada pela DA-6 (aceite de 2026-11-25):** a árvore começa no topo do escopo desde o PR 1, e o E2.15 fechou junto com este passo.
 - **P-PER-16, sem cadastro e sem função.** Uma conta sem cadastro de membro não vê nem altera nada. Um membro sem função vê só o que a P-PER-02 libera e não altera nada (RN-07).
 - **Vindos do desenho de UX (2026-11-23, PO-UX-1 a PO-UX-13 em "Experiência (UX)"):**
   - **P-PER-17, dicas das permissões** (PO-UX-1): a tela de Funções explica as permissões menos óbvias com as dicas da UX, e uma nota geral diz que, fora a Auditoria, as permissões valem só para o que a pessoa vê (RN-22).
@@ -568,7 +568,7 @@ Cada item indica o passo que cuida dele.
 - **Autoria nas colunas** (MEM-12): E2.05.
 - **Ciclos e recálculo do nível e do caminho de liderança** (HIE-01 a HIE-03): E2.06. O escopo não depende do nível guardado (RN-01).
 - **Lançamento de relatório numa RPC**, com as regras de data, os participantes automáticos e o registro de líder, timóteo e anfitrião (REL-01 a REL-10): E2.11. Este spec define quem lança e em que escopo (RN-13), e a RN-04 passa a usar o registro do relatório quando o E2.11 o criar.
-- **Árvore de Ministérios a partir do escopo** (MIN-02): E2.15. Ver P-PER-15.
+- **Árvore de Ministérios a partir do escopo** (MIN-02): E2.15, que entrou neste passo pela DA-6 (ver P-PER-15).
 - **Filtros** (E2.07, E2.10, E2.12), **situação do relatório** (E2.09), **exportação** (E2.13) e **cards novos do Dashboard** (E2.14): seguem o escopo deste spec, sem regra nova.
 - **Líder já preenchido para todos** (MEM-15): E2.07. Este spec só antecipa a MEM-15 para quem vê só o ministério (RN-10, P-PER-22).
 - **Dados sensíveis:** a regra é a do E1.08 (D-1), e a trava de colunas é o PR 5 do E1.08. Este spec não dá "Ver Dados Sensíveis" à Líder (P-PER-08).
@@ -594,7 +594,7 @@ Pontos de negócio que outros passos precisam respeitar. O `architect` decide co
 - **E2.07:** estende a todos o líder já preenchido com quem cadastra (MEM-15), que este spec antecipa para quem vê só o ministério.
 - **E2.11:** a RPC de lançamento aplica a RN-13 e grava o líder, o timóteo e o anfitrião que a RN-04 usa. Na edição, os participantes são gravados pela diferença (AQ-7 da UX): só os que entram passam pela RN-09 (b); os que saem passam pela fronteira da RN-09 ("retirar não é escolher", e o excluído não sai).
 - **E2.13:** a exportação respeita o escopo, como no legado.
-- **E2.15:** o E2.02 vai para produção junto com o E2.15, ou depois dele (P-PER-15). Até lá, a árvore de Ministérios de quem vê só o ministério fica vazia. No legado, o link de Ministérios estava fora do menu, então isso não perde paridade, mas é uma regressão para quem usa a função Líder hoje.
+- **E2.15:** superado pela DA-6, que pôs a raiz da árvore no PR 1; o E2.15 fechou no aceite deste passo. Texto original: o E2.02 vai para produção junto com o E2.15, ou depois dele (P-PER-15). Até lá, a árvore de Ministérios de quem vê só o ministério fica vazia. No legado, o link de Ministérios estava fora do menu, então isso não perde paridade, mas é uma regressão para quem usa a função Líder hoje.
 - **E3.04, E4.06 e E4.08:** usam a correspondência da RN-16. A lista do E3.04 também define a função dos pastores. Com o escopo novo, os pastores veem a árvore inteira com a função Líder, e "Visualizar Toda a Igreja" só acrescenta quem está sem liderança.
 - **Aceite (PO):**
   - no `docs/migracao.md`:
@@ -610,7 +610,7 @@ Nenhuma. Os pontos que as fontes não respondiam viraram padrões, listados em [
 - **P-PER-08:** a Líder não recebe "Ver Dados Sensíveis". Ela vê e edita os discípulos, mas não vê nem corrige o celular, o e-mail e o endereço deles, até a função ganhar a permissão na tela de Funções (D-1).
 - **P-PER-05:** a Líder não marca ninguém como pastor ou sem liderança.
 - **P-PER-07:** líder, timóteo e anfitrião lançam relatório se a função deles tiver "Enviar Relatório das Próprias Células". As duas funções semeadas têm.
-- **P-PER-15:** o E2.02 só vai para produção junto com o E2.15, ou depois dele.
+- **P-PER-15:** o E2.02 só vai para produção junto com o E2.15, ou depois dele. Superada pela DA-6.
 - **P-PER-21:** só quem atribui funções vê a função de outra pessoa. Os líderes deixam de ver a função dos discípulos.
 - **P-PER-24:** quem edita um relatório pode retirar um participante que não vê, e só quem vê essa pessoa consegue incluí-la de novo. O participante excluído continua sem poder ser retirado (E2.01).
 
@@ -626,7 +626,7 @@ _Seção do `ux-designer`. Escrita em 2026-11-23 a partir da seção Negócio (R
 | Células (T7) | "Novo relatório" também para o anfitrião e para quem tem "Editar Célula"; dica de alcance nos seletores de pessoas | pessoas da célula e Líder |
 | Relatórios (T8) | "Novo relatório" só para quem pode enviar de alguma célula; o seletor traz só essas células e já vem preenchido quando há uma só; participantes do ministério | quem envia relatório |
 | Dashboard (T9) | título e selo pela permissão de visibilidade; orientação para quem não tem acesso; atalho "Novo relatório" | todos |
-| Ministérios (T10) | estado vazio com o caminho para Membros, até o E2.15 | quem vê só o ministério |
+| Ministérios (T10) | a árvore começa no topo do escopo (DA-6); estado vazio só para quem não vê ninguém | quem vê só o ministério |
 | Todas (T11, T12) | recusas por escopo na linguagem do usuário; acesso relido sem sair e entrar; tela sem acesso | todos |
 
 ### Decisões de experiência
@@ -684,7 +684,7 @@ Contagem no celular, a partir do Dashboard (a tela que abre depois do login) ou 
 | F11 | O acesso muda durante o uso (Caio recebe a função Líder) | volta para a aba ou toca num item do menu → menu e botões atualizados, com "Seu acesso foi atualizado." | 0 toque a mais |
 | F12 | O membro corrige os próprios dados (Caio) | ☰ → "Editar meus dados" → altera → "Salvar" | 3 toques, igual a hoje |
 | F13 | Quem não tem função entra (Hugo) | login → Dashboard sem acesso, com a orientação → ☰ → "Ver meus dados" | 2 toques para consultar |
-| F14 | O líder abre Ministérios antes do E2.15 | ☰ → Ministérios → estado vazio → "Ver membros do seu ministério" | 3 toques |
+| F14 | O líder abre Ministérios | ☰ → Ministérios → árvore a partir do seu casal G12 (DA-6) | 2 toques |
 
 ### Telas
 As convenções dos wireframes são as de Escolas e do E2.01: 360 px ≈ 38 colunas; `[Botão]` é botão; `[x]` é checkbox; `[▾]` é seleção; `⋯` é o menu de ações; `(i)` é aviso; `⚠` é erro. A margem lateral é a do `AppLayout` (`p-4`).
@@ -1182,24 +1182,24 @@ Hugo (sem função)                        Conta X (sem cadastro)
 - **Números e ranking "Células por G12":** sem mudança visual. Os números seguem o escopo (DSH-01), e quem vê só o ministério costuma ver um só casal no ranking.
 - Componentes: os de hoje, mais o `Dialog` do formulário de relatório.
 
-#### T10. Ministérios até o E2.15 (P-PER-15)
-Quem vê só o ministério e não é pastor (Pedro, Caio):
+#### T10. Ministérios (DA-6, aceite de 2026-11-25)
+A árvore começa no topo do escopo (DA-6, MIN-02): com "Visualizar Toda a Igreja", nos pastores; sem ela, no casal G12 de quem consulta ou, sem G12, no próprio casal. Pedro e Caio veem a árvore a partir de Pedro e Paula; Samuel e Magda, a partir deles mesmos.
+
+O estado vazio fica só para quem não vê ninguém na árvore:
 ```
 ┌──────────────────────────────────────┐
 │ Ministérios                          │
 │ ┌──────────────────────────────────┐ │
-│ │ Nenhum pastor visível para você. │ │
-│ │ Por enquanto, a árvore começa    │ │
-│ │ pelos pastores. As pessoas do seu│ │
-│ │ ministério aparecem em Membros.  │ │
+│ │ Ninguém visível para você na     │ │
+│ │ árvore.                          │ │
+│ │ As pessoas do seu ministério     │ │  com acesso a Membros
+│ │ aparecem em Membros.             │ │
 │ │ [Ver membros do seu ministério ] │ │  outline, h-11; leva a /members
 │ └──────────────────────────────────┘ │
 └──────────────────────────────────────┘
 ```
-- O texto é o do E1.08, que já está na tela. Este passo só acrescenta o botão, para a pessoa não ficar sem saída. Pela P-PER-15, esse estado só existe se o E2.02 for para produção antes do E2.15.
-- Os pastores (Samuel e Magda, com a função Líder) veem a árvore a partir deles mesmos, sem mudança.
-- Uma função com "Visualizar Toda a Igreja" e sem "Visualizar Seu Ministério" passa a ver o item no menu e a árvore inteira.
-- No E2.15, a árvore começa pelo topo do escopo, e o estado vazio fica só para quem não vê ninguém.
+- Sem acesso a Membros, a segunda linha é "Fale com um administrador." e não há botão.
+- Textos aprovados na revisão de UI do PR 5 e confirmados pelo PO no aceite.
 
 #### T11. Recusas por escopo e por função
 Os seletores e os botões já escondem o que a pessoa não pode fazer. As recusas abaixo só aparecem em corrida (o acesso ou a árvore mudaram entre abrir a tela e salvar) ou pela API. Em todas, o formulário continua aberto, com o que foi digitado.
@@ -1275,12 +1275,12 @@ Nenhum componente novo do shadcn é necessário: `collapsible`, `alert`, `alert-
 ### Estados
 | Estado | Funções (T2 a T4) | Membros e cadastro (T5, T6) | Células e Relatórios (T7, T8) | Menu, Dashboard e Ministérios (T1, T9, T10, T12) |
 |---|---|---|---|---|
-| Carregando | `Skeleton` de 3 cards (celular) ou 3 linhas (desktop), no lugar do "Carregando..." de hoje. A contagem de membros tem um `Skeleton` próprio | Como hoje (E1.08). O seletor de função mostra "Carregando…" | O botão "Novo relatório" tem o espaço reservado (`Skeleton h-11`). O seletor de célula preenche a única opção só depois da primeira página | Menu: 4 `Skeleton` no lugar dos itens. Dashboard: como hoje; o atalho tem o espaço reservado |
+| Carregando | `Skeleton` de 3 cards (celular) ou 3 linhas (desktop), no lugar do "Carregando..." de hoje. A contagem de membros tem um `Skeleton` próprio | Como hoje (E1.08). O seletor de função mostra "Carregando…". Enquanto as funções carregam, o botão "Criar membro" fica desabilitado e mostra "Carregando…" (PO, aceite de 2026-11-25; backlog 5) | O botão "Novo relatório" tem o espaço reservado (`Skeleton h-11`). O seletor de célula preenche a única opção só depois da primeira página | Menu: 4 `Skeleton` no lugar dos itens. Dashboard: como hoje; o atalho tem o espaço reservado |
 | Vazio | Função sem permissões: o texto da T2. A lista nunca fica vazia (Administrador, Líder e Membro existem sempre) | Busca dos seletores: "Nenhum membro do seu ministério encontrado." (só ministério) | Seletor de célula sem opções: "Você não pode enviar o relatório de nenhuma célula." | Ministérios: o estado da T10 |
 | Erro ao carregar | `Alert` "Não foi possível carregar as funções." com "Tentar de novo" (hoje a tela fica em branco) | Como hoje | Como hoje | Acesso nunca lido: o `Alert` da T12 com "Tentar de novo" |
 | Sem permissão | A rota sem "Visualizar Funções" e sem "Gerenciar Funções" mostra o estado da T12. Sem "Gerenciar Funções", não há ações | "Novo membro" bloqueado pela RN-19 (T5). Campos e opções somem ou viram texto (P12) | Sem direito de enviar: o botão não aparece. Sem "Editar Célula": sem "Editar" | Dashboard: a mensagem da T9. Rotas: o estado da T12 |
 | Registro mudou no meio tempo | Função excluída ou alterada em outra sessão: toast informativo "Esta função foi alterada em outra tela." † e a lista recarrega | Os casos da T11 | Os casos da T11 | Acesso mudou: o toast "Seu acesso foi atualizado." |
-| Sucesso | Toasts "Função criada.", "Função atualizada." e "Função excluída.". Na troca da padrão, "Função atualizada. {Nome} agora é a função padrão." † | Como hoje | Como hoje. Pelo atalho do Dashboard, os cards da semana recarregam | — |
+| Sucesso | Toasts "Função criada.", "Função atualizada." e "Função excluída.". Na troca da padrão, "Função atualizada. {Nome} agora é a função padrão." †; ao criar uma função já marcada como padrão, "Função criada. {Nome} agora é a função padrão." † (PR 3) | Como hoje | Como hoje. Pelo atalho do Dashboard, os cards da semana recarregam | — |
 | Lista grande | Sem paginação (poucas funções). As 22 permissões rolam com o diálogo (P1) | Paginação do E1.08 | Seletores com 20 por página (E1.08) | Ranking e árvore como no E1.08 |
 | Queda de conexão no envio | O formulário continua aberto, com os dados, e o `Alert` "Não foi possível salvar a função. Verifique a conexão e tente de novo." †. Na exclusão, o texto do E2.01 | O formulário mantém os dados, como hoje | Como hoje | A releitura do acesso falha em silêncio e mantém o último acesso. A sessão não cai |
 
@@ -1295,7 +1295,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar termos. As mensagens de 
 | Funções: lista | Funções · Gerenciar funções e permissões · Nova função · {N} permissões / 1 permissão † · {N} membros / 1 membro / Nenhum membro † · Ver permissões · Ocultar permissões † · Padrão · Administrador: a frase do Negócio · Sem permissões: quem tiver esta função vê só o próprio cadastro, as células em que é líder, timóteo ou anfitrião e os relatórios delas, e não altera nada. † · Editar a função {Nome} · Ações da função {Nome} · Excluir a função {Nome} (rótulos para leitor de tela) · Não foi possível carregar as funções. † |
 | Funções: formulário | Nova função · Editar função · Nome * · Descrição · Permissões · {N} marcadas † · Fora a Auditoria, todas as permissões valem só para o que a pessoa vê. † · Grupos †: O que a pessoa vê / Membros / Células / Relatórios / Funções e auditoria · Função padrão · Novos membros recebem esta função quando quem cadastra não escolhe outra. † · Esta é a função padrão. Para trocar, marque outra função como padrão. † · A função {Nome} deixa de ser a padrão. Quem cadastra membros sem poder escolher a função precisa ter todas as permissões da função padrão. † · Informe o nome da função. † · Cancelar · Salvar função · Criar função · Salvando… · Descartar as alterações? · Descartar · Continuar editando |
 | Funções: exclusão | Excluir a função {Nome}? · Nenhum membro usa esta função. Depois de excluída, ela não pode ser recuperada. † · Excluir função · Excluindo… · Não é possível excluir a função {Nome} · mensagens da RN-20 · Fechar |
-| Funções: toasts | Função criada. · Função atualizada. · Função excluída. · Função atualizada. {Nome} agora é a função padrão. † · Esta função foi alterada em outra tela. † · Não foi possível salvar a função. Verifique a conexão e tente de novo. † |
+| Funções: toasts | Função criada. · Função atualizada. · Função excluída. · Função atualizada. {Nome} agora é a função padrão. † · Função criada. {Nome} agora é a função padrão. † (PR 3) · Esta função foi alterada em outra tela. † · Não foi possível salvar a função. Verifique a conexão e tente de novo. † |
 | Dicas das permissões † | Visualizar Toda a Igreja: Todos os membros, células e relatórios. · Visualizar Seu Ministério: A pessoa, o cônjuge, o casal G12 e os discípulos de todos eles, com as células e os relatórios. · Ver Dados Sensíveis: CPF, e-mail, telefones e endereço das pessoas que ela vê. · Visualizar Dashboard: Os números do que a pessoa vê. · Editar Próprio Cadastro: Só os dados pessoais. Líder, cônjuge, batismo, situação e função ficam de fora. · Editar Célula: Também envia o relatório das células que a pessoa vê. · Visualizar Relatórios de Toda a Igreja e do Seu Ministério: Só os relatórios. Não abre Membros nem Células. · Gerenciar Funções: Também vê e restaura o que foi excluído. · Atribuir Função aos Membros: Só funções com permissões que a pessoa também tem. · Enviar Relatório das Próprias Células: a dica do Negócio · Visualizar Auditoria: As alterações feitas em toda a igreja, sem limite de ministério. (dica do PO, PO-UX-2) |
 | Novo membro bloqueado | Título †: Não é possível cadastrar membros · mensagem da RN-19 · Fechar |
 | Cadastro: Líder | Líder * · O líder é obrigatório e é escolhido entre as pessoas do seu ministério. (Negócio) · Escolha o líder. † |
@@ -1308,7 +1308,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar termos. As mensagens de 
 | Relatório: participantes † | Aparecem só as pessoas do seu ministério. · Alguns participantes não são do seu ministério: se você retirá-los, não poderá incluí-los de novo. |
 | RN-09 (c) † | Com esta alteração, você deixaria de ver este cadastro. As alterações não foram salvas. · Com esta alteração, você deixaria de ver esta célula. Mantenha pelo menos uma pessoa do seu ministério como líder, timóteo ou anfitrião. As alterações não foram salvas. |
 | Dashboard | Visão geral da igreja · Visão do seu ministério · Meu Ministério · Você não tem acesso ao dashboard. · Sua conta ainda não tem uma função. Fale com um administrador. † · Seu acesso ainda não está ligado a um cadastro de membro. Fale com um administrador. † · Novo relatório (atalho) |
-| Ministérios | os textos do E1.08 · Ver membros do seu ministério † |
+| Ministérios | Ninguém visível para você na árvore. † · As pessoas do seu ministério aparecem em Membros. † · Ver membros do seu ministério † · Fale com um administrador. |
 | Recusas | as da tabela da T11 |
 
 ### Acessibilidade
@@ -1358,7 +1358,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar termos. As mensagens de 
 | UX-25 | Em Relatórios, o botão "Novo relatório" aparece para Caio, Carla e Pedro e não aparece para Fábio, Hugo e Gabriel (só com "Visualizar Relatórios do Seu Ministério"). Uma função com "Editar Próprio Cadastro" e "Visualizar Seu Ministério", sem permissão de enviar, também não vê o botão. | teste de componente |
 | UX-26 | O seletor de célula de Caio oferece só C1 e C2. O formulário de Carla abre com C1 já escolhida e com a data e o horário sugeridos. O de Gabriel, com "Enviar Relatório de Qualquer Célula Visível", oferece C1 e C2, e não C3. | teste E2E |
 | UX-27 | Quando Pedro edita R2, Diego e Hugo aparecem como participantes, com o aviso da T8. Depois de mudar só o tema e salvar, os dois continuam no relatório, e o seletor nunca os oferece. | teste E2E (critério da RN-09) |
-| UX-28 | Em Ministérios, Pedro vê o estado vazio com "Ver membros do seu ministério", que leva a `/members`. Samuel vê a árvore a partir dele e de Magda. | teste E2E |
+| UX-28 | Em Ministérios, Pedro e Caio veem a árvore a partir de Pedro e Paula, e Samuel a partir dele e de Magda (DA-6). Quem não vê ninguém vê "Ninguém visível para você na árvore." e, com acesso a Membros, "Ver membros do seu ministério", que leva a `/members`; sem esse acesso, "Fale com um administrador.". | teste E2E + teste de componente (vazio) |
 | UX-29 | Nenhum estado deste spec depende só de cor. O badge "Padrão" tem ícone e texto, com os tokens do P6, e "Meu Ministério" é texto. O contraste é de 4,5:1 para texto e de 3:1 para ícones, nos temas claro e escuro. | inspeção (axe, nos dois temas) |
 | UX-30 | Nenhuma tela deste spec mostra mensagem técnica: nada de identificador de permissão, "row-level security", "42501" nem nome interno de função do banco. A recusa 42501 vira "Você não tem permissão para esta ação.". | teste de componente |
 | UX-31 | Em 320 px e com zoom de 200%, os rótulos longos ("Enviar Relatório de Qualquer Célula Visível", "Visualizar Relatórios de Toda a Igreja"), a frase do Administrador e os nomes no menu quebram linha, sem corte, e nenhum botão estoura a largura. | inspeção + teste E2E (viewport) |
@@ -2133,6 +2133,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 7. **Janela entre o PR 1 e os PRs de front.** O front em produção ainda mostra "É Pastor(a)?", "Tem Liderança?", o seletor de função e "Novo relatório" para quem não pode usá-los.
    - O banco recusa, e a tela mostra a mensagem do servidor num toast.
    - A tela de Funções antiga não consegue trocar a função padrão, porque o constraint trigger recusa a desmarcação isolada. Ela edita o resto normalmente.
+   - **Achado da implementação (PR 1, 2026-11-25):** a tela antiga apaga todas as permissões da função e depois insere as marcadas, em duas requisições, sem checar o erro do DELETE. Se o INSERT for recusado (`permission_retired`, porque ela ainda oferece "Visualizar Membros (legado)", ou `permission_not_covered`), a função fica **sem nenhuma permissão**. A Administrador não é afetada (os triggers recusam as duas requisições). Decisão do `architect`: aceitar, porque a produção só tem dados de teste; **entre o "Deploy: banco" do PR 1 e o promote do PR 3, não editar funções pela tela**. Se precisar, corrigir pela `save_role`.
 8. **Volume.**
    - Medir no volume de referência do E1.08 (20 mil membros, 1.500 células, 100 mil relatórios e 800 mil participações), com um pastor e um G12 com "Visualizar Seu Ministério".
    - Metas:
@@ -2388,8 +2389,106 @@ Seis PRs no `mci-connect`. **Tudo começa depois de todo o E2.01 em produção.*
 10. **Tarefa 18:** depois do deploy, nenhuma tela quebra; `select * from roles` como Pedro volta vazio; a `role_id` de outra pessoa não sai para Pedro, nem pela view nem pela tabela.
 11. **Tarefas 7, 10, 13 e 16:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
+### Revisão final do passo (tarefa 20)
+2026-11-25, `architect`, sobre o diff acumulado dos PRs #29 a #34 (base `c6b9d5e`). **Veredito: APROVADO.** Nenhum achado bloqueia; os itens abaixo vão para o backlog.
+
+Conferido:
+- **Desenho × implementação:** as cinco migrations seguem a Solução técnica; o RN-23 fecha no PR 6 (DA-9, DT-11). O `restore_member` devolve o nome da função só a quem tem `manage_roles`, e quem atribui funções pode tirar a função de alguém (RN-18, "tirar"), o que está de acordo.
+- **Segurança (catálogo da stack local, depois do PR 6):** nenhuma função *definer* do `public` sem `search_path`; nenhuma função do `public` com EXECUTE para `anon`; todas as tabelas com RLS; nenhuma política de INSERT ou UPDATE sem `WITH CHECK`; a única política de DELETE é a de participantes (de propósito, E2.01); as 8 views são *definer*, com `security_barrier` e dona `postgres`; nenhuma função INVOKER lê `roles`, `role_permissions` ou `members.role_id`. Escalada pela função: `can_assign_role` exige cobrir a atual e a nova, a `save_role` só acrescenta o que quem salva tem (DA-3), e a `create-user-admin` ensaia o cadastro antes de criar a conta.
+- **Concorrência:** os 4 cenários do `e202_concurrency.sh`; padrão exata por constraint trigger adiado; trava consultiva no último administrador.
+- **Escala:** metas do risco 8 dentro (o lançamento com 30 participantes caiu para ~110 ms no `4eca02e`).
+- **Front:** sem `any`, sem asserção de tipo nos arquivos novos, sem `isSystem`, sem leitura direta de `roles`, `role_permissions` ou `members` (só as escritas com `.select("id")`); regras em `src/lib/access/`.
+
+Backlog (responsável, prioridade):
+1. `frontend-developer` + `ux-designer`, média: tokens globais de tema em `src/index.css` (`--primary` no escuro, `--accent`, `--secondary`, `--muted-foreground` sobre `--muted`). Passo próprio de acessibilidade, porque muda todas as telas.
+2. `frontend-developer`, média: formulário de relatório no `ResponsiveDialogContent` (P1) em Células, Relatórios e Dashboard. Junto do E2.11, que reescreve o `CellReportForm`.
+3. `frontend-developer`, média: a gravação do `MemberForm` (826 linhas) para um hook, em PR de refatoração separado, antes do próximo passo que mexer no formulário (E2.03).
+4. `frontend-developer`, baixa: `button-name` no seletor de UF do `CellForm`. Correção avulsa.
+5. `product-owner` → `frontend-developer`, baixa: texto que explique "Criar membro" desabilitado enquanto as funções carregam. **Decidido pelo PO no aceite (2026-11-25):** o próprio botão mostra "Carregando…" enquanto estiver desabilitado por isso, sem texto extra (Estados, coluna Membros).
+6. `calculateCellDate`: E2.11.
+7. `backend-developer`, baixa (anterior ao E2.02): `events` tem INSERT, UPDATE, DELETE e TRUNCATE para `anon` e `authenticated` (sem política, o RLS barra o DML, e o PostgREST não expõe TRUNCATE), e `anon` tem SELECT, REFERENCES e TRIGGER nas tabelas de células e relatórios (sem política para `anon`). Revogar por defesa em profundidade.
+8. `backend-developer`, baixa (anterior ao E2.02): o INSERT direto em `members` por quem tem "Criar Membro" aceita qualquer `auth_user_id` que não seja o próprio. Como o cadastro público está desligado, só uma conta de acesso sem cadastro poderia ser vinculada, com uma função que quem cadastra cobre. Restringir o vínculo à `create-user-admin`.
+9. `backend-developer`, baixa: `_assert_admin_remains(uuid)` aparece como RPC para `authenticated`; só age para quem cobre a Administrador. Pode virar interna se o trigger de `members` passar a chamá-la por um *definer*.
+10. `qa`, baixa: `e202_migrations.sh` usa por padrão o container `supabase_db_mci-connect` (passar `PSQL`); `supabase test db` sem `--db-url` não acha a stack `mci-e104-be`; UX-14 de `sign-in.spec.ts:263` oscila por arredondamento (43,99997 px).
+
 ## Testes
 _Seção do `qa`._
 
+Arquivos (em `mci-connect/supabase/tests/`): pgTAP `database/e202_01_scope`, `e202_02_rn23_grants`, `e202_03_write_members`, `e202_04_write_cells_reports`, `e202_05_roles`, `e202_06_read_contract` (cada um autocontido, com a massa do spec); `concurrency/e202_concurrency.sh` (4 cenários) e `e202_migrations.sh` (migrations de novo, duas `is_system`, Recepção, permissão nova); `volume/e202_volume.psql` (metas do risco 8).
+
 | RN | Testes | Resultado |
 |---|---|---|
+| 01 a 06 | `e202_01` (tabela "O que cada um vê" na view e na tabela, casal, inativo, excluído, descida × subida com ciclo, DT-28, paridade por persona), `e202_06` (raízes DA-6) | passa |
+| 07, 08 | `e202_01` (conta X, Hugo, escopo na hora), `e202_03`, `e202_05` (Hugo só com Enviar) | passa |
+| 09, 10, 11 | `e202_03` (person_not_visible, would_leave_scope, André e Beatriz, `check_member_insert`, pastor, Ester, DA-2/DA-7/DA-11) | passa |
+| 12, 13, 14, 15 | `e202_04` (célula, lançar, editar e excluir relatório, participantes, DA-5), `e202_01` (excluídos) | passa |
+| 16, 17, 22 | `e202_05`, `e202_migrations.sh` (Recepção, `view_members`, permissão nova no banco de rascunho) | passa |
+| 18, 19, 20, 21 | `e202_02` (`role_options`), `e202_03`, `e202_05` (`save_role`, `delete_role`), `e202_concurrency.sh` 1 a 3 | passa |
+| 23 | `e202_02` (EXECUTE, obsoletas, `my_access`, `role_options`); depois do PR 6: `e202_07_close_roles` | passa |
+| Grants e estrutura | `e202_02`; migrations de novo sem erro e duas `is_system` em `e202_migrations.sh` | passa |
+| Concorrência (4 cenários) | `e202_concurrency.sh` | passa |
+| Volume (risco 8) | `e202_volume.psql` | passa (o lançamento com 30 participantes ficou fora na 1ª medição e caiu para ~110 ms com o `4eca02e`, ainda no PR 1) |
+
+Resultados do PR 1:
+- `supabase test db`: 22 arquivos, 2.604 testes, passa (os do E1.04, E1.08 e E2.01 foram atualizados para o escopo novo, as funções novas e as colunas novas das views).
+- `e202_concurrency.sh`: 48 verificações; `e202_migrations.sh`: 28; `e201_concurrency.sh` (ajustado): passa.
+- Playwright (`--workers=1`, stack local): 138 de 162 passam (5 puladas, 18 não rodaram depois de uma falha em série). Falham: `grant_type=password` (a stack local não desliga o provedor de e-mail) e UX-19 (precisa de mais de 10 células na base, e o banco foi zerado). A massa de 6 specs trocou `view_members` por `view_all_church`.
+- Volume (20 mil membros, 1.500 células, 100 mil relatórios, 800 mil participações), pastor e G12: listas com contagem de 23 a 123 ms; `dashboard_summary` 86 a 103 ms; `my_access` 8 a 16 ms; PATCH de membro 3 ms. **Fora da meta:** lançamento com 30 participantes, 880 ms (pastor) e 390 ms (G12), contra 300 ms. A política de INSERT de participantes chama `viewer_can_insert_cell_report_participant`, que lê a `cell_reports_view` por id (cerca de 15 ms por chamada, uma por participante).
+
+Resultados do PR 2 (2026-11-25, mci-connect#30):
+- Vitest: 90 arquivos, 1.118 testes, passa. Cobrem RN-07 (conta sem cadastro e membro sem função: nenhum item nem rota), RN-08 (`use-access`: releitura na navegação, na volta da aba, no 42501 e na renovação da sessão; aviso uma vez, não na 1ª leitura), RN-22 (catálogo de 22 permissões sem as aposentadas; as aposentadas não abrem item nem rota), UX-08, UX-09, UX-30 e "rota sem permissão não faz requisição de dados" (`access.test.ts`, `permissions.test.ts`, `codes.test.ts`, `use-access.test.tsx`, `AppSidebar.test.tsx`, `NoAccess.test.tsx`).
+- Playwright (`--workers=1`, stack local): `e2e/acesso-menu.spec.ts`, 11 testes, passa (UX-08 por persona, UX-09 com o botão de 44×44 px em 360×800, UX-10 em duas sessões nos dois sentidos, UX-11 sem consulta de dados, *smoke* de login). Suíte inteira: 160 passam, 5 puladas, 2 falhas de ambiente já conhecidas (`sign-in-stack:235` e UX-19 de `excluidos-membros`). A conta sem cadastro não entra pela `sign-in` (o login busca pelo cadastro), então o menu dela é coberto só no Vitest.
+- axe (`@axe-core/playwright`) no menu, em "Meus dados" e na tela sem acesso, temas claro e escuro, 320, 360 e 1280 px: sem violações depois dos ajustes (nome acessível do menu do celular e rolagem do menu em telas baixas, achados do QA). Revisão de UI (tarefa 7): APROVADO, com 5 sugestões, todas aplicadas.
+- O selo e o subtítulo do Dashboard ainda seguem a regra antiga até o PR 5 (T9): com a permissão aposentada, quem vê só o ministério lê "Visão geral da igreja". `dashboardHeader` já está pronto em `src/lib/access/access.ts`.
+
+Resultados do PR 3 (2026-11-25, mci-connect#31):
+- Vitest: 94 arquivos, 1.170 testes, passa. Os de Funções (`src/lib/roles/roles.test.ts`, `src/pages/Roles.test.tsx`, `src/components/roles/RoleFlows.test.tsx`, `RoleUx.test.tsx`) cobrem UX-01 (22 permissões em 5 grupos, sem aposentadas nem "(legado)"), UX-02 (Administrador sem ações), UX-03 (linha de 44 px, dica por `aria-describedby`), UX-05, UX-29 (badge com ícone e texto), a ordem da lista e os toasts (inclusive "Função criada. {Nome} agora é a função padrão.").
+- Playwright (`--workers=1`, stack local): `e2e/funcoes.spec.ts`, 15 testes, passa: RN-17 (celular e desktop), RN-19 e UX-07 (interruptor travado na padrão, aviso antes de salvar, troca numa única chamada `save_role`, exatamente uma padrão), RN-20 e UX-05 (padrão e em uso bloqueadas sem chamar o servidor, confirmação com foco em "Cancelar", recusa do servidor depois de aberta a confirmação), UX-04 (360×640: tela cheia, cabeçalho e rodapé fixos), UX-06 (44×44 e 8 px, Excluir só no ⋯), risco 7 (com a rede abortada na `save_role`, as permissões ficam intactas). Suíte inteira: 175 passam, 5 puladas, só as 2 falhas de ambiente já conhecidas.
+- axe nas telas T2 a T4 (14 estados, 320, 360 e 1280 px, claro e escuro), depois dos ajustes da revisão de UI: o tema claro fica limpo, a não ser em estado de *hover* (dica `--muted-foreground` sobre `--muted`, 4,34:1; botão "Fechar" do bloqueio do E2.01 com `--accent`, 2,97:1). No escuro, resta só o botão primário (`--primary`, 2,97:1, problema já conhecido). Os três são tokens globais de tema e ficam para um passo próprio. Não verificado: zoom de 200% (UX-31; 320 px sem corte).
+- Revisão de UI (tarefa 10): AJUSTES NECESSÁRIOS por contraste (chips de permissão e erro do campo Nome), mais 3 sugestões (alvo do interruptor, `role="status"` no aviso, "1 marcada"); todos aplicados e conferidos pelo `code-reviewer` e pelo axe.
+
+Resultados do PR 4 (2026-11-25, `feat/E2.02-pr4-membros`, tarefa 14):
+- Arquivos: `src/lib/access/member-form.test.ts` (28, do dev), `src/components/MemberForm.access.test.tsx` (24, novo), `e2e/membros-escopo.spec.ts` (24, novo).
+
+| RN ou UX | Testes | Resultado |
+|---|---|---|
+| UX-18, UX-21, UX-22 | `MemberForm.access.test.tsx`: Rita como hoje; 5 situações da Função sem `Input` desabilitado; recusas no `Alert` (`role=alert`, foco, dados mantidos), erro embaixo do campo com `detail.field`, 0 linhas sem toast de sucesso, 400 e 403 da `create-user-admin` | passa |
+| UX-15 (Membros), UX-20 (Líder e Cônjuge) | `membros-escopo.spec.ts`: subtítulo e lista de Pedro e de Rita; seletores só com quem Pedro vê; "Nenhum membro do seu ministério encontrado."; líder Samuel salvo | passa |
+| UX-16, UX-17, RN-19 | `membros-escopo.spec.ts`: bloqueio com a Secretaria padrão, formulário com a Membro, recusa no `Alert` sem a pré-checagem; Líder preenchido, dica e "Escolha o líder."; Igor fica com a Membro | passa |
+| UX-19, RN-10 | `membros-escopo.spec.ts`: Samuel e Magda (tela e API), Diego e Ester, Igor sem líder, Hugo, Caio sem "Novo membro", Débora | passa |
+| RN-09, RN-11, RN-18 | `membros-escopo.spec.ts`: Pedro pela API (Beatriz, Diego, Beatriz como cônjuge), André e Beatriz (`would_leave_scope`), Caio nos dados próprios, Função de Rita, Pedro e de quem atribui sem cobrir a Administrador | passa |
+
+- Vitest: 96 arquivos, 1.222 testes, passa. `npm run lint`: 3 erros e 8 avisos, os mesmos da `main`. `npm run build`: passa.
+- Playwright (`--workers=1`): `membros-escopo` 24 de 24; suíte inteira 199 passam, 5 puladas, 6 não rodaram (série interrompida) e as 2 falhas de ambiente (`sign-in-stack:235` e UX-19 de `excluidos-membros`).
+- axe (16 estados, 320, 360 e 1280 px, claro e escuro): 1 achado do PR (`FieldError` em vermelho sobre o fundo do diálogo, 4,47:1, claro); o resto são os tokens globais (`--primary` no escuro, `--accent` e `--secondary`). Não verificado: zoom de 200% (UX-31) e leitor de tela (UX-32).
+- Revisão de UI (tarefa 13): AJUSTES NECESSÁRIOS só pelo contraste do `FieldError` (UX-29). Corrigido em `48e9587` (texto em `text-foreground`, vermelho só no ícone), conferido pelo `code-reviewer` e pelo axe: o estado "Escolha o líder." fica sem violação no claro, e no escuro resta só o `--primary`. Sugestões não aplicadas: motivo do "Criar membro" desabilitado enquanto as funções carregam (texto novo, decisão do PO) e, pré-existentes, `90vh` e alvos de 40 px no diálogo de membro. Depois do ajuste: Vitest 1.222 testes e `membros-escopo` 24 de 24, passam.
+
+Resultados do PR 5 (2026-11-25, mci-connect#33, tarefa 17):
+- Arquivos: `e2e/celulas-relatorios-escopo.spec.ts` (32: 29 de comportamento e 3 de captura, que só rodam com `E2E_CAPTURE_DIR`); testes de componente em `Dashboard.test.tsx`, `Cells.test.tsx`, `CellReports.test.tsx`, `CellForm.test.tsx` (nomes salvos fora do escopo, sem mock do seletor) e `Ministries.test.tsx`. Massa do spec com as células reunidas no dia do teste, às 20:00, para a data sugerida não cair na semana passada (problema conhecido do `calculateCellDate`).
+- **UX-28 com a DA-6:** a árvore começa no topo do escopo, então Pedro e Caio veem a árvore a partir de Pedro e Paula, e não o estado vazio. O estado vazio fica para quem não vê ninguém, com "Ninguém visível para você na árvore." e, com acesso a Membros, "As pessoas do seu ministério aparecem em Membros." e o botão "Ver membros do seu ministério"; sem esse acesso, "Fale com um administrador." (textos aprovados na revisão de UI).
+
+| RN ou UX | Testes | Resultado |
+|---|---|---|
+| UX-12, UX-13 | `Dashboard.test.tsx` (Rita, Pedro, só "Visualizar Dashboard", Hugo, conta X sem chamadas); spec: Hugo sem card nem `Skeleton` | passa |
+| UX-14 | spec: atalho para Carla, Caio e Pedro e não para Fábio; 44 px e largura toda em 360 px; diálogo; `dashboard_summary` de novo no sucesso | passa |
+| UX-15, UX-25 | `Cells.test.tsx`, `CellReports.test.tsx` (ministério e igreja toda; botão por `can_submit_some_report`); spec: Gabriel sem botão | passa |
+| UX-23, UX-24 | spec: "Novo relatório" e "Editar" por pessoa, 44×44 px em 360 px; dica acima dos 3 campos; tirar Caio de C2 dá a recusa no `Alert` do topo, dados mantidos | passa |
+| UX-26, UX-27 | spec: Caio só C1 e C2; Carla com C1 escolhida, data e horário; Gabriel sem C3; Pedro edita R2, Diego e Hugo com o aviso continuam, o seletor não oferece Diego | passa |
+| UX-28 (DA-6) | spec: Pedro e Caio a partir de Pedro e Paula; Samuel a partir de Samuel e Magda; vazio no Vitest | passa |
+| UX-20 (DT-23) no `CellForm` | spec e `CellForm.test.tsx`: líder e timóteo fora do escopo pelo nome salvo (bug da 1ª rodada, corrigido) | passa |
+| UX-29, UX-31 | axe; spec em 320 px sem rolagem horizontal. Zoom de 200% não verificado | passa (ver axe) |
+| RN-03, RN-04 | spec: células e relatórios de Pedro, André, Diego, Gabriel e de quem vê a igreja toda | passa |
+| RN-12, RN-13, RN-14 | spec: editar e excluir célula, lançar, editar e excluir relatório, por pessoa, pela tela e pela API | passa |
+
+- Vitest: 97 arquivos, 1.259 testes, passa. `tsc` e `npm run build`: passam. `npm run lint`: 3 erros e 8 avisos, os mesmos da `main`.
+- Playwright (`--workers=1`): `celulas-relatorios-escopo` 29 passam e 3 puladas (capturas); suíte inteira 228 passam, 8 puladas, 6 não rodaram (série interrompida) e as 2 falhas de ambiente (`sign-in-stack:235` e UX-19 de `excluidos-membros`). O UX-13 (AD) de `excluidos-membros` passou a criar a própria célula, porque o botão "Novo Relatório" depende de `can_submit_some_report`.
+- axe (10 estados, 320, 360 e 1280 px, claro e escuro): no claro, sem violações depois do ajuste; no escuro, resta só o `--primary` do botão (token global, fora do PR). Fora do PR e já na `main`: `button-name` no seletor de UF do `CellForm`.
+- Revisão de UI (tarefa 16): AJUSTES NECESSÁRIOS pelo contraste do selo "Meu Ministério" (`secondary`, 2,97:1 no claro), mais 2 sugestões no estado vazio de Ministérios. Aplicados em `826accb` (selo `outline`), conferidos pelo `code-reviewer` e pelo axe.
+- Não verificado: zoom de 200% (UX-31), leitor de tela (UX-32) e o UX-13 da conta X pela tela (ela não faz login pela `sign-in`; fica no Vitest).
+
+Resultados do PR 6 (2026-11-25, mci-connect#34, tarefas 18 e 19):
+- Banco: migration `20261125200000_e202_05_close_roles.sql`; pgTAP novo `e202_07_close_roles` (78: privilégios e políticas das duas tabelas; Pedro com 0 linhas e 42501 em INSERT, UPDATE, DELETE e TRUNCATE; Rita, Gil e Vera leem; `select role_id from members`, filtro e `RETURNING role_id` dão 42501 até para a Administrador; `members_view.role_id` nula para Pedro e Vera em outra pessoa, preenchida no próprio cadastro e para Ana, Gil e Rita; UPDATE de `role_id` com `RETURNING id`, INSERT sem RETURNING, `check_member_insert`, `roles_view`, `my_access`, `role_options`, `save_role` e `delete_role` continuam; nenhuma função INVOKER lê as tabelas ou a coluna). Ajustados `e108_pr5_members_column_lock` (`role_id` numa categoria própria), `e202_05_roles` (escrita direta só como `service_role`) e `e201_03`.
+- `supabase test db` (pelo `psql` do container): 23 arquivos, 2.688 testes, passa. `e202_migrations.sh`: passa (as cinco migrations duas vezes, sem erro).
+- Vitest 97 arquivos, 1.259 testes; `tsc`, `npm run build`: passam. `npm run lint`: 3 erros e 8 avisos, os mesmos da `main`.
+- Playwright (`--workers=1`): `e2e/funcoes-fechadas.spec.ts` (4, novo, com a sessão de um Líder pela API) passa; suíte inteira 231 passam, 8 puladas, 6 não rodaram e 3 falhas, nenhuma do PR: as 2 de ambiente já conhecidas e a UX-14 de `sign-in.spec.ts:263` (43,99997 px, intermitente).
+- Não verificado: o *smoke* em produção (sem conta de teste com cadastro em produção). Depois do "Deploy: banco", o usuário roda o SQL só de leitura do relatório do `architect`; o login real de um Líder, o menu, a tela de Funções e o cadastro pela tela ficam para a primeira sessão de uso.
