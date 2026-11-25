@@ -3,7 +3,8 @@
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23).
 > - **PR 1** (mci-connect#41 e #42): **em produção** desde 2026-11-25 ("Deploy: banco" do `6c4f67b`). Conferências 1 a 8 sem parada; passo A (item 9) com contas temporárias, todos os itens ok: `PUT /auth/v1/user` recusado (500, pela guarda), `grant_type=password` 422, redefinição com `must_change_password: true`, troca obrigatória 200, sessão do outro aparelho sem renovação (400), `auth.users` sem senha.
 > - Mudanças sobre o desenho, conferidas na stack local: a guarda descarta a senha na criação da conta em vez de recusar (DT-02); o limite por origem é 50 (E1.04 PR 1b; DA-8); o cofre aceita só `$2a$`; a `members_view` foi recriada sobre a definição do E2.06; `set_initial_password` recusa conta que já tem senha (`password_already_set`, tratado como reenvio pela `create-user-admin`).
-> - PRs 2 a 4 por fazer. Pela regra nova do fluxo, os PRs 2 e 3 (só front, seguidos) podem ir num PR só.
+> - **PRs 2 e 3** (tarefas 6 a 11, num PR só, branch `feat/E2.03-pr2-3-telas-senha`): implementados e testados na stack local em 2026-11-25, aguardando o merge e o promote. Mudanças sobre o desenho: `password_reset_status` entrou na `MEMBER_ROW_SELECT` (opcional no tipo `MemberRow`); o portão de rotas também espera a marca ser lida (`passwordStatusLoaded`), e o `QueryClient` não repete leitura recusada com código do portão (`retryUnlessGate`); o 403 da `create-user-admin` com código do portão vai para o portão.
+> - PR 4 por fazer.
 > Slug: `e2-03-senha` · Paridade com o legado: sim (AUT-06), com regras novas: senha temporária gerada pelo sistema, troca obrigatória, política de senha, senha atual na troca, limites e registro na Auditoria.
 
 ## Negócio
@@ -2127,6 +2128,7 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 13. **Divergência entre a tela e o banco na política.** A tabela de casos e o teste de sincronia pegam qualquer diferença. A regra (e) é só do servidor, por desenho.
 14. **Operação.** O painel do Supabase não troca mais senha (DA-12). A armadilha entra no `CLAUDE.md`, com o caminho de emergência (`private.write_password` no editor SQL).
 15. **Lista de senhas na migration.** São cerca de 100 KB de `INSERT`s. Ela é revisada à parte (migration 2), com a origem e a licença no cabeçalho.
+16. **Recusas "Sem permissão" sem limite na Auditoria** (decisão do usuário, 2026-11-25). Cada chamada da `reset_member_password` recusada por falta de permissão grava uma linha em `events`, sem limite, porque só as redefinições aceitas contam no limite (RN-06). Fica como está; entra em "Problemas conhecidos" do `CLAUDE.md` na tarefa 14.
 
 ### Dependências e impactos em outros passos
 | Passo | Relação |
