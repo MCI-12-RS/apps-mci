@@ -32,10 +32,12 @@ Regras de trabalho:
   - O `clfgjnwtzasdsrgcxmmd` é o banco do Lovable, que está sendo abandonado. Não use, e não é preciso nada dele.
   - **Vercel:** as variáveis `VITE_SUPABASE_*`, `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*` e `POSTGRES_*` da Vercel são gerenciadas pela integração Supabase ↔ Vercel e apontam para o `gkhn…`. Não edite à mão. Elas valem só para produção; os previews usam o `.env`. As credenciais da API da Vercel estão no `local.config` (`VERCEL_PROJECT_ID`, `VERCEL_API_KEY`).
   - **Deploy de produção** (Actions do `mci-connect`; nada vai ao ar sozinho):
-    1. **"Deploy: banco (Supabase)"** mostra o plano no resumo da execução e aplica as migrations (`supabase db push`). Depois publica as Edge Functions da lista `EDGE_FUNCTIONS` do workflow. A opção "somente plano" só faz o *dry run*.
+    1. **"Deploy: banco (Supabase)"** mostra o plano no resumo da execução e aplica as migrations (`supabase db push`). Depois publica as Edge Functions da lista `EDGE_FUNCTIONS` do workflow e apaga do projeto as da lista `EDGE_FUNCTIONS_REMOVED` (hoje a `get-user-email`; função já ausente não é erro). A opção "somente plano" só faz o *dry run*.
+       - Antes de tudo, inclusive no "somente plano", ele confere pela Management API que o provedor de e-mail do Auth está desligado (`external_email_enabled = false`, RN-14 do E1.04) e **falha** se não estiver. Num rollback que religue o provedor, o deploy de banco fica barrado até ele ser desligado de novo.
+       - A configuração do Auth de produção é feita só pela Management API (`PATCH /v1/projects/{ref}/config/auth`), nunca por `supabase config push`: o `config.toml` vale só para a stack local (DT-13 do E1.04).
     2. **"Deploy: promote (Vercel)"** recusa se o banco tiver migrations pendentes. Se estiver em dia, promove para `connect.mci12rs.com.br` o deploy de produção da Vercel do commit escolhido.
     - O *auto-assign* de domínios está **desligado** na Vercel: o merge na `main` gera o build, mas o domínio só muda pelo promote.
-    - Uma Edge Function nova só vai para produção se for adicionada à lista do workflow. A `change-member-password` está de fora até o E2.03.
+    - Uma Edge Function nova só vai para produção se for adicionada à lista do workflow. Tirar uma função da lista não a apaga: ela precisa ir para `EDGE_FUNCTIONS_REMOVED`. A `change-member-password` está de fora até o E2.03.
     - O plano gratuito do GitHub não permite aprovação manual (revisor obrigatório) nos environments; por isso são dois workflows.
     - O plano Hobby da Vercel não faz deploy de repositório privado de organização. Se o `mci-connect` virar privado, os deploys param.
   - **Visibilidade:** o `mci-connect` é **público**, e o `apps-mci` e o `g12app-net` são privados. Nos PRs e commits do `mci-connect`, descreva o que foi corrigido sem detalhar falhas ainda abertas; esses detalhes ficam aqui, no `apps-mci`.
@@ -279,6 +281,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Views de excluídos (`members_deleted_view`, `cells_deleted_view`, `cell_reports_deleted_view`), só para `manage_roles`; `cell_reports_view.cell_deleted` e `cell_report_participants_view.member_deleted`.
   - Schema `private` (fora da API, sem privilégios) com `member_access_suspensions`: o hash da senha de quem foi excluído, para a restauração.
   - `normalize_email` e `normalize_digits`: a única normalização de e-mail, celular e CPF.
+- **Login (E1.04):** `private.sign_in_throttle` (uma linha por chave HMAC de identificação ou de origem, sem valor em claro; chave no Vault; limpeza pelo job `e104-sign-in-purge` do `pg_cron`, a cada 10 min). Normalização do login: `normalize_mobile`, `mobile_match_key`, `is_valid_cpf`, `is_placeholder_email`, com os índices `members_login_{email,cpf,mobile}_idx`. `event_action` ganhou `login_blocked`.
 
 ### Lógica no banco
 - `compute_g12_level` (BEFORE INSERT ou UPDATE de `leader_id` / `is_pastor`): pastor → 0; com líder → nível do líder + 1; sem líder → 0. **Não propaga** para os descendentes.
@@ -289,7 +292,12 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - Auditoria:
   - Triggers AFTER em `members`, `cells`, `cell_reports` e participantes chamam `_log_event` (`SECURITY DEFINER`). Os erros são engolidos com WARNING.
   - A exclusão, a restauração (ação `restore`) e o cônjuge desfeito são gravados sem engolir erro (E2.01).
-  - `log_auth_event`: só `authenticated` executa (E1.13), só login e logout, com o autor tirado da sessão.
+  - `log_auth_event`: só `authenticated` executa (E1.13), **só `logout`** (E1.04 PR 3; `login` dá 22023), com o autor tirado da sessão; não grava para membro excluído (DA-9 do E2.01).
+  - Login, falha e bloqueio são gravados só pelo servidor (E1.04): `login_failed` e `login_blocked` pela `sign_in_attempt`, `login` pela `sign_in_record_login`. O cadastro vai em `entity_id`/`entity_label`; `metadata` tem `identifier_type`, `identifier_masked` (sobre a forma normalizada; a identificação inválida vira só `***`), `reason`, `block_scope` e `block_minutes`. A senha, a identificação completa e a origem nunca vão para `events`.
+- Login (E1.04), RPCs `SECURITY DEFINER` só para `service_role`, chamadas pela `sign-in`:
+  - `sign_in_attempt(_identifier, _password, _origin)`: busca pelo **cadastro** (e-mail, CPF ou celular; nunca pelo e-mail da conta; excluídos só para o motivo), contagem e bloqueio, um bcrypt contra `auth.users` e Auditoria das falhas, numa transação. Devolve `empty_fields`, `invalid`, `locked` ou `ok` (com `password_action`, o ponto do E3.02 ao lado de `private.sign_in_check_legacy`).
+  - Limites: 5 falhas da mesma identificação em 15 min bloqueiam ela por 15 min; 50 falhas da mesma origem (IPv4, ou IPv6 por `/64`) em 15 min bloqueiam a origem por 15 min. O sucesso zera só a identificação. Não há desbloqueio manual. `lock_timeout` de 3 s e teto de 5 s no comando (DT-19): passou disso, 500 sem contar.
+  - `sign_in_record_login` e `sign_in_discard_link` (apaga o código de uso único se a emissão da sessão falhar).
 - Exclusão e restauração (E2.01), só por RPC `SECURITY DEFINER`: `check_member_deletion`, `delete_member`, `restore_member`, `delete_cell`, `restore_cell`, `delete_cell_report`, `restore_cell_report`; `set_cell_report_participants` (INVOKER) grava os participantes pela diferença.
   - Membro com discípulos ou células (mesmo inativos) não é excluído até reatribuir (D10). A exclusão suspende a conta no Auth na mesma transação; a restauração devolve.
   - Triggers `BEFORE` (`ab_enforce_member_links`, `aa_enforce_cell_links`, `aa_enforce_cell_report_rules`, `aa_enforce_participant_rules`) impedem apontar para um excluído e alterar registro excluído, valendo também para a service role.
@@ -325,7 +333,11 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 ### Edge Functions
 - `create-user-admin`: exige JWT e `create_member`, valida a função atribuída, cria o usuário no Auth (com service role) e grava o membro com a sessão de quem chama (o RLS vale e a auditoria registra o autor). Devolve só o `id`. É usada no cadastro de membro.
   - Antes de criar a conta, procura cadastros excluídos com o mesmo e-mail, celular ou CPF (`find_deleted_member_matches`, com a sessão de quem chama) e responde 409: `deleted_account_email` (o e-mail é login de um excluído; nunca cria) ou `deleted_matches` (cria só com `confirmDeletedMatches: true`). E2.01 PR 5.
-- `get-user-email`: converte CPF ou celular no e-mail correspondente, para o login. Ignora cadastros excluídos (E2.01). Sai no E1.04, trocada pela `sign-in`.
+- `sign-in` (E1.04): o **único** caminho de login. `verify_jwt = false` (a tela chama só com a chave pública). Corpo `{ identifier, password }`; respostas 200 `{ result: 'ok', session }` (só os tokens), 400 `empty_fields`, 401 `invalid_credentials` (corpo único para toda falha, piso de 700 ms), 429 `locked` com `retry_after_minutes` e `Retry-After`, 500 `server_error`.
+  - A origem vem só do `CF-Connecting-IP`; sem ele, fora da stack local, 500 (falha fechada).
+  - Emite a sessão com `generateLink(magiclink)` + `POST /auth/v1/verify`, com a chave secreta nova (`SUPABASE_SECRET_KEYS`, obrigatória em produção) e `Sb-Forwarded-For` (o limite de `/verify` é por pessoa: `security_sb_forwarded_for_enabled = true`, `rate_limit_verify = 150`).
+  - Logs só com o resultado, o tempo e um código interno.
+- A `get-user-email` foi removida no E1.04 PR 3 e é apagada do projeto a cada "Deploy: banco" (`EDGE_FUNCTIONS_REMOVED`).
 - `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
 
 ### Front
@@ -336,7 +348,8 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - bloco ministerial só com `edit_member`;
   - botão "Alterar senha".
 - `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Relatório e participantes ainda são gravados em chamadas separadas.
-- Login por e-mail, CPF ou celular.
+- Login por e-mail, CPF ou celular, só pela `sign-in` (`src/services/auth/sign-in.ts`, `fetch` com tempo-limite de 20 s). O `AuthContext.signIn` devolve um resultado tipado e passa a sessão ao cliente com `setSession`. A regra de identificação da tela fica em `src/lib/auth/identifier.ts` e os textos em `src/lib/auth/session.ts`; a tabela de casos `supabase/tests/fixtures/login-identifier-cases.json` é a mesma do pgTAP, e um teste quebra se as duas regras divergirem.
+- Auditoria (`Events.tsx`): rótulos de falha e bloqueio, segunda linha e painel lidos do `metadata` por *type guard* (`src/lib/audit/auth-events.ts`).
 - Membro sem e-mail recebe um e-mail fictício `<nome>_<hash>@mci12fakemail.com`, porque o Auth exige e-mail. A UI esconde esses e-mails.
 - Se a senha não for informada no cadastro, a inicial é `123456`. Isso é uma decisão (D11 em `docs/migracao.md`), não um problema.
 - O CEP preenche o endereço via ViaCEP. A célula puxa o endereço do anfitrião.
@@ -375,6 +388,12 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - `meeting_day` é salvo como 'Segunda', 'Terça'…. A lista de dias fica só em `src/lib/cells/weekdays.ts`, espelho de `public.weekday_index`; não crie outra.
 - O `PaginatedSelect` tem contornos para funcionar dentro do Dialog do Radix (Esc, blur, toque, `onOptionHover`), cobertos por testes. Rode esses testes ao atualizar o react-select ou o Radix.
 - Gere os tipos com a CLI do Homebrew (2.84.2). O `npx supabase` resolve para a 3.3.0, que muda o formato do `types.ts` inteiro.
+- **Login (E1.04):**
+  - **O provedor de e-mail do Auth está desligado em produção** (`external_email_enabled = false`). `signInWithPassword` e `resetPasswordForEmail` respondem `email_provider_disabled`; não os use. A renovação, a saída, o `generateLink` e o `admin.createUser` continuam funcionando. A recuperação de senha (E1.07) precisa de Edge Function própria. Na stack local, o equivalente é `[auth.email] enable_signup = false` no `config.toml`.
+  - **Senha em parâmetro SQL** (risco 11 e DT-19 do E1.04): o `auto_explain` de produção registra o plano **com os parâmetros** de todo comando que termine em 10 s ou mais. Nunca suba o `statement_timeout` do `authenticator` ou do `service_role` para 10 s ou mais, nem baixe o `auto_explain.log_min_duration`, nem ligue `log_statement = all`, nem faça `RAISE`/log com a senha. O teto de 5 s dentro da `sign_in_attempt` não pode sair.
+  - **Origem só pelo `CF-Connecting-IP`** (DT-06). `X-Forwarded-For`, `X-Real-IP` e afins são forjáveis ou são saltos internos; não os use em limite nenhum. Se o Supabase mudar o *gateway* ou a CDN, refaça a sonda da tarefa 1 do E1.04.
+  - Na rede da igreja todos saem pelo mesmo IP: 50 senhas erradas de pessoas diferentes em 15 min bloqueiam todos os logins dali por 15 min (risco 16).
+  - **Playwright com `--workers=1`** na stack local: em paralelo, as specs do E2.01 e do E1.04 dividem a massa e a `sign_in_throttle` (todas as chamadas locais vêm de `127.0.0.1`) e falham. A `sign-in` precisa estar servida (`supabase functions serve` ou o *edge runtime* do `supabase start`).
 - `has_leadership` no novo quer dizer "tem líder", o inverso de `HasNoLeadership` no legado.
 - Um membro sem líder que não é pastor fica com `g12_level = 0`, igual a pastor.
 - `get_ministry_root` devolve NULL para pastores, então `view_own_ministry` não funciona para eles. Pastores precisam de `view_all_church`.
@@ -446,8 +465,9 @@ Use esses IDs nos specs e nos testes. Em resumo:
 
 Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 
-- `get-user-email` devolve o e-mail de qualquer CPF ou celular para quem chamar (enumeração de dados pessoais).
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
 - As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
 - Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.
+- A Auditoria lê só os 500 eventos mais recentes, sem paginação, e os eventos de falha e de bloqueio de login não têm retenção definida (risco 5 do E1.04, decisão do PO pendente).
+- No tema escuro, o `--primary` não tem contraste suficiente com o texto do botão (2,97:1, achado do axe no E1.04). A linha da Auditoria não abre o painel pelo teclado.
