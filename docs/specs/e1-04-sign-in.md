@@ -964,7 +964,7 @@ Os nomes são sugestões; o timestamp é o do momento da criação.
 |---|---|---|---|---|
 | 1 | 1 | `<ts>_e104_01_enum.sql` | `ALTER TYPE public.event_action ADD VALUE IF NOT EXISTS 'login_blocked'` | Um valor novo de enum não pode ser usado na transação que o cria (padrão de Escolas e do E2.01) |
 | 2 | 1 | `<ts>_e104_02_sign_in.sql` | Guarda de pré-requisito; funções de normalização; índices de busca; `private.sign_in_throttle`; chave no Vault; funções internas; as três RPCs; `pg_cron` e o job de limpeza; grants | Uma unidade de revisão: tudo o que a função usa |
-| 3 | 3 | `<ts>_e104_03_log_auth_event_logout_only.sql` | `log_auth_event` passa a aceitar só `logout` | Só depois que o front novo estiver no ar. Antes disso, o front antigo ainda registra o login pelo cliente, e recusar criaria um buraco na Auditoria |
+| 3 | 3 | `<ts>_e104_04_log_auth_event_logout_only.sql` (o número 03 ficou com a migration do PR 1b) | `log_auth_event` passa a aceitar só `logout` | Só depois que o front novo estiver no ar. Antes disso, o front antigo ainda registra o login pelo cliente, e recusar criaria um buraco na Auditoria |
 
 #### DDL de referência (migration 2)
 ```sql
@@ -1722,6 +1722,7 @@ Arquivos em `mci-connect/supabase/tests/` (PR 1, tarefa 4):
 Resultados por PR (stack local isolada, CLI 2.84.2):
 - **PR 1**: `supabase test db` PASS, 15 arquivos, 1858 testes (E1.08 e E2.01 inclusos; `e104_01` 113, `e104_02`, `e104_03` 105, `e104_04` 129); `npm test` 75 arquivos, 815 testes; `vitest login-identifier-cases-sync` 3; `e104_concurrency.sh` todos os 4 cenários; `node --test supabase/tests/edge/sign-in.edge.test.mjs` 20/20 (função servida com `supabase functions serve sign-in`).
 - Concorrência: 20 com o CPF de Ana = 5 conferidas, 4 `invalid`, 16 `locked`, 1 bloqueio, 0 erros; 30 de uma origem = 20 conferidas (19 `invalid` + a que bloqueia), 11 `locked`, 0 erros; limpeza durante as tentativas sem deadlock; trava além do `lock_timeout` dá 55P03 em 3 s e nada é contado.
+- **PR 1b** (mci-connect#25, migration `20261125003300_e104_03_origin_limit_invalid_mask.sql`): limite da origem 50 e máscara `***` na inválida (riscos 16 e 17). `supabase test db` PASS, 15 arquivos, 1866 testes (`e104_04` com 135: 50ª falha da origem bloqueia; `metadata` só com `***` para a senha colada e para mais de 254 caracteres, com e sem "@"; varredura RN-15 d ampliada); `e104_concurrency.sh` cenário 2 com 60 simultâneas de uma origem = 50 conferidas, 11 `locked`, 1 bloqueio, 0 erros; edge 21/21; `npm test` 815/815. Tabela de casos: as inválidas esperam `***`, com o caso novo `invalida-senha-colada`.
 - Tempo (RN-07, `node supabase/tests/edge/timing.mjs --n 20`), em ms, mediana / p99 (diferença para "g"):
 
 | Caso | Banco | HTTP |
