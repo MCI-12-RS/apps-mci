@@ -439,10 +439,10 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 |---|---|---|
 | Login por e-mail ou celular | e-mail, CPF ou celular, pela função `sign-in` (limite de tentativas e Auditoria no servidor, E1.04) | ✅ |
 | Papéis e escopo por ministério | funções configuráveis e três semeadas (Administrador, Líder e Membro); escopo do legado (si, cônjuge, G12 e cônjuge do G12, com as descendências; pastores; célula e relatório pelo líder, timóteo ou anfitrião) na leitura e na escrita, no banco (E2.02, aceito em 2026-11-25) | ✅ (até o E2.11 gravar o snapshot, o relatório entra no escopo pelas pessoas atuais da célula; a troca de senha é a linha de baixo, E2.03) |
-| CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
+| CRUD de membros | sim; com as validações do legado no banco (E2.04) e o autor na Auditoria também nos cadastros pela `create-user-admin` (E1.02) | 🟡 falta quem criou e quem alterou no próprio cadastro (MEM-12, E2.05) |
 | Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
-| Exclusão lógica de membros, células e relatórios | banco e telas (E2.01, aceito em 2026-11-25): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída, aviso no cadastro com dados de excluído e encerramento da sessão do excluído | ✅ (a unicidade de e-mail, celular e CPF entre não excluídos, DEL-04, fecha com os índices do E2.04) |
-| Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | nenhuma no banco | ❌ |
+| Exclusão lógica de membros, células e relatórios | banco e telas (E2.01, aceito em 2026-11-25): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída, aviso no cadastro com dados de excluído e encerramento da sessão do excluído; unicidade de e-mail, celular e CPF só entre não excluídos (DEL-04, índices do E2.04) | ✅ |
+| Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | no banco, para todo caminho de gravação (E2.04, aceito em 2026-11-25): nome e sobrenome, sexo, e-mail, celular ou CPF como identificador, unicidade dos três entre não excluídos, CPF e e-mail válidos, situação de liderança e líder obrigatório, sem ciclos em qualquer profundidade, nascimento e batismo; formulário com os erros no campo | ✅ |
 | Cônjuge simétrico | trigger | ✅ |
 | Campos computados: árvore de liderança, G12, líder direto | só `g12_level`; o G12 é calculado no cliente, na tela de Células | 🟡 |
 | Recalcular o nível dos descendentes quando o líder muda | não propaga | ❌ |
