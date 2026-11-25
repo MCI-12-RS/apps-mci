@@ -120,7 +120,7 @@ Estes pontos não estão nas fontes. O PO adotou a opção mais conservadora e c
   - um login com sucesso zera a contagem;
   - as outras identificações do mesmo membro continuam livres.
 - **P-LOG-06, limite por origem** (RN-11):
-  - 20 falhas em 15 minutos bloqueiam a origem por 15 minutos;
+  - 50 falhas em 15 minutos bloqueiam a origem por 15 minutos (eram 20; o usuário subiu para 50 em 2026-11-24, risco 16);
   - um login com sucesso não zera a contagem.
 
   É o padrão mais sensível. A rede Wi-Fi da igreja e as operadoras de celular que dividem o mesmo endereço entre muitos clientes podem juntar várias pessoas numa origem só.
@@ -164,7 +164,7 @@ Nenhuma regra está "a confirmar". Os caminhos do legado são relativos a `g12ap
 | RN-08 | **Outras respostas.** Nenhuma delas revela algo sobre o cadastro.<br>- **Campos vazios** (identificação ou senha): "Informe a identificação e a senha.".<br>  - A identificação só com espaços conta como vazia. A senha só com espaços não conta como vazia e é enviada (RN-09).<br>  - A tela confere antes de enviar. Pela API, a resposta é a mesma, a tentativa não conta e nada é registrado.<br>- **Formato não reconhecido:** "Confira a identificação: use o CPF, o celular com DDD ou o e-mail.".<br>  - Vale quando a identificação não tem "@" e não tem a forma de um celular (itens a, b e c da RN-03) nem de um CPF válido (RN-04), como o celular sem DDD.<br>  - A tela confere ao tocar em "Entrar" e não envia nada: a tentativa não conta para o limite e não é registrada.<br>  - Pela API, a mesma identificação é a falha (a) da RN-07: recebe a mensagem única e conta para o limite.<br>  - Uma identificação com "@" sempre é enviada.<br>- **Falha de conexão ou erro do servidor:** "Não foi possível entrar. Verifique a conexão e tente de novo.". Não conta como tentativa.<br>- Um erro que só acontece com um cadastro específico (por exemplo, a conta de acesso dele não pode ser lida) é tratado como falha de credencial (RN-07), e não como erro do servidor.<br>- **Bloqueio:** ver RN-12. | conexão: P-DEL-21 do E2.01; campos vazios: legado (`App/Services/AuthService.cs:47-48`); textos e erro do servidor: definida pelo spec (P-LOG-11); o que conta como vazio e aviso de formato: definida pelo spec (P-LOG-13, P-LOG-14, PO-UX-4 e PO-UX-6) |
 | RN-09 | **A senha.**<br>- Ela é usada exatamente como foi digitada: espaços, maiúsculas e acentos são mantidos.<br>- O app envia a senha à função pela conexão segura (HTTPS) e não a transforma no navegador. No E3.02, o MD5 do legado vai ser calculado no servidor (6.3).<br>- A senha nunca é gravada, registrada nem devolvida pela função: não vai para logs, para a Auditoria nem para a tabela de tentativas. | legado (`UI/pages/Login/index.js:38-41`: o `trim` é só na identificação); 6.3 (Controles: "nada de senha, hash ou dado pessoal em log"; alternativa descartada de enviar o MD5) |
 | RN-10 | **Limite por identificação.**<br>- 5 falhas de credencial com a mesma identificação em até 15 minutos, sem um login com sucesso entre elas, bloqueiam essa identificação por 15 minutos, contados da 5ª falha.<br>- A 5ª falha já responde com a mensagem de bloqueio (RN-12).<br><br>O que conta como a mesma identificação:<br>- as formas que as RN-02 a RN-04 tratam como iguais: máscara, 55, zeros à esquerda, 9º dígito e maiúsculas.<br>- Vale para qualquer identificação, exista ou não um cadastro com ela, para que o bloqueio não revele nada.<br><br>Durante o bloqueio:<br>- a senha não é conferida, nem se estiver certa;<br>- a tentativa recebe a mensagem de bloqueio e não estende o bloqueio;<br>- o bloqueio vale só para aquela identificação: o mesmo membro pode entrar com outra identificação dele, se a origem não estiver bloqueada.<br><br>Mais regras:<br>- Um login com sucesso zera a contagem da identificação.<br>- Tentativas simultâneas não passam do limite: de 20 tentativas erradas enviadas ao mesmo tempo com a mesma identificação, no máximo 5 têm a senha conferida.<br>- Se não for possível contar a tentativa, ela é recusada como erro do servidor (RN-08), sem conferir a senha. | E1.04 e 6.3 ("limite de tentativas por identificador e por IP, com bloqueio temporário"); números e demais detalhes: definida pelo spec (P-LOG-05, P-LOG-12) |
-| RN-11 | **Limite por origem.**<br>- 20 falhas de credencial vindas da mesma origem em até 15 minutos, com qualquer identificação, bloqueiam essa origem por 15 minutos, contados da 20ª falha.<br>- Durante o bloqueio, nenhuma tentativa dessa origem tem a senha conferida, com qualquer identificação. Todas recebem a mensagem de bloqueio e não estendem o bloqueio.<br>- Um login com sucesso não zera a contagem da origem. Senão, bastaria entrar com a própria conta para continuar tentando nas contas dos outros.<br>- As tentativas simultâneas e a falha na contagem seguem a RN-10.<br>- A origem fica guardada só enquanto o controle precisar dela, no máximo 24 horas, e não vai para a Auditoria (RN-15). | E1.04 e 6.3; números, sucesso que não zera e guarda da origem: definida pelo spec (P-LOG-06, P-LOG-09) |
+| RN-11 | **Limite por origem.**<br>- 50 falhas de credencial vindas da mesma origem em até 15 minutos, com qualquer identificação, bloqueiam essa origem por 15 minutos, contados da 50ª falha (decisão do usuário em 2026-11-24, risco 16; o desenho original tinha 20).<br>- Durante o bloqueio, nenhuma tentativa dessa origem tem a senha conferida, com qualquer identificação. Todas recebem a mensagem de bloqueio e não estendem o bloqueio.<br>- Um login com sucesso não zera a contagem da origem. Senão, bastaria entrar com a própria conta para continuar tentando nas contas dos outros.<br>- As tentativas simultâneas e a falha na contagem seguem a RN-10.<br>- A origem fica guardada só enquanto o controle precisar dela, no máximo 24 horas, e não vai para a Auditoria (RN-15). | E1.04 e 6.3; números, sucesso que não zera e guarda da origem: definida pelo spec (P-LOG-06, P-LOG-09) |
 | RN-12 | **Mensagem e fim do bloqueio.**<br>- Mensagem: "Muitas tentativas sem sucesso. Aguarde {N} minutos e tente de novo. Se esqueceu a senha, fale com o seu líder.".<br>- {N} são os minutos que faltam, arredondados para cima, com "1 minuto" no singular. Se a identificação e a origem estão bloqueadas, vale o maior prazo.<br>- A mensagem é a mesma para o bloqueio por identificação e por origem, exista ou não o cadastro.<br>- O bloqueio termina sozinho. Não há desbloqueio manual neste passo, nem por administrador.<br>- O bloqueio não muda o cadastro, a conta nem a senha, e não encerra as sessões já abertas.<br>- Depois que o bloqueio termina, a contagem recomeça do zero. | 6.3 ("bloqueio temporário"); 6.7 (o caminho é falar com o próprio líder); texto e fim: definida pelo spec (P-LOG-07, P-LOG-11) |
 | RN-13 | **Login com sucesso.**<br>- A função devolve só a sessão de quem entrou. Antes do login, nenhuma resposta da função traz o e-mail nem qualquer dado de cadastro.<br>- O app usa a sessão como hoje: a pessoa continua conectada, o acesso é renovado e ela pode sair.<br>- Quem já estiver conectado quando este passo for publicado continua conectado. | E1.04; 6.3, item 4 ("devolve a sessão"); seção 2 e "Problemas conhecidos" do `CLAUDE.md` (a `get-user-email` devolve o e-mail de qualquer CPF ou celular); sessões abertas: definida pelo spec |
 | RN-14 | **Caminho único.**<br>- O app só entra pela `sign-in`. Ele não chama mais o login do Auth direto nem a `get-user-email`.<br>- Pela API, entrar com e-mail e senha direto no Auth, com a chave pública, é recusado, mesmo com a senha certa. Assim, os limites (RN-10, RN-11) e a Auditoria (RN-15) não podem ser contornados.<br>- A regra não vale para o que não confere senha: a renovação de uma sessão aberta, a saída e, quando existir, a recuperação de senha por e-mail (E1.07). | consequência das RN-10, RN-11 e RN-15; definida pelo spec (P-LOG-08) |
@@ -318,8 +318,8 @@ Massa de referência (dados fictícios):
   - Dado um bloqueio que começa no sábado às 23:55
   - Então ele termina no domingo às 00:10.
 - **RN-11**
-  - Dadas 19 falhas, vindas da mesma origem, com identificações diferentes, em 10 minutos
-  - Quando acontece a 20ª falha
+  - Dadas 49 falhas, vindas da mesma origem, com identificações diferentes, em 10 minutos
+  - Quando acontece a 50ª falha
   - Então ela recebe a mensagem de bloqueio.
   - Quando Ana tenta entrar dessa origem com a senha certa, durante o bloqueio
   - Então recebe a mensagem de bloqueio e não entra.
@@ -1151,7 +1151,7 @@ Cada chave vira uma linha `(kind, key_hash)` com `key_hash = sign_in_key(kind, c
    - a resposta leva `member_id`, `auth_user_id`, o e-mail da conta, o tipo, a identificação mascarada e `password_action: null` (este último é do E3.02).
 7. **Falha:**
    - o horário entra em `failures` de **todas** as linhas: identificação e origem;
-   - quando uma linha de identificação chega a 5, ou a da origem chega a 20, ela recebe `blocked_until = agora + 15 min`, e `failures` volta a `'{}'`;
+   - quando uma linha de identificação chega a 5, ou a da origem chega a 50, ela recebe `blocked_until = agora + 15 min`, e `failures` volta a `'{}'`;
    - `expires_at = greatest(agora + 15 min, blocked_until)`.
 
    A resposta é `locked` (15 minutos) se esta falha disparou algum bloqueio, e `invalid` nos outros casos.
@@ -1280,13 +1280,13 @@ Formato único para os eventos de autenticação (AQ-4). O `entity` é sempre `a
 - **Máscara sobre a forma normalizada** (AQ-5). Ela é calculada em `parse_login_identifier`:
   - e-mail normalizado: a primeira letra, `***@` e o domínio;
   - CPF, celular ou CPF ou celular: `***` e os 4 últimos dígitos (iguais em todas as formas do mesmo número);
-  - identificação inválida: o primeiro caractere, `***` e o último, sem revelar o tamanho.
+  - identificação inválida: só `***`, sem nenhum caractere da entrada nem o tamanho (decisão do usuário em 2026-11-24, risco 17: quem cola a senha no campo de identificação não pode ter caracteres dela na Auditoria).
 
   A origem nunca entra na Auditoria (RN-15 d).
 - **Eventos antigos:** os logins de antes deste passo têm `entity_id` igual ao id da conta e `entity_label` nulo. A tela só não mostra "Cadastro" para eles.
 - **`log_auth_event`:** a migration 3 (PR 3) aceita só `logout` e mantém o filtro de excluídos do E2.01 (DA-9 de lá). Com isso, nenhum login pode ser forjado pelo cliente.
 - **Volume** (AQ-6):
-  - cada origem atacante gera no máximo 20 falhas e 1 bloqueio a cada 15 minutos, cerca de 84 eventos por hora;
+  - cada origem atacante gera no máximo 50 falhas e 1 bloqueio a cada 15 minutos, cerca de 204 eventos por hora;
   - cada identificação gera no máximo 5 falhas e 1 bloqueio a cada 15 minutos.
 
   Ver o risco 5.
@@ -1443,7 +1443,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
    - É a mesma classe de risco da DT-13 do E2.01. Conferido em produção (tarefa 1): o `postgres` tem SELECT em `auth.users` (inclusive `encrypted_password`), UPDATE de `recovery_token` e SELECT e DELETE em `auth.one_time_tokens`, que tem RLS ligado, mas o `postgres` tem BYPASSRLS. Os hashes são `$2a$10$`.
 3. **CPU do bcrypt no Postgres.**
    - Cada tentativa custa um bcrypt de custo 10: cerca de 45 ms local, mais na instância gratuita.
-   - Um ataque distribuído por muitas origens gasta CPU do banco: 20 bcrypts por origem a cada 15 minutos. As tentativas bloqueadas não gastam nada.
+   - Um ataque distribuído por muitas origens gasta CPU do banco: 50 bcrypts por origem a cada 15 minutos. As tentativas bloqueadas não gastam nada.
    - Mitigação: acompanhar a CPU no painel. CAPTCHA fica fora de escopo e pode ser um passo futuro.
 4. **Fila por origem.**
    - As tentativas da mesma origem passam uma de cada vez, por causa da trava, com cerca de um bcrypt de espera por tentativa à frente.
@@ -1491,8 +1491,8 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
     - Na rede da igreja, todos saem pelo mesmo IP público. No dia do cutover, 20 senhas erradas de pessoas diferentes em 15 minutos bloqueiam **todos** os logins daquela rede por 15 minutos, inclusive os de senha certa (o bloqueio vem antes da conferência), e não há desbloqueio (RN-12).
     - No 4G, as operadoras dividem um IPv4 entre muitos assinantes (CGNAT). O efeito é o mesmo, mas raro: só contam falhas no login do MCI.
     - Fila na mesma origem (risco 4), medida na stack local: 80 logins simultâneos com senha certa passam; com 120, 5 dão 500 pelo `lock_timeout`. Na instância de produção o bcrypt é mais lento, então o ponto de corte cai; o E5 mede.
-    - **Para o PO:** manter 20, subir o limite da origem (o de identificação, 5, continua protegendo cada conta), subir só durante o cutover, ou orientar quem estiver na igreja a usar o 4G. Os limites são constantes no começo da `sign_in_attempt`: mudar é uma migration de uma linha. Não bloqueia o PR 1.
-17. **Máscara da identificação inválida.** Ela guarda o primeiro e o último caractere (AQ-5). Se a pessoa colar a senha no campo de identificação, dois caracteres da senha vão para a Auditoria. **Para o PO:** aceitar, ou mascarar a inválida só como `***`.
+    - ~~Para o PO: manter 20, subir o limite da origem, subir só durante o cutover, ou orientar o uso do 4G.~~ **Decidido pelo usuário (2026-11-24): o limite da origem sobe para 50** (RN-11), de forma permanente. O de identificação (5) continua protegendo cada conta. Entra numa migration própria, no PR que segue o PR 1 (PR 1b).
+17. **Máscara da identificação inválida.** No PR 1 ela guardava o primeiro e o último caractere (AQ-5), e quem colasse a senha no campo de identificação deixaria dois caracteres dela na Auditoria. **Decidido pelo usuário (2026-11-24): a inválida vira só `***`** (inclusive acima de 254 caracteres). E-mail e número mantêm a máscara. Entra no PR 1b, junto com a tabela de casos que a tela do PR 2 lê.
 
 ### Ordem em relação ao E2.01
 **Recomendação:**
@@ -1544,6 +1544,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 | Passo | Quem | O que | Efeito |
 |---|---|---|---|
 | PR 1 | usuário | merge → "Deploy: banco" (migrations 1 e 2; funções `create-user-admin`, `get-user-email` e `sign-in`) | Nenhum: a tela ainda usa a `get-user-email` |
+| PR 1b | usuário | merge → "Deploy: banco" (migration que sobe o limite da origem para 50 e troca a máscara da identificação inválida por `***`, riscos 16 e 17) | Nenhum: a tela ainda usa a `get-user-email` |
 | A | usuário | Management API: `security_sb_forwarded_for_enabled = true` e `rate_limit_verify = 150`. *Smoke* com uma conta de teste, por `curl` na `sign-in`: e-mail, CPF e celular dão 200; senha errada dá 401; a Auditoria mostra os registros. | Nenhum para os usuários |
 | PR 2 | usuário | merge → promote | A tela nova entra no ar. *Smoke* pela tela, com e-mail, CPF e celular. |
 | B | usuário | Management API: `external_email_enabled = false`. *Smoke*: o login direto no Auth recusa (`email_provider_disabled`), e uma sessão aberta continua renovando. | Caminho único (RN-14) |
@@ -1576,7 +1577,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
   - o e-mail de Ana continua livre;
   - o bloqueio vencido zera a contagem;
   - o sucesso zera a identificação e não a origem;
-  - origem com 20 falhas;
+  - origem com 50 falhas;
   - origem e identificação bloqueadas: vale o maior prazo;
   - 30 segundos restantes dão 1 minuto;
   - o número CPF e celular conta nas duas chaves (DA-7);
