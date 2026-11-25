@@ -405,7 +405,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 
 | Feature ou regra do legado | No novo | Status |
 |---|---|---|
-| Login por e-mail ou celular | e-mail, CPF ou celular | ✅ |
+| Login por e-mail ou celular | e-mail, CPF ou celular, pela função `sign-in` (limite de tentativas e Auditoria no servidor, E1.04) | ✅ |
 | Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 já inclui o cônjuge do G12. Faltam o cônjuge do próprio usuário, o anfitrião nos relatórios, o escopo nas escritas e os pastores; as roles semeadas não usam escopo |
 | CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
 | Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
