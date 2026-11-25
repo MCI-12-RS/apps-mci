@@ -91,7 +91,8 @@ Responsável: liderança da igreja, com o `product-owner`.
   - Conferências em produção (tarefa 1, 2026-11-24): a origem vem só do `CF-Connecting-IP` (o último valor do `X-Forwarded-For` é um salto da AWS); bcrypt de custo 10; teto de 5 s na função por causa do `auto_explain` (DT-19).
   - PR 1 em produção (2026-11-24, mci-connect#24): banco e função `sign-in`, neutros para o usuário (a tela ainda usa a `get-user-email`). `pg_cron` instalado, com a limpeza a cada 10 minutos.
   - PR 1b em produção (2026-11-24, mci-connect#25): decisões do usuário nos riscos 16 e 17. O limite por origem passou de 20 para 50 falhas em 15 minutos, e a identificação inválida aparece na Auditoria só como `***`.
-  - Faltam o passo A (configuração do Auth), o PR 2 (tela), o passo B e o PR 3 (saída da `get-user-email`).
+  - PR 2 mergeado (2026-11-25, mci-connect#26): tela de login pela `sign-in` e rótulos de login na Auditoria. **Ainda não promovido:** o promote espera o passo A.
+  - Faltam o passo A (configuração do Auth), o promote do PR 2, o passo B e o PR 3 (saída da `get-user-email`).
 - [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
