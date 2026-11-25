@@ -23,7 +23,7 @@
   "member_no_leadership_with_leader": [26],
   "member_leader_missing": [29],
   "member_leader_deleted": [27],
-  "member_leadership_cycle": [30, 31, 32, 45, 46],
+  "member_leadership_cycle": [30, 31, 32],
   "member_leader_self": [46],
   "member_leader_self_deleted": [45],
   "member_spouse_self": [33],

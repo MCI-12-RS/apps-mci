@@ -105,11 +105,12 @@ check "duas execuções registradas, com contagens e checksums iguais" test "$RU
 step "Falha no meio da cópia desfaz tudo"
 my() { docker exec -i "$CONTAINER" mysql -uroot -prootpw g12app -e "$1" 2>/dev/null; }
 my "ALTER TABLE Reports ADD COLUMN ExtraTime time NULL; UPDATE Reports SET ExtraTime = '30:00:00' WHERE Id = 1;"
-# 5 mil relatórios fictícios a mais, para o stream ficar pausado quando a falha acontece.
+# 5 mil relatórios fictícios a mais (com 4 KB de texto cada, cerca de 20 MB),
+# para o stream ficar pausado no meio quando a falha acontece.
 my "SET SESSION cte_max_recursion_depth = 10000;
-    INSERT INTO Reports (Id, CellId, Date, NumMembers, Contribution, WeekCellSkipped, LeadershipId, HostId, TimothyId, IsDeleted)
+    INSERT INTO Reports (Id, CellId, Date, Notes, NumMembers, Contribution, WeekCellSkipped, LeadershipId, HostId, TimothyId, IsDeleted)
     WITH RECURSIVE s (n) AS (SELECT 1000 UNION ALL SELECT n + 1 FROM s WHERE n < 5999)
-    SELECT n, 1, '2020-01-01 20:00:00', 0, 0, 0, 3, 6, 5, 1 FROM s;"
+    SELECT n, 1, '2020-01-01 20:00:00', REPEAT('x', 4000), 0, 0, 0, 3, 6, 5, 1 FROM s;"
 # --batch-size 1: a falha acontece com o stream do MySQL ainda pela metade
 # (o script não pode ficar parado esperando o legado).
 TIMEOUT=""
@@ -122,7 +123,34 @@ check "a cópia falhou sem travar (status $STATUS)" test "$STATUS" -ne 0 -a "$ST
 grep -E '^(AVISO: Coluna|ERRO)' "$WORK/fail.log" || true
 check "o erro foi impresso" grep -q '^ERRO: \[22008\]' "$WORK/fail.log"
 check "o destino ficou como estava" test "$($A fingerprint)" = "$FP2"
-my "ALTER TABLE Reports DROP COLUMN ExtraTime; DELETE FROM Reports WHERE Id >= 1000;"
+my "ALTER TABLE Reports DROP COLUMN ExtraTime;"
+
+step "Conexão com o legado perdida no meio do stream"
+# Com --batch-size 1, a leitura dos 5 mil relatórios leva alguns segundos;
+# a conexão da cópia é derrubada no meio dela.
+set +e
+$TIMEOUT $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" --batch-size 1 >"$WORK/kill.log" 2>&1 &
+COPY_PID=$!
+KILLED=""
+for _ in $(seq 1 300); do
+  # Cells já conferida: a cópia está lendo Reports (a última tabela grande).
+  if grep -q 'legacy.Cells:' "$WORK/kill.log" 2>/dev/null; then
+    for CONN in $(docker exec "$CONTAINER" mysql -N -uroot -prootpw -e \
+        "SELECT id FROM information_schema.PROCESSLIST WHERE USER = 'g12'" 2>/dev/null); do
+      my "KILL $CONN"; KILLED=1
+    done
+    break
+  fi
+  sleep 0.1
+done
+wait "$COPY_PID"
+STATUS=$?
+set -e
+check "a conexão da cópia foi derrubada" test -n "$KILLED"
+check "a cópia falhou sem travar (status $STATUS)" test "$STATUS" -ne 0 -a "$STATUS" -ne 124
+grep -E '^ERRO' "$WORK/kill.log" || true
+check "o destino ficou como estava" test "$($A fingerprint)" = "$FP2"
+my "DELETE FROM Reports WHERE Id >= 1000;"
 
 step "Saneamento"
 $A sanitation "$PASTORS"
@@ -133,7 +161,9 @@ for pii in Ficticio exemplo.org 52998224725 99999-0002; do
 done
 echo "ok: relatório sem dados pessoais da massa"
 check "link para o membro ativo com líder excluído" grep -q '\[27\](https://legado.invalid/members/27) | líder excluído: 28' "$REPORT"
-check "sem link para o membro excluído" grep -q '^| 45 | excluído |' "$REPORT"
+check "sem link para o membro excluído (lista com observação)" grep -q '^| 43 | excluído |' "$REPORT"
+check "sem link para o membro excluído (lista simples)" grep -q '^Ids do legado: 45$' "$REPORT"
+check "nenhum link para excluído" test -z "$(grep -E '\[(43|44|45)\]\(' "$REPORT")"
 check "sem link para Id que não existe" grep -q '^| 99999 | não existe |' "$REPORT"
 
 step "Limpeza final"

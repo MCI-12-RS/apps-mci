@@ -26,8 +26,13 @@ export class LegacyReader {
     // é guardado e devolvido na próxima chamada (com a causa real).
     this.destroyed = false;
     this.fatalError = null;
+    this.activeStream = null;
     this.conn.on('error', (err) => {
-      if (!this.destroyed) this.fatalError = err;
+      if (this.destroyed) return;
+      this.fatalError = err;
+      // Um stream sem callback não recebe o erro da conexão: sem isto, o
+      // for await de quem lê esperaria para sempre.
+      this.activeStream?.destroy(err);
     });
   }
 
@@ -78,7 +83,12 @@ export class LegacyReader {
   stream(sql) {
     assertReadOnlySql(sql);
     this.throwIfBroken();
-    return this.conn.query({ sql }).stream({ highWaterMark: 500 });
+    const stream = this.conn.query({ sql }).stream({ highWaterMark: 500 });
+    this.activeStream = stream;
+    stream.once('close', () => {
+      if (this.activeStream === stream) this.activeStream = null;
+    });
+    return stream;
   }
 
   /** Versão do schema (última migration EF), se a tabela existir. */

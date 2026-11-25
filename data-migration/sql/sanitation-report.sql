@@ -291,7 +291,8 @@ cycle_walk AS (
       FROM w JOIN me e ON e.id = w.cur
      WHERE e.eff_leader IS NOT NULL AND NOT e.id = ANY (w.path)
   )
-  SELECT DISTINCT origin AS id FROM w WHERE cur = origin
+  -- Líder = a própria pessoa fica em member_leader_self(_deleted)
+  SELECT DISTINCT origin AS id FROM w WHERE cur = origin AND cardinality(path) > 1
 ),
 cells AS (
   SELECT c."Id" AS id, c."IsDeleted" AS del, c."LeadId" AS lead_id, c."TimothyId" AS timothy_id,
