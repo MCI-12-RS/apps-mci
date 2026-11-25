@@ -54,7 +54,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | ✅ | Já |
-| 1. Preparação | 🔄 9 de 14 | Já |
+| 1. Preparação | 🔄 10 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
@@ -87,7 +87,16 @@ Responsável: liderança da igreja, com o `product-owner`.
   Escrever no banco exige autorização do usuário · _backend_
 - [x] **E1.02** `create-user-admin`: exigir JWT e checar a permissão de quem chama · _backend_. Valida o perfil atribuído, grava o membro com a sessão de quem chama (o autor vai para a auditoria) e desfaz a conta se o cadastro falhar. Publicada em produção (2026-11-14, mci-connect#7)
 - [x] **E1.03** Proteger as colunas restritas de `members` · AUT-05, AUT-07 · _backend_. Também fecha a escalada de privilégio via INSERT com o próprio `auth_user_id`, e agora as colunas calculadas são do servidor (2026-11-14, mci-connect#8)
-- [ ] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_. Spec: [`specs/e1-04-sign-in.md`](specs/e1-04-sign-in.md) (desenho pronto; entra depois do PR 1 do E2.01)
+- [x] **E1.04** Função de login `sign-in` no lugar da `get-user-email`, com limite de tentativas. A parte da senha legada fica para o E3.02 · 6.3 · _backend + frontend_. Spec: [`specs/e1-04-sign-in.md`](specs/e1-04-sign-in.md)
+  - Conferências em produção (tarefa 1, 2026-11-24): a origem vem só do `CF-Connecting-IP` (o último valor do `X-Forwarded-For` é um salto da AWS); bcrypt de custo 10; teto de 5 s na função por causa do `auto_explain` (DT-19).
+  - PR 1 em produção (2026-11-24, mci-connect#24): banco e função `sign-in`, neutros para o usuário (a tela ainda usa a `get-user-email`). `pg_cron` instalado, com a limpeza a cada 10 minutos.
+  - PR 1b em produção (2026-11-24, mci-connect#25): decisões do usuário nos riscos 16 e 17. O limite por origem passou de 20 para 50 falhas em 15 minutos, e a identificação inválida aparece na Auditoria só como `***`.
+  - Passo A (2026-11-25): `Sb-Forwarded-For` ligado e `rate_limit_verify = 150`. *Smoke* da emissão da sessão (chave secreta nova, `generate_link` + `/verify`, renovação) com uma conta temporária só no Auth, apagada em seguida.
+  - PR 2 em produção (2026-11-25, mci-connect#26, promote do `216663f`): a tela entra só pela `sign-in`, e a Auditoria tem os rótulos de login.
+  - Passo B (2026-11-25): `external_email_enabled = false`. O login direto no Auth responde `email_provider_disabled`; a renovação da sessão aberta, a emissão pela `sign-in` e a criação de conta pelo admin continuam funcionando.
+  - PR 3 em produção (2026-11-25, mci-connect#27, "Deploy: banco" do `447a504`): `get-user-email` apagada do projeto (responde 404) por `EDGE_FUNCTIONS_REMOVED`; `log_auth_event` só com `logout`; o "Deploy: banco" passa a conferir o provedor de e-mail desligado.
+  - *Smoke* de falha em produção ok (401 e Auditoria com as máscaras). O login com sucesso **com cadastro de membro** não foi testado em produção, por falta de conta de teste; foi coberto na stack local e, em produção, pela emissão com a conta temporária.
+  - Revisão final do `architect`: APROVADO (2026-11-25). Backlog fora do E1.04: contraste do `--primary` no tema escuro, foco do bloqueio e teclado na Auditoria, paginação e retenção da Auditoria (risco 5), id fixo de role no e2e. (2026-11-25)
 - [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
 - [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
 - [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
@@ -347,7 +356,7 @@ Continuam com exclusão física as tabelas de configuração (`roles`, `role_per
 | DEL-03 | Excluir um relatório libera a semana: a célula pode receber outro relatório (REL-03). | `ReportApp.cs` (só considera não excluídos) | ❌ | Índice único parcial (`WHERE deleted_at IS NULL`) |
 | DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | ❌ | Índices únicos parciais |
 | DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ❌ | RPC de exclusão |
-| DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | ❌ | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
+| DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | 🟡 O login recusa o excluído (`sign-in`, motivo "Cadastro excluído") e a conta fica suspensa no Auth (E2.01 PR 1, E1.04). Falta encerrar a sessão já aberta (E2.01 PR 6). | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
 | DEL-07 | Excluir uma célula preserva os relatórios dela, que continuam no histórico e nas somas de períodos passados. | `IsDeleted` em `Cells` e `Reports` | ❌ hoje apaga em cascata | FKs sem cascata |
 | DEL-08 | Um membro com discípulos ativos, ou que é líder, timóteo ou anfitrião de célula ativa, só pode ser excluído depois que essas ligações forem reatribuídas. | Nova (D10) | ❌ | RPC de exclusão |
 | DEL-09 | Administradores podem reativar um registro excluído. Ao cadastrar alguém com o e-mail, o celular ou o CPF de um membro excluído, o sistema oferece reativar o cadastro existente em vez de criar outro. | Nova | ❌ | RPC + UI |

@@ -2,6 +2,14 @@
 
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23), sem perguntas em aberto. A implementação começa depois do PR 1 do E2.01 em produção. Ficam para o usuário revisar no PR: os padrões P-LOG-01 a P-LOG-16, a DT-01 (caminho único com o provedor de e-mail e senha do Auth desligado) e as DA-1 a DA-13, definidas pelo `architect`. Falta só a seção Testes.
 > **Nota de 2026-11-24 (E2.03):** o desenho do [E2.03](e2-03-senha.md) (DT-01) tira a senha do Supabase Auth e a guarda no cofre `private.account_passwords`, com um trigger em `auth.users` recusando senha gravada pelo Auth. Ao implementar o E1.04, o `architect` decide se a `sign_in_attempt` já nasce lendo o cofre (evita migrar duas vezes) ou se o E2.03 faz essa troca, como está desenhado lá.
+> **Implantação (2026-11-25):**
+> - PR 1 (mci-connect#24) e PR 1b (#25) aplicados pelo "Deploy: banco". Passo A feito (`security_sb_forwarded_for_enabled = true`, `rate_limit_verify = 150`).
+> - PR 2 (#26) mergeado e promovido (`216663f`): o domínio serve a tela que chama a `sign-in`. Passo B feito (`external_email_enabled = false`).
+> - *Smoke* de produção, com uma conta temporária só no Auth (sem membro, apagada depois): `generate_link` + `/verify` com a chave secreta e `Sb-Forwarded-For` dão 200 antes e depois do passo B; a renovação funciona; o login direto por senha dá 422 `email_provider_disabled`; o `admin.createUser` continua funcionando. Pela `sign-in`: 401 para identificação inexistente e para inválida, com `login_failed` na Auditoria (máscaras `s***@example.invalid` e `***`, sem a origem).
+> - **Não feito em produção:** o login com sucesso pela `sign-in` completa (com cadastro de membro). Não há conta de teste de membro em produção (as 5 contas são de pessoas reais) e o critério de pronto 6 proíbe usar conta real. O caminho completo está coberto só na stack local (tarefa 7, `e2e/sign-in-stack.spec.ts`). Criar uma conta de teste de membro em produção fica como decisão do usuário.
+> - PR 3 (#27): tarefas 8 e 9 (parte local). Falta o merge, o "Deploy: banco" e o *smoke* da tarefa 9.
+> - Revisão final (tarefa 10, 2026-11-25): **APROVADO**. `CLAUDE.md` e E2.01 (DT-14, T21 e T23) atualizados. Ficam para depois, fora do E1.04: a role de id fixo e a massa de paginação no e2e (`qa`); contraste do `--primary` no escuro, anel de foco do bloqueio e linha da Auditoria pelo teclado (`frontend-developer`); paginação da Auditoria e retenção das falhas (risco 5, PO).
+>
 > Slug: `e1-04-sign-in` · Paridade com o legado: sim (AUT-01, DEL-06), com regras novas: login por CPF (D5), celular escrito de qualquer jeito, resposta única, limite de tentativas e registro das falhas na Auditoria.
 
 ## Negócio
@@ -120,7 +128,7 @@ Estes pontos não estão nas fontes. O PO adotou a opção mais conservadora e c
   - um login com sucesso zera a contagem;
   - as outras identificações do mesmo membro continuam livres.
 - **P-LOG-06, limite por origem** (RN-11):
-  - 20 falhas em 15 minutos bloqueiam a origem por 15 minutos;
+  - 50 falhas em 15 minutos bloqueiam a origem por 15 minutos (eram 20; o usuário subiu para 50 em 2026-11-24, risco 16);
   - um login com sucesso não zera a contagem.
 
   É o padrão mais sensível. A rede Wi-Fi da igreja e as operadoras de celular que dividem o mesmo endereço entre muitos clientes podem juntar várias pessoas numa origem só.
@@ -164,7 +172,7 @@ Nenhuma regra está "a confirmar". Os caminhos do legado são relativos a `g12ap
 | RN-08 | **Outras respostas.** Nenhuma delas revela algo sobre o cadastro.<br>- **Campos vazios** (identificação ou senha): "Informe a identificação e a senha.".<br>  - A identificação só com espaços conta como vazia. A senha só com espaços não conta como vazia e é enviada (RN-09).<br>  - A tela confere antes de enviar. Pela API, a resposta é a mesma, a tentativa não conta e nada é registrado.<br>- **Formato não reconhecido:** "Confira a identificação: use o CPF, o celular com DDD ou o e-mail.".<br>  - Vale quando a identificação não tem "@" e não tem a forma de um celular (itens a, b e c da RN-03) nem de um CPF válido (RN-04), como o celular sem DDD.<br>  - A tela confere ao tocar em "Entrar" e não envia nada: a tentativa não conta para o limite e não é registrada.<br>  - Pela API, a mesma identificação é a falha (a) da RN-07: recebe a mensagem única e conta para o limite.<br>  - Uma identificação com "@" sempre é enviada.<br>- **Falha de conexão ou erro do servidor:** "Não foi possível entrar. Verifique a conexão e tente de novo.". Não conta como tentativa.<br>- Um erro que só acontece com um cadastro específico (por exemplo, a conta de acesso dele não pode ser lida) é tratado como falha de credencial (RN-07), e não como erro do servidor.<br>- **Bloqueio:** ver RN-12. | conexão: P-DEL-21 do E2.01; campos vazios: legado (`App/Services/AuthService.cs:47-48`); textos e erro do servidor: definida pelo spec (P-LOG-11); o que conta como vazio e aviso de formato: definida pelo spec (P-LOG-13, P-LOG-14, PO-UX-4 e PO-UX-6) |
 | RN-09 | **A senha.**<br>- Ela é usada exatamente como foi digitada: espaços, maiúsculas e acentos são mantidos.<br>- O app envia a senha à função pela conexão segura (HTTPS) e não a transforma no navegador. No E3.02, o MD5 do legado vai ser calculado no servidor (6.3).<br>- A senha nunca é gravada, registrada nem devolvida pela função: não vai para logs, para a Auditoria nem para a tabela de tentativas. | legado (`UI/pages/Login/index.js:38-41`: o `trim` é só na identificação); 6.3 (Controles: "nada de senha, hash ou dado pessoal em log"; alternativa descartada de enviar o MD5) |
 | RN-10 | **Limite por identificação.**<br>- 5 falhas de credencial com a mesma identificação em até 15 minutos, sem um login com sucesso entre elas, bloqueiam essa identificação por 15 minutos, contados da 5ª falha.<br>- A 5ª falha já responde com a mensagem de bloqueio (RN-12).<br><br>O que conta como a mesma identificação:<br>- as formas que as RN-02 a RN-04 tratam como iguais: máscara, 55, zeros à esquerda, 9º dígito e maiúsculas.<br>- Vale para qualquer identificação, exista ou não um cadastro com ela, para que o bloqueio não revele nada.<br><br>Durante o bloqueio:<br>- a senha não é conferida, nem se estiver certa;<br>- a tentativa recebe a mensagem de bloqueio e não estende o bloqueio;<br>- o bloqueio vale só para aquela identificação: o mesmo membro pode entrar com outra identificação dele, se a origem não estiver bloqueada.<br><br>Mais regras:<br>- Um login com sucesso zera a contagem da identificação.<br>- Tentativas simultâneas não passam do limite: de 20 tentativas erradas enviadas ao mesmo tempo com a mesma identificação, no máximo 5 têm a senha conferida.<br>- Se não for possível contar a tentativa, ela é recusada como erro do servidor (RN-08), sem conferir a senha. | E1.04 e 6.3 ("limite de tentativas por identificador e por IP, com bloqueio temporário"); números e demais detalhes: definida pelo spec (P-LOG-05, P-LOG-12) |
-| RN-11 | **Limite por origem.**<br>- 20 falhas de credencial vindas da mesma origem em até 15 minutos, com qualquer identificação, bloqueiam essa origem por 15 minutos, contados da 20ª falha.<br>- Durante o bloqueio, nenhuma tentativa dessa origem tem a senha conferida, com qualquer identificação. Todas recebem a mensagem de bloqueio e não estendem o bloqueio.<br>- Um login com sucesso não zera a contagem da origem. Senão, bastaria entrar com a própria conta para continuar tentando nas contas dos outros.<br>- As tentativas simultâneas e a falha na contagem seguem a RN-10.<br>- A origem fica guardada só enquanto o controle precisar dela, no máximo 24 horas, e não vai para a Auditoria (RN-15). | E1.04 e 6.3; números, sucesso que não zera e guarda da origem: definida pelo spec (P-LOG-06, P-LOG-09) |
+| RN-11 | **Limite por origem.**<br>- 50 falhas de credencial vindas da mesma origem em até 15 minutos, com qualquer identificação, bloqueiam essa origem por 15 minutos, contados da 50ª falha (decisão do usuário em 2026-11-24, risco 16; o desenho original tinha 20).<br>- Durante o bloqueio, nenhuma tentativa dessa origem tem a senha conferida, com qualquer identificação. Todas recebem a mensagem de bloqueio e não estendem o bloqueio.<br>- Um login com sucesso não zera a contagem da origem. Senão, bastaria entrar com a própria conta para continuar tentando nas contas dos outros.<br>- As tentativas simultâneas e a falha na contagem seguem a RN-10.<br>- A origem fica guardada só enquanto o controle precisar dela, no máximo 24 horas, e não vai para a Auditoria (RN-15). | E1.04 e 6.3; números, sucesso que não zera e guarda da origem: definida pelo spec (P-LOG-06, P-LOG-09) |
 | RN-12 | **Mensagem e fim do bloqueio.**<br>- Mensagem: "Muitas tentativas sem sucesso. Aguarde {N} minutos e tente de novo. Se esqueceu a senha, fale com o seu líder.".<br>- {N} são os minutos que faltam, arredondados para cima, com "1 minuto" no singular. Se a identificação e a origem estão bloqueadas, vale o maior prazo.<br>- A mensagem é a mesma para o bloqueio por identificação e por origem, exista ou não o cadastro.<br>- O bloqueio termina sozinho. Não há desbloqueio manual neste passo, nem por administrador.<br>- O bloqueio não muda o cadastro, a conta nem a senha, e não encerra as sessões já abertas.<br>- Depois que o bloqueio termina, a contagem recomeça do zero. | 6.3 ("bloqueio temporário"); 6.7 (o caminho é falar com o próprio líder); texto e fim: definida pelo spec (P-LOG-07, P-LOG-11) |
 | RN-13 | **Login com sucesso.**<br>- A função devolve só a sessão de quem entrou. Antes do login, nenhuma resposta da função traz o e-mail nem qualquer dado de cadastro.<br>- O app usa a sessão como hoje: a pessoa continua conectada, o acesso é renovado e ela pode sair.<br>- Quem já estiver conectado quando este passo for publicado continua conectado. | E1.04; 6.3, item 4 ("devolve a sessão"); seção 2 e "Problemas conhecidos" do `CLAUDE.md` (a `get-user-email` devolve o e-mail de qualquer CPF ou celular); sessões abertas: definida pelo spec |
 | RN-14 | **Caminho único.**<br>- O app só entra pela `sign-in`. Ele não chama mais o login do Auth direto nem a `get-user-email`.<br>- Pela API, entrar com e-mail e senha direto no Auth, com a chave pública, é recusado, mesmo com a senha certa. Assim, os limites (RN-10, RN-11) e a Auditoria (RN-15) não podem ser contornados.<br>- A regra não vale para o que não confere senha: a renovação de uma sessão aberta, a saída e, quando existir, a recuperação de senha por e-mail (E1.07). | consequência das RN-10, RN-11 e RN-15; definida pelo spec (P-LOG-08) |
@@ -318,8 +326,8 @@ Massa de referência (dados fictícios):
   - Dado um bloqueio que começa no sábado às 23:55
   - Então ele termina no domingo às 00:10.
 - **RN-11**
-  - Dadas 19 falhas, vindas da mesma origem, com identificações diferentes, em 10 minutos
-  - Quando acontece a 20ª falha
+  - Dadas 49 falhas, vindas da mesma origem, com identificações diferentes, em 10 minutos
+  - Quando acontece a 50ª falha
   - Então ela recebe a mensagem de bloqueio.
   - Quando Ana tenta entrar dessa origem com a senha certa, durante o bloqueio
   - Então recebe a mensagem de bloqueio e não entra.
@@ -894,7 +902,7 @@ Pontos que as RNs não respondem por inteiro. O `architect` adotou a leitura mai
 | DA-6 | A identificação leva só a cadastros excluídos, mais de um | Motivo "Cadastro excluído", sem ligação a nenhum deles. | A RN-15 liga o registro só quando a identificação leva a um único cadastro. |
 | DA-7 | Número que é CPF válido e tem a forma de um celular | Conta na chave do CPF e na do celular. O bloqueio de qualquer uma vale para o número. Um sucesso zera as duas. | RN-10: as formas que levam à mesma identificação não podem somar mais de 5 tentativas. |
 | DA-8 | Ligação do bloqueio ao cadastro (UX T2) | O bloqueio por identificação fica ligado ao cadastro quando a falha que o disparou estava ligada. O bloqueio por origem nunca fica. | O bloqueio por origem não é de um cadastro, e ligá-lo induziria quem audita a erro. |
-| DA-9 | Conta com hash de senha num formato que não é bcrypt | "Conta de acesso indisponível" (falha de credencial). | RN-08: um erro que só acontece com um cadastro é falha de credencial. Uma mudança geral de formato aparece no *smoke*. |
+| DA-9 | Conta com hash de senha num formato que não é bcrypt | "Conta de acesso indisponível" (falha de credencial). Só `$2a$` conta como bcrypt: o `pgcrypto` trata `$2b$` como DES (o Auth grava `$2a$`). | RN-08: um erro que só acontece com um cadastro é falha de credencial. Uma mudança geral de formato aparece no *smoke*. |
 | DA-10 | Tempo-limite do app | 20 s. A tentativa que chegou ao servidor conta, mesmo que a tela já tenha desistido. | O servidor não sabe que a tela desistiu (AQ-2). |
 | DA-11 | Método da sessão | A sessão sai com `amr` = `otp`. | Consequência da DT-01. Nenhuma regra depende do método. |
 | DA-12 | "Login realizado" sem sessão | O registro só é gravado depois que a sessão é emitida. Se a emissão falhar, não há registro, e a tela mostra o erro do servidor. | RN-15 (a): um registro por login, e login é receber a sessão. |
@@ -964,7 +972,7 @@ Os nomes são sugestões; o timestamp é o do momento da criação.
 |---|---|---|---|---|
 | 1 | 1 | `<ts>_e104_01_enum.sql` | `ALTER TYPE public.event_action ADD VALUE IF NOT EXISTS 'login_blocked'` | Um valor novo de enum não pode ser usado na transação que o cria (padrão de Escolas e do E2.01) |
 | 2 | 1 | `<ts>_e104_02_sign_in.sql` | Guarda de pré-requisito; funções de normalização; índices de busca; `private.sign_in_throttle`; chave no Vault; funções internas; as três RPCs; `pg_cron` e o job de limpeza; grants | Uma unidade de revisão: tudo o que a função usa |
-| 3 | 3 | `<ts>_e104_03_log_auth_event_logout_only.sql` | `log_auth_event` passa a aceitar só `logout` | Só depois que o front novo estiver no ar. Antes disso, o front antigo ainda registra o login pelo cliente, e recusar criaria um buraco na Auditoria |
+| 3 | 3 | `<ts>_e104_04_log_auth_event_logout_only.sql` (o número 03 ficou com a migration do PR 1b) | `log_auth_event` passa a aceitar só `logout` | Só depois que o front novo estiver no ar. Antes disso, o front antigo ainda registra o login pelo cliente, e recusar criaria um buraco na Auditoria |
 
 #### DDL de referência (migration 2)
 ```sql
@@ -1012,7 +1020,7 @@ CREATE TABLE IF NOT EXISTS private.sign_in_throttle (
   blocked_until timestamptz,
   expires_at    timestamptz   NOT NULL,                -- quando a linha pode ser apagada
   PRIMARY KEY (kind, key_hash),
-  CHECK (cardinality(failures) <= 20)
+  CHECK (cardinality(failures) <= 100)   -- teto folgado: os limites de verdade são constantes da sign_in_attempt (risco 16)
 );
 CREATE INDEX IF NOT EXISTS sign_in_throttle_expires_at_idx ON private.sign_in_throttle (expires_at);
 ALTER TABLE private.sign_in_throttle ENABLE ROW LEVEL SECURITY;     -- sem políticas
@@ -1020,7 +1028,7 @@ REVOKE ALL ON TABLE private.sign_in_throttle FROM PUBLIC, anon, authenticated, s
 
 -- 4. Chave do HMAC no Vault, gerada no próprio banco e nunca exposta (DT-04).
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'sign_in_throttle_key') THEN
+  IF NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'sign_in_throttle_key') THEN  -- o postgres não lê vault.secrets direto (tarefa 1)
     PERFORM vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'),
                                 'sign_in_throttle_key', 'E1.04: HMAC das chaves do limite de tentativas');
   END IF;
@@ -1039,10 +1047,11 @@ SELECT cron.schedule('e104-sign-in-purge', '*/10 * * * *', 'SELECT private.sign_
 |---|---|
 | `private.parse_login_identifier(_raw text)` | Devolve `format` (`empty`, `email`, `cpf`, `mobile`, `cpf_or_mobile` ou `invalid`), `email`, `cpf`, `mobile`, `mobile_key` e `masked`. Regras das RN-02 a RN-04 e DA-4. É a gêmea do `classifyIdentifier` da tela (AQ-3). |
 | `private.sign_in_key(_kind text, _value text) RETURNS bytea` | `extensions.hmac(_kind \|\| ':' \|\| _value, <chave do Vault>, 'sha256')`. Sem a chave, dá erro, e a tentativa vira erro do servidor (P-LOG-12). |
-| `private.sign_in_origin_key(_origin inet) RETURNS text` | IPv4: `host(_origin)`. IPv6: `network(set_masklen(_origin, 64))::text` (DA-2). |
+| `private.sign_in_origin_key(_origin inet) RETURNS text` | IPv4: `host(_origin)`. IPv4 mapeado (`::ffff:a.b.c.d`): o IPv4. Outro IPv6: `network(set_masklen(_origin, 64))::text` (DA-2, DT-06). |
 | `private.sign_in_lookup(_p ...)` | A busca em dois estágios ([Busca pelo cadastro](#busca-pelo-cadastro-rn-01-a-rn-06)). Devolve `outcome`, `member_id`, `member_name` e `identifier_type`. |
 | `private.sign_in_check_legacy(_member_id uuid, _password text) RETURNS text` | Ponto do E3.02 (RN-17 b). Neste passo, devolve sempre `NULL`, que quer dizer "não se aplica". |
 | `private.sign_in_purge()` | A limpeza do item 5 |
+| `private.sign_in_assert_duration(_max interval)` | O teto da DT-19, chamado antes de cada `RETURN` da `sign_in_attempt` |
 
 **RPCs** (`public`, `SECURITY DEFINER`, `SET search_path = public`):
 - `REVOKE EXECUTE … FROM PUBLIC, anon, authenticated` e `GRANT EXECUTE … TO service_role`. Os privilégios padrão do Supabase dão EXECUTE a `anon` em toda função nova de `public`, então o `REVOKE` é obrigatório.
@@ -1150,7 +1159,7 @@ Cada chave vira uma linha `(kind, key_hash)` com `key_hash = sign_in_key(kind, c
    - a resposta leva `member_id`, `auth_user_id`, o e-mail da conta, o tipo, a identificação mascarada e `password_action: null` (este último é do E3.02).
 7. **Falha:**
    - o horário entra em `failures` de **todas** as linhas: identificação e origem;
-   - quando uma linha de identificação chega a 5, ou a da origem chega a 20, ela recebe `blocked_until = agora + 15 min`, e `failures` volta a `'{}'`;
+   - quando uma linha de identificação chega a 5, ou a da origem chega a 50, ela recebe `blocked_until = agora + 15 min`, e `failures` volta a `'{}'`;
    - `expires_at = greatest(agora + 15 min, blocked_until)`.
 
    A resposta é `locked` (15 minutos) se esta falha disparou algum bloqueio, e `invalid` nos outros casos.
@@ -1170,7 +1179,7 @@ Qualquer erro antes do item 8 (trava que esperou mais de 3 s, Vault, origem inv�
   - conta disponível: `extensions.crypt(_password, encrypted_password)`;
   - qualquer outro caso (inválida, não encontrada, ambígua, excluída, sem conta, conta indisponível): `extensions.crypt(_password, '<sal fixo com o custo de produção>')`.
 
-  O custo dos hashes de produção é conferido na tarefa 1 (o Auth usa 10).
+  As 5 contas de produção usam `$2a$10$` (tarefa 1): o sal fixo é `$2a$10$` + 22 caracteres.
 - **Piso de 700 ms** (`FAILURE_FLOOR_MS`) para as respostas 401 e 429, contado da chegada do pedido à função. O piso absorve o que sobra: duas consultas a mais, a gravação da Auditoria e as variações de carga.
   - A tarefa 4 mede o p99 de cada caso na stack local.
   - Se algum caso passar do piso, o piso sobe. O critério é o da RN-07: a mediana de cada caso a menos de 100 ms da de "senha errada".
@@ -1179,10 +1188,17 @@ Qualquer erro antes do item 8 (trava que esperou mais de 3 s, Vault, origem inv�
 
 ### Origem confiável (RN-11)
 - A origem vem só de um cabeçalho que o cliente não consegue forjar. O corpo do pedido nunca informa a origem.
-- **O primeiro valor de `X-Forwarded-For` não serve.** Num teste público com o PostgREST do Supabase ([discussão #34647](https://github.com/orgs/supabase/discussions/34647)), um `X-Forwarded-For: spoofed` enviado pelo cliente chegou como `spoofed,<IP real>`: o *gateway* acrescenta o IP real no fim.
-- **Regra esperada:** o **último** valor de `X-Forwarded-For`, conferido com `CF-Connecting-IP` quando ele existir. **A tarefa 1 confirma isso nas Edge Functions** com uma sonda temporária, de duas redes (Wi-Fi e 4G com IPv6), com cabeçalhos forjados.
-- A regra fica num módulo puro, `supabase/functions/sign-in/lib/client-ip.ts`, com testes. Se a sonda mostrar outra coisa, só esse módulo muda. Se não houver nenhum cabeçalho confiável, a tarefa 1 para e volta ao `architect`.
-- Endereço ausente ou inválido em produção: erro do servidor (DA-1). A validação final é o `::inet` dentro da RPC.
+- **Regra (DT-06, pela sonda da tarefa 1):** a origem é o `CF-Connecting-IP`, e nada mais.
+  - Nas Edge Functions, o Cloudflare preenche esse cabeçalho com o IP do cliente e **recusa** o pedido que o traz forjado (HTTP 403).
+  - **`X-Forwarded-For` não serve, nem o primeiro nem o último valor.** O *gateway* descarta o XFF do cliente, mas o último valor é um salto interno da AWS que muda a cada pedido. O primeiro valor e o `Sb-Forwarded-For` de entrada batem com o `CF-Connecting-IP`; ficam fora para haver uma fonte só, sem conferência cruzada que derrubaria logins sem ganho.
+  - **`True-Client-IP`, `Forwarded` e `X-Real-IP` nunca são lidos:** os dois primeiros passam como o cliente mandou.
+- **Normalização** (`client-ip.ts`, repetida na `sign_in_origin_key`):
+  - IPv4 mapeado em IPv6 (`::ffff:a.b.c.d`) vira o IPv4. Sem isso, todo IPv4 mapeado cairia no mesmo `/64` e dividiria uma origem só;
+  - IPv6 conta pelo `/64` (DA-2). Hoje o `*.supabase.co` não tem AAAA e todos chegam por IPv4; o `/64` fica como defesa.
+- **Ambiente** (DA-1): a função é "local" só se o host de `SUPABASE_URL` for `kong`, `localhost`, `127.0.0.1` ou `host.docker.internal`. Qualquer outro host conta como hospedado (falha fechada).
+  - Hospedado, sem `CF-Connecting-IP` válido: erro do servidor.
+  - Local: vale o `CF-Connecting-IP` se vier válido (o QA testa a origem de ponta a ponta), senão `127.0.0.1`.
+- A regra fica num módulo puro, `supabase/functions/sign-in/lib/client-ip.ts`, com testes. Se o Supabase sair do Cloudflare, o cabeçalho some, todo login dá erro e o *smoke* pega; o plano B é o `Sb-Forwarded-For` de entrada, depois de nova sonda (risco 6). A validação final é o `::inet` dentro da RPC.
 
 ### A função `sign-in`
 **Arquivos:**
@@ -1200,7 +1216,7 @@ serve(async (req) => {
   const password = typeof body?.password === 'string' ? body.password : ''
   if (identifier.trim() === '' || password === '') return reply(400, { result: 'empty_fields' })
 
-  const origin = clientIpFrom(req.headers, { hosted: Deno.env.get('SB_REGION') !== undefined })
+  const origin = clientIpFrom(req.headers, { hosted: isHosted(Deno.env.get('SUPABASE_URL')) })  // DT-06
   if (!origin) return reply(500, { result: 'server_error' })   // DA-1
 
   const { data, error } = await admin.rpc('sign_in_attempt', { _identifier: identifier, _password: password, _origin: origin })
@@ -1272,13 +1288,13 @@ Formato único para os eventos de autenticação (AQ-4). O `entity` é sempre `a
 - **Máscara sobre a forma normalizada** (AQ-5). Ela é calculada em `parse_login_identifier`:
   - e-mail normalizado: a primeira letra, `***@` e o domínio;
   - CPF, celular ou CPF ou celular: `***` e os 4 últimos dígitos (iguais em todas as formas do mesmo número);
-  - identificação inválida: o primeiro caractere, `***` e o último, sem revelar o tamanho.
+  - identificação inválida: só `***`, sem nenhum caractere da entrada nem o tamanho (decisão do usuário em 2026-11-24, risco 17: quem cola a senha no campo de identificação não pode ter caracteres dela na Auditoria).
 
   A origem nunca entra na Auditoria (RN-15 d).
 - **Eventos antigos:** os logins de antes deste passo têm `entity_id` igual ao id da conta e `entity_label` nulo. A tela só não mostra "Cadastro" para eles.
 - **`log_auth_event`:** a migration 3 (PR 3) aceita só `logout` e mantém o filtro de excluídos do E2.01 (DA-9 de lá). Com isso, nenhum login pode ser forjado pelo cliente.
 - **Volume** (AQ-6):
-  - cada origem atacante gera no máximo 20 falhas e 1 bloqueio a cada 15 minutos, cerca de 84 eventos por hora;
+  - cada origem atacante gera no máximo 50 falhas e 1 bloqueio a cada 15 minutos, cerca de 204 eventos por hora;
   - cada identificação gera no máximo 5 falhas e 1 bloqueio a cada 15 minutos.
 
   Ver o risco 5.
@@ -1407,8 +1423,8 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 | DT-03 | Contagem atômica: uma linha por chave em `private.sign_in_throttle`, travada com `INSERT … ON CONFLICT DO UPDATE` em ordem fixa antes da conferência, com janela deslizante (`timestamptz[]`) e bloqueio gravado na linha. | RN-10 e RN-11 sob concorrência, sem *deadlock*. A falha na contagem desfaz tudo (P-LOG-12). |
 | DT-04 | As chaves são HMAC-SHA256, com a chave no Vault gerada pela migration. Limpeza pelo `pg_cron` a cada 10 minutos, com `SKIP LOCKED`. | Nem a identificação (CPF, e-mail) nem a origem ficam em claro, e nenhuma linha passa de cerca de 45 minutos (RN-11, LGPD). |
 | DT-05 | Chaves de identificação `e:`, `c:`, `m:` e `x:`. Um número que é CPF e celular conta nas duas (DA-7). | "Mesma identificação" da RN-10, inclusive o 9º dígito. |
-| DT-06 | Origem: o último valor de `X-Forwarded-For` (a confirmar na tarefa 1), IPv6 por `/64`, falha fechada em produção (DA-1). | O primeiro valor é forjável. |
-| DT-07 | Tempo igual: um bcrypt do custo de produção em toda tentativa não bloqueada, mais um piso de 700 ms nas respostas 401 e 429. | RN-07 e P-LOG-04, inclusive no E3.02. |
+| DT-06 | Origem: só o `CF-Connecting-IP`; IPv4 mapeado vira IPv4; IPv6 por `/64`; falha fechada fora da stack local (DA-1), com o ambiente decidido pelo host de `SUPABASE_URL` ([Origem confiável](#origem-confiável-rn-11)). | Sonda da tarefa 1: o Cloudflare recusa o cabeçalho forjado; o último valor do XFF é um salto da AWS e o primeiro é redundante. |
+| DT-07 | Tempo igual: um bcrypt de custo 10 (o de produção, tarefa 1) em toda tentativa não bloqueada, mais um piso de 700 ms nas respostas 401 e 429. | RN-07 e P-LOG-04, inclusive no E3.02. |
 | DT-08 | Normalização no banco (`normalize_mobile`, `mobile_match_key`, `is_valid_cpf` e `is_placeholder_email`, ao lado das `normalize_*` do E2.01), com índices de expressão. A tela replica a regra, e as duas passam pela mesma tabela de casos. | DT-17 do E2.01; AQ-3. O E2.04 usa as mesmas funções nos índices únicos. |
 | DT-09 | Busca em dois estágios: os não excluídos decidem; os excluídos só dão o motivo e a ligação. No celular, a correspondência exata vem antes da do 9º dígito. | RN-03 d e e, RN-05 e RN-15. |
 | DT-10 | Contrato HTTP com `result` e a sessão mínima; `verify_jwt = false`; chave secreta nova com `Sb-Forwarded-For` no `/verify`. | AQ-1, RN-13 e o limite de `/verify` por pessoa. |
@@ -1420,6 +1436,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 | DT-16 | O E1.04 entra depois do PR 1 do E2.01. A migration confere o pré-requisito. A T1 do E1.04 substitui a T10 do E2.01. | Usa `deleted_at`, `private` e as `normalize_*` do E2.01, sem duplicar nada. |
 | DT-17 | No front, `signIn` devolve um resultado tipado, os textos ficam em `session.ts`, o serviço usa `fetch` com tempo-limite de 20 s e a Auditoria lê o `metadata` por *type guard*. | Sem `any`, sem `toast` no login, uma fonte de textos (AQ-8). |
 | DT-18 | Na emissão da sessão: uma nova tentativa com `otp_expired`; o link pendente é descartado na falha; o usuário criado por engano é apagado. | Dois logins da mesma conta ao mesmo tempo; não deixar um código de uso único válido por 1 hora. |
+| DT-19 | Teto de tempo dentro da `sign_in_attempt`: no fim, antes do `RETURN`, se `clock_timestamp() - statement_timestamp() > 5 s`, `RAISE` (SQLSTATE `57014`). Tudo é desfeito e a `sign-in` responde 500, sem contar. Não se usa `SET statement_timeout` na definição: o Postgres arma o temporizador no início do comando, e o `SET` da função não o muda (o backend confirma num teste). | Produção registra o plano **com os parâmetros** (a senha) de comando concluído em 10 s ou mais (`auto_explain`, tarefa 1). Comando que termina em erro não é registrado. Hoje o `statement_timeout` de 8 s do `authenticator` já impede; o teto vale mesmo se alguém subir esse valor (risco 11). |
 
 ### Riscos (concorrência, escala, segurança)
 1. **Dependência do comportamento do Auth (DT-01).** O caminho único depende de o Auth recusar o login por senha com o provedor desligado, e de o `generateLink` e o `/verify` continuarem como hoje.
@@ -1431,10 +1448,10 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 2. **Leitura e escrita no schema do Auth.**
    - A RPC lê `auth.users` (hash, banimento, confirmação, `deleted_at`).
    - A `sign_in_discard_link` apaga `auth.one_time_tokens` e limpa `recovery_token`.
-   - É a mesma classe de risco da DT-13 do E2.01. A tarefa 1 confere os privilégios e o formato dos hashes em produção.
+   - É a mesma classe de risco da DT-13 do E2.01. Conferido em produção (tarefa 1): o `postgres` tem SELECT em `auth.users` (inclusive `encrypted_password`), UPDATE de `recovery_token` e SELECT e DELETE em `auth.one_time_tokens`, que tem RLS ligado, mas o `postgres` tem BYPASSRLS. Os hashes são `$2a$10$`.
 3. **CPU do bcrypt no Postgres.**
    - Cada tentativa custa um bcrypt de custo 10: cerca de 45 ms local, mais na instância gratuita.
-   - Um ataque distribuído por muitas origens gasta CPU do banco: 20 bcrypts por origem a cada 15 minutos. As tentativas bloqueadas não gastam nada.
+   - Um ataque distribuído por muitas origens gasta CPU do banco: 50 bcrypts por origem a cada 15 minutos. As tentativas bloqueadas não gastam nada.
    - Mitigação: acompanhar a CPU no painel. CAPTCHA fica fora de escopo e pode ser um passo futuro.
 4. **Fila por origem.**
    - As tentativas da mesma origem passam uma de cada vez, por causa da trava, com cerca de um bcrypt de espera por tentativa à frente.
@@ -1448,27 +1465,42 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
    - a origem pode virar forjável, e a RN-11 fica contornável;
    - ou pode desaparecer, e todos os logins dão erro, por falha fechada.
 
-   O *smoke* pega o segundo caso. O primeiro só um novo teste da sonda pega, então convém refazê-la quando o Supabase anunciar mudança de *gateway*.
+   O *smoke* pega o segundo caso. O primeiro só um novo teste da sonda pega, então convém refazê-la quando o Supabase anunciar mudança de *gateway* ou de CDN.
+   - A regra depende do Cloudflare na frente do `*.supabase.co` (DT-06). Quem alcançasse a origem sem passar por ele forjaria o cabeçalho; o endereço dela não é público.
+   - Plano B, depois de nova sonda: o `Sb-Forwarded-For` de entrada, que o *gateway* sobrescreve com o IP real.
 7. **`Sb-Forwarded-For` desligado ou chave secreta ausente.** O limite de `/verify` passa a ser o do IP da Edge Function, cerca de 6 logins por minuto para a igreja inteira, o que derrubaria o cutover.
    - A implantação liga o encaminhamento e sobe o limite antes do promote.
-   - A função exige a chave secreta em produção.
+   - A função exige a chave secreta em produção. Conferido na tarefa 1: `SUPABASE_SECRET_KEYS` (com a chave `default`) existe nas Edge Functions, e o campo `security_sb_forwarded_for_enabled` existe e hoje está `false` (o passo A liga).
    - O E5 (ensaios) deve incluir uma rajada de logins.
+   - A chave secreta nova não pôde ser testada na stack local (a CLI não injeta `SUPABASE_*` pelo `--env-file`): o *smoke* do passo A é a primeira chamada real com `sb_secret_…` na RPC, no `generateLink` e no `/verify` com `Sb-Forwarded-For`. Se falhar, a função responde 500 e nada muda para os usuários (a tela ainda usa a `get-user-email`).
 8. **Dois logins da mesma conta ao mesmo tempo.** O segundo `generateLink` troca o *token* do primeiro, e a nova tentativa resolve (DT-18). Se as duas falharem, a tela mostra o erro do servidor, e a pessoa tenta de novo.
-9. **Código de uso único pendente.** Se a emissão falhar depois do `generateLink`, o código de 6 dígitos da conta valeria por 1 hora pelo `/verify` com e-mail e código.
+9. **Código de uso único pendente.** Se a emissão falhar depois do `generateLink`, o código da conta valeria por 1 hora pelo `/verify` com e-mail e código. Em produção, o código tem 8 dígitos (`mailer_otp_length = 8`) e vale 1 hora (`mailer_otp_exp = 3600`), conferidos na tarefa 1.
    - A `sign_in_discard_link` o apaga.
-   - Se até isso falhar, sobra o limite de `/verify` por IP (150 a cada 5 minutos) contra 10^6 combinações.
+   - Se até isso falhar, sobra o limite de `/verify` por IP (150 a cada 5 minutos, cerca de 1.800 por hora) contra 10^8 combinações.
 10. **Rollback:**
     - Depois do passo B, voltar o app exige religar o provedor de e-mail.
     - Depois do PR 3, o app antigo fica sem login por CPF e celular. Isso foi aceito na RN-16.
-11. **Senha como parâmetro SQL.**
-    - O Postgres do Supabase não registra parâmetros: `log_statement = ddl` e `log_parameter_max_length_on_error = 0`, conferidos na stack local. O `pg_stat_statements` normaliza os valores.
-    - Ligar `log_statement = all`, `auto_explain` com parâmetros ou um `RAISE` com a senha exporia senhas. A tarefa 1 confere a produção, e o `CLAUDE.md` ganha a armadilha.
+11. **Senha como parâmetro SQL.** Produção (PostgreSQL 17.6, tarefa 1):
+    - não registram parâmetros: `log_statement = ddl`, `log_min_duration_statement = -1`, `log_parameter_max_length_on_error = 0`, `pgaudit.log = none`; o `pg_stat_statements` (`track = top`) normaliza os valores;
+    - **o `auto_explain` está carregado com `log_min_duration = 10s` e `log_parameter_max_length = -1`:** um comando que **termine** em 10 s ou mais tem o plano registrado com os parâmetros, inclusive a senha. Comando cancelado ou com erro não é registrado;
+    - hoje isso não acontece: o `authenticator` entra com `statement_timeout = 8s` (`anon` 3 s, `authenticated` 8 s, `service_role` sem valor próprio, global 2 min);
+    - defesa em profundidade: a DT-19 (teto de 5 s dentro da `sign_in_attempt`).
+
+    Nunca subir o `statement_timeout` do `authenticator` ou do `service_role` para 10 s ou mais, nem baixar o `auto_explain.log_min_duration`, nem ligar `log_statement = all`, nem fazer `RAISE` com a senha. O `CLAUDE.md` ganha a armadilha (tarefa 10).
 12. **Senha trocada no meio do login.** Se a senha muda entre a conferência e a emissão (cerca de 200 ms), a sessão sai com a senha antiga.
     - Fica aceito, por ser raro e sem ganho para um atacante.
     - A suspensão do E2.01 não entra nesse caso, porque o `/verify` recusa conta banida.
-13. **Vault e `pg_cron`.** Sem a chave do Vault, todo login dá erro, por falha fechada. Sem o `pg_cron`, a retenção de 24 horas não tem garantia. A tarefa 1 confere os dois, e a tarefa 4 testa.
+13. **Vault e `pg_cron`.** Sem a chave do Vault, todo login dá erro, por falha fechada. Sem o `pg_cron`, a retenção de 24 horas não tem garantia. A tarefa 4 testa os dois.
+    - Produção (tarefa 1): `supabase_vault` 0.3.1 instalada, sem segredos; o `postgres` tem EXECUTE em `vault.create_secret` e SELECT em `vault.decrypted_secrets`, mas não INSERT em `vault.secrets`. A migration usa só esses dois.
+    - O `pg_cron` 1.6.4 está **disponível e não instalado** (já no `shared_preload_libraries`, `cron.database_name = postgres`): a migration 2 faz o `CREATE EXTENSION`. O `pgcrypto` 1.3 está instalado.
 14. **Recuperação de senha.** O E1.07 não pode usar o `/recover` padrão e precisa de uma função própria (leitura técnica 1).
 15. **Unicidade só no E2.04.** Até lá, celulares e e-mails repetidos caem na RN-05. O E2.04 deve usar `mobile_match_key` no índice único do celular, como o PO pediu.
+16. **Rede compartilhada e CGNAT (RN-11).** Hoje todos chegam por IPv4, e um IPv4 é uma origem.
+    - Na rede da igreja, todos saem pelo mesmo IP público. No dia do cutover, 20 senhas erradas de pessoas diferentes em 15 minutos bloqueiam **todos** os logins daquela rede por 15 minutos, inclusive os de senha certa (o bloqueio vem antes da conferência), e não há desbloqueio (RN-12).
+    - No 4G, as operadoras dividem um IPv4 entre muitos assinantes (CGNAT). O efeito é o mesmo, mas raro: só contam falhas no login do MCI.
+    - Fila na mesma origem (risco 4), medida na stack local: 80 logins simultâneos com senha certa passam; com 120, 5 dão 500 pelo `lock_timeout`. Na instância de produção o bcrypt é mais lento, então o ponto de corte cai; o E5 mede.
+    - ~~Para o PO: manter 20, subir o limite da origem, subir só durante o cutover, ou orientar o uso do 4G.~~ **Decidido pelo usuário (2026-11-24): o limite da origem sobe para 50** (RN-11), de forma permanente. O de identificação (5) continua protegendo cada conta. Entra numa migration própria, no PR que segue o PR 1 (PR 1b).
+17. **Máscara da identificação inválida.** No PR 1 ela guardava o primeiro e o último caractere (AQ-5), e quem colasse a senha no campo de identificação deixaria dois caracteres dela na Auditoria. **Decidido pelo usuário (2026-11-24): a inválida vira só `***`** (inclusive acima de 254 caracteres). E-mail e número mantêm a máscara. Entra no PR 1b, junto com a tabela de casos que a tela do PR 2 lê.
 
 ### Ordem em relação ao E2.01
 **Recomendação:**
@@ -1520,10 +1552,11 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 | Passo | Quem | O que | Efeito |
 |---|---|---|---|
 | PR 1 | usuário | merge → "Deploy: banco" (migrations 1 e 2; funções `create-user-admin`, `get-user-email` e `sign-in`) | Nenhum: a tela ainda usa a `get-user-email` |
+| PR 1b | usuário | merge → "Deploy: banco" (migration que sobe o limite da origem para 50 e troca a máscara da identificação inválida por `***`, riscos 16 e 17) | Nenhum: a tela ainda usa a `get-user-email` |
 | A | usuário | Management API: `security_sb_forwarded_for_enabled = true` e `rate_limit_verify = 150`. *Smoke* com uma conta de teste, por `curl` na `sign-in`: e-mail, CPF e celular dão 200; senha errada dá 401; a Auditoria mostra os registros. | Nenhum para os usuários |
 | PR 2 | usuário | merge → promote | A tela nova entra no ar. *Smoke* pela tela, com e-mail, CPF e celular. |
 | B | usuário | Management API: `external_email_enabled = false`. *Smoke*: o login direto no Auth recusa (`email_provider_disabled`), e uma sessão aberta continua renovando. | Caminho único (RN-14) |
-| PR 3 | usuário | merge → "Deploy: banco" (migration 3; remove a `get-user-email`; confere o Auth). *Smoke*: a `get-user-email` responde 404. | RN-16. O E1.04 pode ser aceito. |
+| PR 3 | usuário | merge → "Deploy: banco" (migration `e104_04`, a 3 da ordem; remove a `get-user-email`; confere o Auth). *Smoke*: a `get-user-email` responde 404. | RN-16. O E1.04 pode ser aceito. |
 
 - O promote já recusa rodar com migration pendente. O PR 2 não tem migration.
 - **Rollback:**
@@ -1552,7 +1585,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
   - o e-mail de Ana continua livre;
   - o bloqueio vencido zera a contagem;
   - o sucesso zera a identificação e não a origem;
-  - origem com 20 falhas;
+  - origem com 50 falhas;
   - origem e identificação bloqueadas: vale o maior prazo;
   - 30 segundos restantes dão 1 minuto;
   - o número CPF e celular conta nas duas chaves (DA-7);
@@ -1566,6 +1599,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
   - Lia não lê os eventos;
   - com um `CHECK` em `events` criado dentro do teste, a `sign_in_attempt` responde igual (P-LOG-12).
 - **P-LOG-12:** sem a chave do Vault, ou com a linha travada além do `lock_timeout`, a RPC dá erro, e nada foi contado.
+- **DT-19:** `SELECT pg_sleep(5.2), public.sign_in_attempt(...)` no mesmo comando dá 57014, e nada foi contado nem registrado.
 - **`log_auth_event` (migration 3):** `login` recusado com 22023, e `logout` gravado.
 
 **Concorrência** (script com várias conexões, como no E2.01):
@@ -1576,7 +1610,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 **Edge Function** (stack local, `supabase functions serve` ou o *edge runtime* do `supabase start`):
 - **contrato:** os seis status e os corpos;
 - **sessão:** a sessão mínima, sem `user` nem e-mail;
-- **origem:** `X-Forwarded-For` forjado não muda a origem (pela regra da tarefa 1);
+- **origem (DT-06):** com `CF-Connecting-IP`, `X-Forwarded-For`, `True-Client-IP`, `Forwarded` e `X-Real-IP` diferentes, conta só o `CF-Connecting-IP` (duas origens diferentes contam em linhas diferentes); sem ele, local usa `127.0.0.1`;
 - **erros:** a RPC com erro dá 500;
 - **logs:** sem dado pessoal (inspecionar a saída);
 - **emissão da sessão:** a nova tentativa com `otp_expired` e o descarte do link.
@@ -1615,7 +1649,7 @@ Três PRs no `mci-connect`. **Tudo começa depois do PR 1 do E2.01 em produção
 | # | Responsável | Descrição | Arquivos | RNs | UX | Depende de |
 |---|---|---|---|---|---|---|
 | **PR 1: banco e função `sign-in` (neutro para o usuário)** | | | | | | |
-| 1 | backend-developer | Conferências em produção, **só de leitura e com autorização do usuário**:<br>(a) prefixo e custo dos hashes em `auth.users` (contagem por `left(encrypted_password, 7)`);<br>(b) privilégios do `postgres`: SELECT em `auth.users`, UPDATE de `recovery_token` e DELETE em `auth.one_time_tokens`;<br>(c) Vault utilizável pelo `postgres` e `pg_cron` disponível;<br>(d) `SHOW log_statement`, `log_min_duration_statement`, `log_parameter_max_length_on_error` e `shared_preload_libraries`;<br>(e) GET da configuração do Auth: provedores, `disable_signup`, `rate_limit_*` e o campo `security_sb_forwarded_for_enabled`;<br>(f) sonda temporária de cabeçalhos de IP, uma função publicada só para o teste e apagada em seguida. Ela é chamada de duas redes (Wi-Fi e 4G com IPv6), com `X-Forwarded-For`, `X-Real-IP` e `CF-Connecting-IP` forjados, e devolve só os cabeçalhos de IP e se `SUPABASE_SECRET_KEYS` existe.<br><br>Registrar o resultado na DT-06 e no risco 11. Parar e voltar ao `architect` se (a) não for bcrypt, se faltar privilégio em (b) ou se (f) não tiver cabeçalho confiável. | — | 06, 07, 09, 11, 14 | — | PR 1 do E2.01 em produção |
+| 1 | backend-developer | Conferências em produção, **só de leitura e com autorização do usuário**:<br>(a) prefixo e custo dos hashes em `auth.users` (contagem por `left(encrypted_password, 7)`);<br>(b) privilégios do `postgres`: SELECT em `auth.users`, UPDATE de `recovery_token` e DELETE em `auth.one_time_tokens`;<br>(c) Vault utilizável pelo `postgres` e `pg_cron` disponível;<br>(d) `SHOW log_statement`, `log_min_duration_statement`, `log_parameter_max_length_on_error` e `shared_preload_libraries`;<br>(e) GET da configuração do Auth: provedores, `disable_signup`, `rate_limit_*` e o campo `security_sb_forwarded_for_enabled`;<br>(f) sonda temporária de cabeçalhos de IP, uma função publicada só para o teste e apagada em seguida. Ela é chamada de duas redes (Wi-Fi e 4G com IPv6), com `X-Forwarded-For`, `X-Real-IP` e `CF-Connecting-IP` forjados, e devolve só os cabeçalhos de IP e se `SUPABASE_SECRET_KEYS` existe.<br><br>Registrar o resultado na DT-06 e no risco 11. Parar e voltar ao `architect` se (a) não for bcrypt, se faltar privilégio em (b) ou se (f) não tiver cabeçalho confiável.<br><br>**Feita em 2026-11-24** (sessão principal, com autorização): nada bloqueia. Resultados na DT-06, DT-07, DT-19 e nos riscos 2, 6, 7, 9, 11, 13 e 16. A chamada pelo 4G fica só como registro do CGNAT. | — | 06, 07, 09, 11, 14 | — | PR 1 do E2.01 em produção |
 | 2 | backend-developer | Migrations 1 e 2:<br>- `login_blocked`;<br>- guarda de pré-requisito;<br>- `normalize_mobile`, `mobile_match_key`, `is_valid_cpf` e `is_placeholder_email`;<br>- os três índices;<br>- `private.sign_in_throttle`, a chave no Vault, `pg_cron` e o job;<br>- `parse_login_identifier`, `sign_in_key`, `sign_in_origin_key`, `sign_in_lookup`, `sign_in_check_legacy` e `sign_in_purge`;<br>- `sign_in_attempt`, `sign_in_record_login` e `sign_in_discard_link`;<br>- grants;<br>- ordem das travas e o algoritmo no cabeçalho.<br><br>Regenerar o `types.ts`. | `supabase/migrations/<ts>_e104_01_enum.sql`, `supabase/migrations/<ts>_e104_02_sign_in.sql`, `src/integrations/supabase/types.ts` | 01 a 12, 15, 17 | — | 1 |
 | 3 | backend-developer | Edge Function `sign-in`: o *handler*, `lib/client-ip.ts` (regra da tarefa 1), `lib/http.ts` (respostas e piso), a emissão da sessão (DT-18) e os logs sem dado pessoal.<br><br>No `config.toml`: `[functions.sign-in] verify_jwt = false` e `[auth.rate_limit] token_verifications = 1000` (local), com o comentário da DT-13. No `deploy-banco.yml`: `sign-in` em `EDGE_FUNCTIONS`. No `vitest.config.ts`: incluir `supabase/functions/**/lib/*.test.ts`. | `supabase/functions/sign-in/{index.ts,lib/client-ip.ts,lib/http.ts}`, `supabase/config.toml`, `.github/workflows/deploy-banco.yml`, `vitest.config.ts` | 07 a 13, 15 | dados de UX-05, 06, 07 | 2 |
 | 4 | qa | pgTAP de todas as RNs no banco; tabela de casos `login-identifier-cases.json` com o SQL gerado e a conferência de sincronia; concorrência; testes da função; medição de tempo; Vitest dos módulos da função ([Verificações](#verificações-obrigatórias-para-o-qa)). | `supabase/tests/database/e104_*.test.sql`, `supabase/tests/fixtures/login-identifier-cases.json`, `supabase/functions/sign-in/lib/*.test.ts`, scripts de concorrência e de tempo | 01 a 13, 15, 17 | — | 3 (escreve em paralelo com a 2 e a 3, a partir dos contratos) |
@@ -1626,7 +1660,7 @@ Três PRs no `mci-connect`. **Tudo começa depois do PR 1 do E2.01 em produção
 | 7 | qa | - Testes de componente: UX-01, 02, 04, 06 (relógio simulado), 07, 08, 11, 12, 13, 15, 16 e 17;<br>- Playwright com a rede interceptada: UX-01, 03, 05, 14 e 19;<br>- login real na stack local: RN-01 a RN-04, RN-08 e RN-13;<br>- `e2e/login.spec.ts` com `getByLabel("Senha", { exact: true })` (AQ-7);<br>- `e2e/dashboard.spec.ts` sem `log_auth_event`;<br>- RN-14 na stack local;<br>- UX-18 com o axe. | `src/**/*.test.tsx`, `e2e/login.spec.ts`, `e2e/sign-in.spec.ts`, `e2e/dashboard.spec.ts` | 01 a 04, 07, 08, 12 a 15 | 01 a 19 | 5 |
 | B | usuário | Passo B da implantação: `external_email_enabled = false`, mais o *smoke* da RN-13 e da RN-14 | — | 13, 14 | — | PR 2 promovido e *smoke* da tela |
 | **PR 3: saída da `get-user-email`** | | | | | | |
-| 8 | backend-developer | - Migration 3 (`log_auth_event` só com `logout`, mantendo a DA-9 do E2.01);<br>- apagar `supabase/functions/get-user-email/` e a seção dela no `config.toml`;<br>- no `deploy-banco.yml`: tirar a função de `EDGE_FUNCTIONS`, criar `EDGE_FUNCTIONS_REMOVED: get-user-email` com um passo de remoção idempotente (função inexistente não é erro; conferir a flag de confirmação da CLI 2.58.5) e um passo que falha se o `GET /v1/projects/{ref}/config/auth` tiver `external_email_enabled` diferente de `false`. | `supabase/migrations/<ts>_e104_03_log_auth_event_logout_only.sql`, `supabase/functions/get-user-email/` (removida), `supabase/config.toml`, `.github/workflows/deploy-banco.yml`, `src/integrations/supabase/types.ts` | 14, 15, 16 | — | B |
+| 8 | backend-developer | - Migration 3 (`log_auth_event` só com `logout`, mantendo a DA-9 do E2.01);<br>- apagar `supabase/functions/get-user-email/` e a seção dela no `config.toml`;<br>- no `deploy-banco.yml`: tirar a função de `EDGE_FUNCTIONS`, criar `EDGE_FUNCTIONS_REMOVED: get-user-email` com um passo de remoção idempotente (função inexistente não é erro; conferir a flag de confirmação da CLI 2.58.5) e um passo que falha se o `GET /v1/projects/{ref}/config/auth` tiver `external_email_enabled` diferente de `false`. | `supabase/migrations/<ts>_e104_04_log_auth_event_logout_only.sql`, `supabase/functions/get-user-email/` (removida), `supabase/config.toml`, `.github/workflows/deploy-banco.yml`, `src/integrations/supabase/types.ts` | 14, 15, 16 | — | B |
 | 9 | qa | pgTAP da migration 3. Depois do "Deploy: banco" e com autorização do usuário, *smoke* em produção:<br>- a `get-user-email` responde 404;<br>- o login direto responde `email_provider_disabled`;<br>- login pela tela com e-mail, CPF e celular;<br>- a renovação funciona. | `supabase/tests/database/e104_log_auth_event.test.sql` | 13, 14, 15, 16 | — | 8 |
 | **Fechamento** | | | | | | |
 | 10 | architect | Revisão final dos 3 PRs:<br>- atualizar o `CLAUDE.md` (estado atual, armadilhas, deploy e problemas conhecidos);<br>- marcar o E1.04 no Progresso de `docs/migracao.md`;<br>- registrar no E2.01 a DT-14 e o PR 6 reduzido.<br><br>O aceite e a matriz de paridade são do `product-owner`. | `CLAUDE.md`, `docs/migracao.md`, `docs/specs/e2-01-exclusao-logica.md` | — | — | 4, 6, 7, 9 |
@@ -1676,5 +1710,65 @@ Três PRs no `mci-connect`. **Tudo começa depois do PR 1 do E2.01 em produção
 ## Testes
 _Seção do `qa`._
 
-| RN | Testes | Resultado |
+Arquivos em `mci-connect/supabase/tests/` (PR 1, tarefa 4):
+- pgTAP (`database/`): `e104_01_structure_grants` (grants, Vault, job, índices com EXPLAIN, normalização, origem, limpeza, `sign_in_discard_link`), `e104_02_parse_identifier` (gerado do JSON), `e104_03_sign_in_attempt` (busca e decisão), `e104_04_throttle_audit` (limites, retenção, Auditoria, P-LOG-12, DT-19);
+- `fixtures/login-identifier-cases.json` + `fixtures/generate-login-identifier-cases.mjs`; sincronia em `src/test/login-identifier-cases-sync.test.ts` (o PR 2 acrescenta o Vitest do `classifyIdentifier` sobre o mesmo JSON);
+- `concurrency/e104_concurrency.sh` (20 por CPF, 30 por origem, limpeza durante as tentativas, trava além do `lock_timeout`);
+- `edge/sign-in.edge.test.mjs` (contrato, sessão, origem DT-06, 500, piso, logs) e `edge/timing.mjs` (RN-07, 20 tentativas por caso) e `edge/concurrent-success.mjs` (N logins certos da mesma origem).
+
+| RN | Testes (arquivo) | Resultado |
 |---|---|---|
+| RN-01 a RN-04 | `e104_02` (formatos), `e104_03` (RN-01 a RN-04), `e104_01` (normalização e índices), edge (CPF, e-mail, celular) | PR 1: passou |
+| RN-05, RN-06 | `e104_03` (Davi e Elisa, Otávio e Paula, Rita, Sílvia, Ulisses, Nina, Samuel, Lia, Quintino, Rosa restaurada, contas indisponíveis) | PR 1: passou |
+| RN-07 | `e104_03` (casos a a g, mesmo `{"result":"invalid"}`), edge (mesmo corpo e piso), `edge/timing.mjs` | PR 1: passou |
+| RN-08, RN-09, RN-13, RN-17 | `e104_03`, edge (400, sessão mínima, logs sem dado) | PR 1: passou |
+| RN-10, RN-11, RN-12 | `e104_04`, `e104_01` (limpeza), `e104_concurrency.sh`, edge (origem, 429) | PR 1: passou |
+| RN-15 | `e104_04` (eventos, máscaras, tipos, bloqueios, Lia, CHECK em `events`), edge (login gravado) | PR 1: passou |
+| DT-06, DT-19, P-LOG-12 | edge (origem), `e104_04` (57014, Vault, CHECK), `e104_concurrency.sh` (55P03) | PR 1: passou |
+| RN-14, RN-16 | PR 2 e PR 3 | — |
+
+Resultados por PR (stack local isolada, CLI 2.84.2):
+- **PR 1**: `supabase test db` PASS, 15 arquivos, 1858 testes (E1.08 e E2.01 inclusos; `e104_01` 113, `e104_02`, `e104_03` 105, `e104_04` 129); `npm test` 75 arquivos, 815 testes; `vitest login-identifier-cases-sync` 3; `e104_concurrency.sh` todos os 4 cenários; `node --test supabase/tests/edge/sign-in.edge.test.mjs` 20/20 (função servida com `supabase functions serve sign-in`).
+- Concorrência: 20 com o CPF de Ana = 5 conferidas, 4 `invalid`, 16 `locked`, 1 bloqueio, 0 erros; 30 de uma origem = 20 conferidas (19 `invalid` + a que bloqueia), 11 `locked`, 0 erros; limpeza durante as tentativas sem deadlock; trava além do `lock_timeout` dá 55P03 em 3 s e nada é contado.
+- **PR 1b** (mci-connect#25, migration `20261125003300_e104_03_origin_limit_invalid_mask.sql`): limite da origem 50 e máscara `***` na inválida (riscos 16 e 17). `supabase test db` PASS, 15 arquivos, 1866 testes (`e104_04` com 135: 50ª falha da origem bloqueia; `metadata` só com `***` para a senha colada e para mais de 254 caracteres, com e sem "@"; varredura RN-15 d ampliada); `e104_concurrency.sh` cenário 2 com 60 simultâneas de uma origem = 50 conferidas, 11 `locked`, 1 bloqueio, 0 erros; edge 21/21; `npm test` 815/815. Tabela de casos: as inválidas esperam `***`, com o caso novo `invalida-senha-colada`.
+- Tempo (RN-07, `node supabase/tests/edge/timing.mjs --n 20`), em ms, mediana / p99 (diferença para "g"):
+
+| Caso | Banco | HTTP |
+|---|---|---|
+| a inválida | 42 / 48 (-0) | 710 / 714 (+0) |
+| b não encontrada | 41 / 46 (-0) | 710 / 714 (+0) |
+| c ambígua | 43 / 46 (+1) | 709 / 754 (-0) |
+| d excluída | 41 / 46 (-0) | 710 / 717 (+1) |
+| e sem conta | 41 / 46 (-0) | 709 / 715 (-0) |
+| f indisponível | 41 / 46 (-0) | 711 / 714 (+1) |
+| g senha errada (ref.) | 42 / 48 | 709 / 714 |
+| h bloqueada (429) | 0 / 2 | 709 / 712 (-0) |
+
+  Menor HTTP: 705 ms (piso 700). Critérios cumpridos (diferença < 100 ms; p99 do banco < piso).
+- Risco 4/16, logins com senha certa simultâneos da mesma origem (`concurrent-success.mjs`): N=10 -> 10x200, último em 480 ms; N=30 -> 30x200, 1385 ms; N=50 -> 50x200, 2267 ms; N=80 -> 80x200, 3618 ms; N=120 -> 115x200 e 5x500, 5223 ms. O `lock_timeout` de 3 s só vira 500 acima de ~100 simultâneos da mesma origem, na máquina local.
+- Bugs da implementação: nenhum. Os erros da primeira rodada eram dos testes (INSERT sem `id` em `auth.one_time_tokens`, `next_origin()` depois do `SET ROLE`, precedência de `->`/`-`, `57014` não é pego por `WHEN OTHERS`, `ip: undefined` caindo no valor padrão, INSERT duplicado do bloqueio).
+
+**PR 2 (tarefa 7, branch `feat/E1.04-pr2-tela-login`, commit `b8a466c`)**
+
+| RN / UX | Arquivo | Resultado |
+|---|---|---|
+| UX-01, 02, 04, 05, 06 (relógio simulado), 07 (fetch rejeitado, 500, fora do contrato, tempo-limite), 08, 09, 11, 12, 13, 19 | `src/pages/Login.test.tsx` (45) | passou |
+| UX-15, 16, 17, RN-15 (máscara `***`, origem ausente) | `src/pages/Events.auth.test.tsx` (14) | passou |
+| UX-01, 02, 03 (360x800), 05, 07, 10, 12, 14 (360x800 e 320x568, fonte 200 %), 19 | `e2e/sign-in.spec.ts` (rede interceptada) | passou (45) |
+| UX-18 (axe, claro e escuro: mensagem, indicador, "OK" da Auditoria) | `e2e/sign-in.spec.ts`, `e2e/sign-in-stack.spec.ts` | passou; tela inteira no escuro: achado (botão Entrar 2,97:1), marcado `test.fail` |
+| RN-01 a RN-04, RN-07, RN-08, RN-12, RN-13, RN-14, RN-15 (login real, stack local) | `e2e/sign-in-stack.spec.ts` | passou (17) |
+| AQ-7 e helpers (`login.spec`, `dashboard.spec`, `exclusao-support`, `ministries-selectors`, `create-user-admin`, `cadastro-excluido`, `excluidos-membros`) | `e2e/*` | ajustados; passam |
+
+- `npm test`: 82 arquivos, 1005 testes. `npm run lint`: 12 erros e 8 avisos (a linha de base; arquivos do PR limpos). `npm run build` ok.
+- `npx playwright test --workers=1` (stack local isolada, `sign-in` servida, `[auth.email] enable_signup = false`): 151 testes, todos passam (E1.08 e E2.01 inclusos). Em paralelo (`--workers=3`) as specs do E2.01 interferem entre si (massa e `sign_in_throttle` compartilhados): rode com 1 worker.
+- `supabase test db` (banco zerado com `db reset`): 15 arquivos, 1866 testes, PASS (`e201_03` passa; não faz login direto).
+- Devdependency nova: `@axe-core/playwright@4.10.2`. As specs do E2.01 precisam da role Administrador com todas as permissões (as migrations só dão `view_audit_log`) e de massa para paginar (Células e Relatórios).
+- Revisão de UI (tarefa 6, `ux-designer`): **APROVADO**, sem bloqueante. Sugestões que ficam para depois: o anel de foco do bloqueio usa só `focus-visible:` (`Login.tsx`), a linha da Auditoria não abre o painel pelo teclado (já existia) e o contraste do `--primary` no tema escuro (token global, o mesmo achado do axe acima). Os três vão num PR próprio, fora do E1.04.
+
+**PR 3 (tarefa 9, parte local, mci-connect#27, commit `c512973`)**
+- Arquivo novo: `supabase/tests/database/e104_log_auth_event.test.sql` (21 testes): RN-15 (e) e RN-16 (lado do banco): `login` com sessão dá 22023 e não grava; outras ações e NULL dão 22023; `logout` grava `auth`/`logout` (autor = a conta, `success`, "Logout realizado") e a 2ª chamada em 30 s não duplica; sem sessão dá 42501 (antes do 22023); excluído não grava e não dá erro (DA-9); `anon` sem EXECUTE, `authenticated` com; `SECURITY DEFINER`, `search_path` fixo, assinatura de 4 argumentos.
+- Stack local isolada (CLI 2.84.2, `db reset` do zero): `supabase test db` PASS, 16 arquivos, 1887 testes. `npm test`: 82 arquivos, 1005 testes.
+- `npx playwright test --workers=1` (`sign-in` servida, `enable_signup = false`): 151 testes, 145 passam, 5 pulados (os do estado anterior) e 1 falha de massa: `excluidos-membros.spec.ts:605` (UX-19) pede 2 páginas em Células e Relatórios e o banco zerado não tem massa; não é do PR. Nada no e2e usa a `get-user-email`.
+- `grep -rn get-user-email src e2e supabase .github`: só o `EDGE_FUNCTIONS_REMOVED` do workflow. O front só chama `log_auth_event('logout')` (`AuthContext.signOut`).
+- Preparação local do e2e: o `sign-in-stack` usa a role de id fixo `8f40ab80-…` (não existe num banco zerado) e o admin de teste precisa de `members.email` para o `sign-in` achá-lo.
+- Bugs da implementação: nenhum. *Smoke* de produção: pendente (sessão principal, depois do deploy).

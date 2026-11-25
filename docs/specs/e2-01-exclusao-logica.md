@@ -4,6 +4,7 @@
 > - PR 1 (banco) em produção (2026-11-24, mci-connect#19): tarefas 1 a 5 concluídas. A conferência em produção (14 blocos, só leitura) bateu em 2026-11-24.
 > - PRs 2 a 4 em produção (2026-11-24, mci-connect#20, #21 e #22): tarefas 6 a 16 concluídas.
 > - Faltam o PR 5 (tarefas 17 a 20), o PR 6 (tarefas 21 a 23) e a tarefa 24. O PR 6 fica reduzido e entra depois do PR 2 do E1.04 (ver Tarefas).
+> - **E1.04 (2026-11-25):** PRs 1, 1b e 2 em produção; o PR 3 remove a `get-user-email` (DT-14 encerrada). O PR 6 daqui fica só com o encerramento da sessão (T21 e T23 ajustadas).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
 ## Negócio
@@ -1689,10 +1690,9 @@ O `CellReportForm` apaga e regrava todos os participantes ao editar. Com a RN-06
 |---|---|---|
 | Qualquer leitura com o token antigo (PostgREST, views, RPCs) | `user_has_permission`, `viewer_member_id`, `is_admin`, `can_manage_own_cell`, RLS e views ignoram o cadastro excluído: as leituras voltam vazias, as RPCs dão 42501, o INSERT dá 42501 e o PATCH volta com 0 linhas | Na hora do *commit* da exclusão. Não depende do Auth. |
 | Edge Functions (`create-user-admin`) | `user_has_permission` é falso, e a função recusa com 403. O `auth.getUser` pode recusar antes, porque a sessão foi apagada. | Na hora |
-| Login por e-mail e senha | Senha vazia: o Auth responde `invalid_credentials` antes de olhar o banimento, como para uma conta inexistente | Na hora |
-| Login por CPF ou celular | A `get-user-email` ignora excluídos e responde `{ "email": null }`, como para inexistente; a tela mostra a mensagem única (DT-14) | Na hora |
+| Login por e-mail, CPF ou celular | **Desde o E1.04:** só pela `sign-in`. A `sign_in_attempt` acha o cadastro excluído só no segundo estágio e responde a falha única (401), com o motivo "Cadastro excluído" na Auditoria; a conta suspensa nunca tem a senha conferida (RN-06 e RN-07 do E1.04). O login direto no Auth responde `email_provider_disabled` para todos. _Antes do E1.04: senha vazia no Auth e a `get-user-email` ignorando excluídos (DT-14)._ | Na hora |
 | Renovação do token | Sessões apagadas e conta banida: o Auth recusa a renovação | Na hora. O token de acesso já emitido vale até expirar (até 1 hora), mas o banco o ignora (primeira linha). |
-| Link mágico e recuperação de senha | `/verify` recusa conta banida (`user_banned`) | Na hora |
+| Link mágico e recuperação de senha | `/verify` recusa conta banida (`user_banned`). Desde o E1.04, o `/recover` padrão está desligado junto com o provedor de e-mail; a recuperação do E1.07 terá função própria. | Na hora |
 | Restauração | `_del_resume_access` devolve a mesma senha e tira o banimento, na mesma transação | Na hora |
 
 Por que dentro da transação, e não pela Admin API depois do *commit* (DT-13):
@@ -1905,7 +1905,7 @@ Segue o padrão do E1.08: os componentes cuidam da tela, o acesso a dados fica n
 | DT-11 | A pré-checagem e a recusa da exclusão vêm da mesma função interna (`_del_member_blockers`), com o mesmo JSON. | A tela e o servidor nunca discordam (UXD-2). |
 | DT-12 | "Cobrir a função" (RN-03 e RN-16 b) = permissões da função ⊆ permissões de quem age (`viewer_covers_role`), sem exigir `assign_role`. A `can_assign_role` passa a usar a mesma função. | Exigir `assign_role` impediria o Líder de excluir qualquer membro com função, contra o critério da RN-02. A regra fica num lugar só. |
 | DT-13 | **(revisar no PR)** A suspensão da conta acontece na mesma transação, e não pela Admin API depois do *commit*: a senha vai para `private.member_access_suspensions`, `encrypted_password` fica vazio, `banned_until` vai 100 anos à frente e as sessões são apagadas. A restauração devolve tudo. | RN-20 sem compensação. O login de excluído fica igual ao de inexistente (AQ-10), o que só com o banimento não acontece. O corte de acesso não depende disso (DT-04). |
-| DT-14 | A `get-user-email` ignora excluídos e responde `{ email: null }` como para inexistente. | AQ-10, até a `sign-in` do E1.04. |
+| DT-14 | A `get-user-email` ignora excluídos e responde `{ email: null }` como para inexistente. **Encerrada pelo E1.04:** a função foi removida no PR 3 de lá (RN-16) e o login de excluído passa pela `sign-in` (ver [Acesso do membro excluído](#acesso-do-membro-excluído-rn-14)). | AQ-10, até a `sign-in` do E1.04. |
 | DT-15 | Os participantes são gravados pela RPC mínima `set_cell_report_participants`, `SECURITY INVOKER`, que recebe o conjunto final (com os excluídos) e grava só a diferença. O trigger ignora o par que já existe. | A RN-13 é deste passo. Fica atômico sem duplicar regra de permissão; o E2.11 absorve a RPC. |
 | DT-16 | A auditoria continua nos triggers. Exclusão, restauração e cônjuge desfeito são gravados num ramo que não engole erro. `restore` entra em `event_action`, numa migration separada. | RN-19 e RN-20, valendo para qualquer caminho de escrita. |
 | DT-17 | `normalize_email` e `normalize_digits` são a única normalização de e-mail, celular e CPF. | RN-16 (e), RN-18 e os índices do E2.04 comparam igual. |
@@ -2094,9 +2094,9 @@ Seis PRs no `mci-connect`. **Tudo começa depois do merge do PR 4 do E1.08.**
 | 19 | ux-designer | Revisão de UI do PR 5 (T9). | — | — | 31 a 34, 38 | 18 |
 | 20 | qa | Vitest (`deleted-matches`); Playwright (RN-18 com AD, LE e CM; UX-31 a 34); teste da `create-user-admin` com o 409 e a confirmação. | `e2e/cadastro-excluido.spec.ts` | 18 | 31 a 34 | 18 |
 | **PR 6: login e sessão** | | | | | | |
-| 21 | frontend-developer | `src/lib/auth/session.ts` (Vitest); `Login.tsx` com a mensagem única no `Alert` (T10); `AuthContext` com a releitura do próprio cadastro, o `SIGNED_OUT` não pedido, a volta do foco e o aviso no login; `QueryCache` e `MutationCache` com `onError`. | `src/lib/auth/session.ts`, `src/pages/Login.tsx`, `src/contexts/AuthContext.tsx`, `src/App.tsx` | 14 | 35, 36 | PR 1 (roda em paralelo com o PR 2) |
+| 21 | frontend-developer | **Reduzida pelo E1.04** (a tela de login e o `session.ts` já existem; T1 do E1.04 substitui a T10): `shouldEndSession` em `src/lib/auth/session.ts` (Vitest); `AuthContext` com a releitura do próprio cadastro, o `SIGNED_OUT` não pedido e a volta do foco, navegando para `/login` com `state: { reason: 'session_ended' }` (a tela do E1.04 já mostra o aviso); `QueryCache` e `MutationCache` com `onError`. `Login.tsx` não muda. | `src/lib/auth/session.ts`, `src/contexts/AuthContext.tsx`, `src/App.tsx` | 14 | 35, 36 | PR 2 do E1.04 (em produção) |
 | 22 | ux-designer | Revisão de UI do PR 6 (T10). | — | — | 35, 36, 38 | 21 |
-| 23 | qa | Playwright: RN-14 (login por e-mail, CPF e celular; recuperação; sessão aberta excluída em outro contexto; restauração com a mesma senha); UX-35, UX-36 com o modo *offline*. | `e2e/acesso-excluido.spec.ts` | 14 | 35, 36 | 21 |
+| 23 | qa | Playwright: RN-14 (login por e-mail, CPF e celular **pela `sign-in`**: 401 com a mensagem única e "Cadastro excluído" na Auditoria; sessão aberta excluída em outro contexto; restauração com a mesma senha, entrando de novo pela `sign-in`); UX-35, UX-36 com o modo *offline*. A recuperação pelo `/recover` padrão sai (desligada pelo E1.04; fica com o E1.07). | `e2e/acesso-excluido.spec.ts` | 14 | 35, 36 | 21 |
 | **Fechamento** | | | | | | |
 | 24 | architect | Revisão final dos 6 PRs. Atualizar o `CLAUDE.md` (estado atual e armadilhas, ver o relatório do `architect`). O aceite da fase 2 é do `product-owner`. | `CLAUDE.md` | — | — | 5, 10, 13, 16, 20, 23 |
 
