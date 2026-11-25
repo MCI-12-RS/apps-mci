@@ -476,9 +476,9 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Exclusão lógica de membros, células e relatórios | banco e telas (E2.01, aceito em 2026-11-25): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída, aviso no cadastro com dados de excluído e encerramento da sessão do excluído; unicidade de e-mail, celular e CPF só entre não excluídos (DEL-04, índices do E2.04) | ✅ |
 | Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | no banco, para todo caminho de gravação (E2.04, aceito em 2026-11-25): nome e sobrenome, sexo, e-mail, celular ou CPF como identificador, unicidade dos três entre não excluídos, CPF e e-mail válidos, situação de liderança e líder obrigatório, sem ciclos em qualquer profundidade, nascimento e batismo; formulário com os erros no campo | ✅ |
 | Cônjuge simétrico | trigger | ✅ |
-| Campos computados: árvore de liderança, G12, líder direto | só `g12_level`; o G12 é calculado no cliente, na tela de Células | 🟡 |
-| Recalcular o nível dos descendentes quando o líder muda | não propaga | ❌ |
-| Totais de discípulos e de células | trigger | ✅ (conta só ativos) |
+| Campos computados: árvore de liderança, G12, líder direto | cadeia, nível e G12 no banco (`private.member_hierarchy`), na mesma transação da gravação e sem limite de profundidade; Membros mostra nível, liderança (G12 / líder) e totais, e Células o líder com o nível e o G12 (E2.06, aceito em 2026-11-25). O caminho em texto não aparece em tela, como no legado | ✅ (o filtro por liderança e por nível é do E2.07) |
+| Recalcular o nível dos descendentes quando o líder muda | a troca de líder, da marca de pastor ou de "sem liderança" recalcula a descendência inteira na mesma operação, com trava da árvore contra gravações simultâneas (E2.06) | ✅ |
+| Totais de discípulos e de células | na mesma operação, para todos os de cima em qualquer profundidade; células divididas pelo sexo do líder (E2.06) | ✅ (conta só ativos, D2; a contagem passa pelo inativo) |
 | Filtros de membros: liderança, bairro, cidade, situação, possui liderança, batizado, nível, vínculo celular, data de cadastro | só busca por texto | ❌ |
 | CRUD de células | sim, com `is_active` a mais; só com as permissões de célula e no escopo (E2.02) | ✅ |
 | Filtros de células: G12, endereço, tipo, dia, situação do relatório, data de cadastro | só busca por texto | ❌ |
@@ -490,7 +490,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Relatórios por período e atalhos para a semana atual, passada e retrasada | só busca por texto | ❌ |
 | Exportação dos relatórios para Excel | não existe | ❌ |
 | Dashboard semanal com cards clicáveis (novos membros e células da semana, visitantes, pendentes) | números calculados no banco (E1.08), no escopo de cada um (E2.02) | 🟡 faltam novos membros e novas células da semana e o drill-down (E2.14) |
-| Árvore de ministérios (casais) | sim, calculada no banco (E1.08); começa no topo do escopo (MIN-02, E2.15 no E2.02) | ✅ |
+| Árvore de ministérios (casais) | sim, calculada no banco (E1.08); começa no topo do escopo (MIN-02, E2.15 no E2.02); cada nó mostra o nível da posição e os totais do casal sem dupla contagem, e o cônjuge que está abaixo do outro aparece como referência (E2.06) | ✅ |
 | Changelog (`/last-changes`) | não existe | baixa prioridade |
 
 Ao fechar um item, atualize esta tabela. As regras detalhadas de cada item estão na seção 3 de `docs/migracao.md`.
