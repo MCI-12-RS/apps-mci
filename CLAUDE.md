@@ -529,7 +529,7 @@ Use esses IDs nos specs e nos testes. Em resumo:
 
 Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 
-- `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
+- A `reset_member_password` grava uma linha "Sem permissão" na Auditoria a cada tentativa de quem não tem a permissão, sem limite (decisão do usuário no E2.03, 2026-11-25).
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data (E2.11).
 - Operação que não é atômica: a gravação do relatório com os participantes (duas chamadas até o E2.11; a regravação dos participantes já é atômica).
 - O formulário de relatório abre num `Dialog` comum, e não no `ResponsiveDialogContent` (tela cheia no celular, P1 do E2.02), em Células, Relatórios e Dashboard.

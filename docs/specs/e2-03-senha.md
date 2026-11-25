@@ -1,7 +1,7 @@
 # E2.03: Redefinição de senha assistida e troca obrigatória de senha
 
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23).
-> - **PR 1** (mci-connect#41, branch `feat/E2.03-pr1-cofre-senha`, 2026-11-26): tarefas 1 a 5 feitas na stack local, sobre o E2.06 PR 1. Falta: o bloco `[functions.change-own-password] verify_jwt = false` no `config.toml` versionado, o merge, o "Deploy: banco" e o passo A.
+> - **PR 1** (mci-connect#41 e #42): **em produção** desde 2026-11-25 ("Deploy: banco" do `6c4f67b`). Conferências 1 a 8 sem parada; passo A (item 9) com contas temporárias, todos os itens ok: `PUT /auth/v1/user` recusado (500, pela guarda), `grant_type=password` 422, redefinição com `must_change_password: true`, troca obrigatória 200, sessão do outro aparelho sem renovação (400), `auth.users` sem senha.
 > - Mudanças sobre o desenho, conferidas na stack local: a guarda descarta a senha na criação da conta em vez de recusar (DT-02); o limite por origem é 50 (E1.04 PR 1b; DA-8); o cofre aceita só `$2a$`; a `members_view` foi recriada sobre a definição do E2.06; `set_initial_password` recusa conta que já tem senha (`password_already_set`, tratado como reenvio pela `create-user-admin`).
 > - PRs 2 a 4 por fazer. Pela regra nova do fluxo, os PRs 2 e 3 (só front, seguidos) podem ir num PR só.
 > Slug: `e2-03-senha` · Paridade com o legado: sim (AUT-06), com regras novas: senha temporária gerada pelo sistema, troca obrigatória, política de senha, senha atual na troca, limites e registro na Auditoria.
