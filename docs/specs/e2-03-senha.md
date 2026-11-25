@@ -1,6 +1,9 @@
 # E2.03: Redefinição de senha assistida e troca obrigatória de senha
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23), sem perguntas em aberto. As pendências PO-UX-1 a PO-UX-8 da UX foram resolvidas pelo PO no mesmo dia (P-SEN-18 a P-SEN-25). Ficam para o usuário revisar no PR os padrões P-SEN-01 a P-SEN-25, os pontos DA-1 a DA-16 "definidos pelo architect" e a DT-01 (a senha sai do Auth e passa a morar num cofre do banco). Falta só Testes. Quatro PRs; a implementação começa depois do E1.04, do E2.01 e do E2.02 inteiros em produção (ver [Implantação](#implantação)).
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23).
+> - **PR 1** (mci-connect#41, branch `feat/E2.03-pr1-cofre-senha`, 2026-11-26): tarefas 1 a 5 feitas na stack local, sobre o E2.06 PR 1. Falta: o bloco `[functions.change-own-password] verify_jwt = false` no `config.toml` versionado, o merge, o "Deploy: banco" e o passo A.
+> - Mudanças sobre o desenho, conferidas na stack local: a guarda descarta a senha na criação da conta em vez de recusar (DT-02); o limite por origem é 50 (E1.04 PR 1b; DA-8); o cofre aceita só `$2a$`; a `members_view` foi recriada sobre a definição do E2.06; `set_initial_password` recusa conta que já tem senha (`password_already_set`, tratado como reenvio pela `create-user-admin`).
+> - PRs 2 a 4 por fazer. Pela regra nova do fluxo, os PRs 2 e 3 (só front, seguidos) podem ir num PR só.
 > Slug: `e2-03-senha` · Paridade com o legado: sim (AUT-06), com regras novas: senha temporária gerada pelo sistema, troca obrigatória, política de senha, senha atual na troca, limites e registro na Auditoria.
 
 ## Negócio
@@ -1382,7 +1385,7 @@ Pontos que as RNs não respondem por inteiro. O `architect` adotou a leitura mai
 | DA-5 | Sequência de números (RN-13 d) | A sequência dá a volta no 9: `34567890` e `90123456` são sequências. As de letras não dão a volta. | É a ordem do teclado. Recusa um pouco mais, e só senhas fracas. |
 | DA-6 | Dados pessoais (RN-13 g) | O CPF só é conferido quando o cadastro tem exatamente 11 dígitos. O celular é conferido pelos 8 últimos dígitos quando há pelo menos 8. O e-mail fictício também conta. | "O dado que o cadastro não tem não é conferido." Conferir o e-mail fictício não recusa ninguém na prática e evita levar a lista de domínios fictícios para a tela. |
 | DA-7 | Ordem das conferências da senha nova no servidor | Política (a a g), depois "diferente da atual" (h), depois a confirmação. | A tela confere a confirmação antes de enviar. Pela API, a mensagem mais útil vem primeiro. |
-| DA-8 | Erro da senha atual que leva a origem a 20 falhas | O bloqueio da origem é registrado como `login_blocked` (escopo origem), como no E1.04. | O bloqueio da origem também barra o login (RN-11 do E1.04), e quem audita precisa ver por quê. |
+| DA-8 | Erro da senha atual que leva a origem ao limite de falhas (50 desde o E1.04 PR 1b; o desenho original dizia 20) | O bloqueio da origem é registrado como `login_blocked` (escopo origem), como no E1.04. | O bloqueio da origem também barra o login (RN-11 do E1.04), e quem audita precisa ver por quê. |
 | DA-9 | Token sem a *claim* `session_id` | O portão não confere a sessão; confere só a marca. | Todo token emitido pelo Auth tem `session_id`. Sem ele, só um token assinado com a chave do projeto, que já é a chave de tudo. Os testes de banco existentes entram só com `sub` e `role`. |
 | DA-10 | Onde fica a redefinição | Uma RPC (`reset_member_password`), publicada pelas migrations. A `change-member-password` sai (`EDGE_FUNCTIONS_REMOVED`). A lista `EDGE_FUNCTIONS` ganha a `change-own-password`, das trocas. | A RPC usa a sessão de quem chama (escopo, função e portão) e grava a senha, a marca, as sessões e a Auditoria numa transação só (DT-03). |
 | DA-11 | Onde fica a marca | No cofre (`private.account_passwords.must_change`), e não no `app_metadata`. A tela sabe dela pela resposta da `sign-in`, por `my_password_status()` e pelo código do portão. | O `app_metadata` também é gravado pelo próprio Auth, com risco de uma gravação apagar a outra. E a marca no token só muda quando ele é renovado. |
@@ -1410,7 +1413,7 @@ O problema: com o provedor de e-mail desligado (DT-01 do E1.04), o `PUT /user` d
 - O hash bcrypt de cada conta fica em `private.account_passwords.password_hash`. `auth.users.encrypted_password` fica sempre nulo.
 - **Quem confere a senha é o banco:** a `sign_in_attempt` do E1.04 passa a ler o cofre (DT-11). Ela já conferia a senha no banco, com `extensions.crypt` (DT-02 do E1.04).
 - **Quem grava a senha é o banco:** `private.write_password`, chamada só pelas RPCs deste passo e, no futuro, pelas do E3.02 e do E1.07.
-- O trigger `e203_guard_password_write` (`BEFORE INSERT OR UPDATE OF encrypted_password ON auth.users`) recusa qualquer valor não vazio gravado com `session_user = 'supabase_auth_admin'`, que é o papel com que o Auth se conecta ao banco. Isso pega:
+- O trigger `e203_guard_password_write` (`BEFORE INSERT OR UPDATE OF encrypted_password ON auth.users`) recusa qualquer valor não vazio gravado com `session_user = 'supabase_auth_admin'`, que é o papel com que o Auth se conecta ao banco. Isso pega: _(PR 1: na criação da conta a senha é descartada, e não recusada; ver DT-02.)_
   - o `PUT /user`, a troca pela sessão do próprio usuário;
   - a Admin API (`updateUserById` e `createUser` com senha), inclusive pelo painel.
 - Limpar a senha (nulo ou vazio) continua permitido, porque não dá acesso a ninguém. É o que fazem a exclusão do próprio Auth e a `_del_suspend_access` do E2.01.
@@ -1804,7 +1807,7 @@ A `create-user-admin` (ordem do E2.02, com dois passos a mais):
    - Violação: 400 `{ error, code, field: 'password' }`, antes de criar qualquer coisa (AQ-8).
    - A `123456` é a única senha que não passa pela política.
 3. `find_deleted_member_matches` e `check_member_insert`, como no E2.01 e no E2.02.
-4. `createUser` **sem senha** (`email`, `email_confirm: true`, `user_metadata`). Com senha, a guarda recusaria.
+4. `createUser` **sem senha** (`email`, `email_confirm: true`, `user_metadata`). Mesmo assim o Auth grava uma senha aleatória, que a guarda descarta na criação (DT-02).
 5. **`set_initial_password` (novo),** com a chave secreta: grava a senha no cofre e põe a marca `initial`, sem validade.
 6. INSERT do membro com a sessão de quem chama.
 
@@ -2073,7 +2076,7 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 | # | Decisão | Motivo |
 |---|---|---|
 | DT-01 | **(revisar no PR)** A senha fica num cofre do banco (`private.account_passwords`), e o Auth fica sem senha: `auth.users.encrypted_password` é sempre nulo. O login (E1.04) confere no cofre, e só o banco grava nele. | É a única opção do plano gratuito que recusa a troca direta no Auth sem deixar um oráculo da senha atual. Ela também deixa a RN-14 independente da DT-01 do E1.04. |
-| DT-02 | Um trigger em `auth.users` recusa qualquer senha não vazia gravada pelo Auth (`session_user = 'supabase_auth_admin'`). | Fecha o `PUT /user`, a Admin API e o painel (RN-14). Triggers em `auth.users` continuam permitidos no Supabase hospedado. |
+| DT-02 | Um trigger em `auth.users` recusa qualquer senha não vazia que o Auth (`session_user = 'supabase_auth_admin'`) tente gravar numa conta existente. Na criação da conta, a senha é descartada (vira vazio), em vez de recusada: o `createUser` sempre grava uma senha, aleatória quando não recebe nenhuma, e recusar impediria criar qualquer conta (conferido na stack local no PR 1, 2026-11-26). | Fecha o `PUT /user`, a Admin API e o painel (RN-14). Triggers em `auth.users` continuam permitidos no Supabase hospedado. |
 | DT-03 | Toda gravação de senha é SQL, numa transação com a marca, as sessões e a Auditoria. | "Só acontecem junto com o registro" (RN-17) sem compensação entre sistemas. |
 | DT-04 | O portão fica em `viewer_member_id`, `viewer_has` e `default_role_id`. Ele confere se a sessão do token existe e se a conta tem a marca, e recusa com 42501 + `app_error` (`session_ended`, `password_change_required`). | "Na hora", inclusive para o token já emitido (RN-09, RN-16), no mesmo ponto único do E2.01. Erro de permissão para a API, código próprio para a tela (AQ-3). |
 | DT-05 | A marca e a validade ficam no cofre. A tela as recebe da `sign-in`, de `my_password_status()` e do código do portão. | DA-11 |
@@ -2247,7 +2250,7 @@ SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC 
   - O reenvio com outra senha nova não vale como sucesso.
   - 5 erros: a 5ª já devolve `change_blocked`, com 5 registros de falha e 1 de bloqueio; as tentativas durante o bloqueio não registram nada.
   - O sucesso zera a conta e não a origem.
-  - Com 15 falhas de login e 5 erros da senha atual da mesma origem, a origem fica bloqueada para o login (DA-8).
+  - Com 45 falhas de login e 5 erros da senha atual da mesma origem, a origem fica bloqueada para o login (DA-8; o limite da origem é 50 desde o E1.04 PR 1b).
   - A troca voluntária com a marca tira a marca.
 - **RN-14:**
   - o trigger existe em `auth.users`, e o `postgres` grava e limpa a senha sem recusa;
@@ -2276,7 +2279,7 @@ SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC 
 
 **Caminho único (RN-14, stack local, contra o Auth de verdade):**
 - o `PUT /auth/v1/user` com senha, com a sessão da própria conta, falha; o cofre e `auth.users` não mudam, e a sessão continua;
-- o `updateUserById` com senha e o `createUser` com senha falham; o `createUser` sem senha passa;
+- o `updateUserById` com senha falha; o `createUser`, com ou sem senha, passa e a conta nasce sem senha no Auth (DT-02);
 - a exclusão de conta pelo Auth (que grava nulo) passa;
 - o login por senha direto no Auth falha;
 - a renovação da sessão continua funcionando.
@@ -2377,3 +2380,22 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01 | PR 1: `e203_03_reset` (Gerente, Caio, Hugo, Apoio, `password_reset_status`), `e203_01_structure_grants` | passou |
+| RN-02 | PR 1: `e203_03_reset` (alcance, função, Nina excluída, Lauro, própria senha, ordem, DA-1, DA-2, restauração) | passou |
+| RN-03 | PR 1: `e203_03_reset` (1.000 senhas, formato, validade, login pelos 3 identificadores) | passou |
+| RN-04 | PR 1: `e203_03_reset`, `e203_concurrency.sh` (duas redefinições do mesmo alvo) | passou |
+| RN-05 | PR 1: `e203_03_reset` (antes e depois do prazo, motivo, contagem), `e203_05_marks_initial` | passou (só por `temp_expires_at`, sem relógio simulado) |
+| RN-06 | PR 1: `e203_03_reset` (21ª com 8 min, recusas não contam), `e203_concurrency.sh` (25 → 20) | passou |
+| RN-07 | PR 1: `e203_02_policy` (casos `initial`), `e203_05_marks_initial`, `e203-password.edge` (`create-user-admin`) | passou |
+| RN-08 (b) | PR 1: `e203_05_marks_initial`, `e203-password.edge` (`sign-in`) | passou |
+| RN-10 | PR 1: `e203_04_change` (`forced`, `not_flagged`, `forbidden`, DA-13), `e203-password.edge`, `e203_concurrency.sh` (duas sessões) | passou |
+| RN-11 | PR 1: `e203_04_change`, `e203-password.edge` | passou |
+| RN-12 | PR 1: `e203_04_change` (5 erros, bloqueio, DA-8 com 45 + 5), `e203-password.edge` (429, `Retry-After`, origem forjada), `e203_concurrency.sh` (20 → 5) | passou |
+| RN-13 | PR 1: `e203_02_policy` (75 casos, com os `server_only`), `password-policy-cases-sync` (Vitest) | passou |
+| RN-14 | PR 1: `e203_01_structure_grants`, `e203-password.edge` (caminho único contra o Auth da stack) | passou |
+| RN-15 | PR 1: `e203-password.edge` (`/recover` não muda a senha) | passou |
+| RN-16 | PR 1: `e203_03_reset`, `e203_04_change`, `e203_05_marks_initial` (`my_password_status` com sessão apagada), `e203_concurrency.sh` | passou (portão nas views: PR 4) |
+| RN-17 | PR 1: `e203_03_reset`, `e203_04_change` (sem senha, hash ou origem; `CHECK` em `events`), `e203-password.edge` (logs) | passou |
+| RN-08 (c), RN-09 | PR 4 | — |
+
+PR 1 (stack `mci-b`, 2026-11-26): `supabase test db` 42 arquivos e 4.093 testes, PASS; `e203_concurrency.sh`, `e104_concurrency.sh` e `e203_migrations.sh` PASS; edge 21/21 + 21/21 (rodar um arquivo por vez); Vitest 1.719, tsc e build OK; lint só com os 3 erros antigos da `main`; Playwright inteiro 284 passaram, com uma falha de dados (UX-19 de `excluidos-membros.spec.ts`, sem células na stack) sem relação com o PR. Não verificados: a migration 2 num banco sem os passos anteriores e o volume do risco 3 (`EXPLAIN`), que ficam para o PR 4.

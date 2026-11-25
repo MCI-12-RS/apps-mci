@@ -55,7 +55,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | 🔄 4 de 16 | E1.01 concluído |
+| 2. Paridade | 🔄 5 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
@@ -151,12 +151,15 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - PRs em produção (2026-11-25): mci-connect#29 (banco: escopo, leitura, escrita e funções semeadas; conferência sem parada), #30 (acesso, menu e rotas), #31 (tela de Funções), #32 (Membros), #33 (Células, Relatórios, Dashboard e Ministérios) e #34 (fecha a leitura e a escrita diretas de `roles` e `role_permissions` e mascara a `role_id`; squash `b50308d`), com smoke de produção só leitura.
   - Revisão final dos 6 PRs (tarefa 20): APROVADO, com o backlog técnico no spec. Testes do último PR: pgTAP 23 arquivos e 2.688 testes, Vitest 1.259, Playwright sem regressão (só as falhas de ambiente conhecidas).
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
+  - PR 1 implementado (mci-connect#41, sem deploy): aguarda o usuário, com um ajuste no `config.toml`, as conferências em produção e o passo A.
 - [x] **E2.04** Validações de membro · MEM-01 a MEM-09, complemento da MEM-10, HIE-01 (antecipada do E2.06) e fechamento da DEL-04 · depende de D5. Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md). Aceite do PO (2026-11-25)
   - PRs em produção (2026-11-25): mci-connect#35 (funções de regra e índices únicos de e-mail, celular e CPF entre não excluídos; squash `2f6eebf`), #36 (regras no banco, `create-user-admin` com conta de e-mail técnico, vazio vira nulo; conferência pós-deploy com os 9 itens ok; squash `83e5d49`) e #37 (formulário de membro da UX; squash `d680904`).
   - Revisão final dos 3 PRs (tarefa 12): APROVADO, com o backlog técnico no spec. Testes: pgTAP 33 arquivos e 3.388 asserções e concorrência (PRs 1 e 2); Vitest 1.699 e Playwright 296 ok no PR 3, só com as falhas de ambiente conhecidas.
   - Ressalva: o Auth de produção aceitar o `id` próprio da conta (risco 4 do spec) só se confirma no primeiro cadastro pela tela. Se não aceitar, o cadastro novo responde erro sem deixar conta nem cadastro, e a edição continua.
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
-- [ ] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 (a HIE-01 foi feita no E2.04, 2026-11-25) · depende de D2. Spec: [`specs/e2-06-hierarquia-totais.md`](specs/e2-06-hierarquia-totais.md) (desenho pronto; o PR 1 exige o PR 1 do E2.02)
+- [x] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 e os totais do casal da MIN-01 (a HIE-01 foi feita no E2.04, 2026-11-25) · depende de D2. Spec: [`specs/e2-06-hierarquia-totais.md`](specs/e2-06-hierarquia-totais.md). Aceite do PO (2026-11-25)
+  - PRs em produção (2026-11-25): mci-connect#39 (banco: `private.member_hierarchy`, nível, cadeia, G12 e totais por triggers na mesma transação, colunas calculadas fora de `members`; conferências de antes e de depois sem parada, drift 0; squash `af327ef`) e #40 (PRs 2 a 4 do spec num só: Membros e Células com nível e totais, Ministérios com os totais do casal e a referência do cônjuge, gravação que recalcula; squash `1553f09`, promote).
+  - Revisão final (T15): APROVADO, com o backlog técnico no spec (linha órfã para o E4.07, contraste do `LevelBadge` no passo dos tokens de tema, 40P01/57014 na `create-user-admin`). Testes: pgTAP 3.709 asserções, concorrência 288 PASS, volume dentro das metas (troca de líder de um G12 com 2 mil abaixo em 24,5 ms), Vitest 1.828 e Playwright 333 ok, só com as falhas de ambiente conhecidas.
 - [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15. Spec: [`specs/e2-07-filtros-membros.md`](specs/e2-07-filtros-membros.md) (desenho pronto; o PR 1 exige o banco do E2.05 e o PR 1 do E2.06 em produção)
 - [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md) (desenho pronto; o PR 1 espera o E2.01 inteiro e o PR 1 do E2.02 em produção)
 - [ ] **E2.09** Situação do relatório por célula · CEL-05. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md) (desenho pronto)
@@ -184,7 +187,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E4.04** Relatório de saneamento · 5.4 · _backend_
 - [ ] **E4.05** Correções feitas no legado pela liderança, a partir do relatório de saneamento · 5.4 · _liderança_
 - [ ] **E4.06** SQL de transformação e carga · 5.5 · depende de D9 · _backend_
-- [ ] **E4.07** Backfill de nível e totais, reaproveitando as funções dos triggers · 5.5 · _backend_
+- [ ] **E4.07** Backfill de nível e totais, reaproveitando as funções dos triggers · 5.5 · _backend_ · antes, uma migration põe o problema `orphan_row` na `member_hierarchy_drift()` e o `DELETE` da linha órfã no `rebuild` (backlog da revisão final do E2.06)
 - [ ] **E4.08** Script de criação das contas no Auth e carga das credenciais legadas · 6.2, 6.3 · depende de E3.01 e D7 · _backend_
 - [ ] **E4.09** Script de reconciliação · 5.6 · _backend + qa_
 
@@ -283,9 +286,9 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | HIE-01 | Sem ciclos: ninguém pode ser discípulo de um discípulo seu, nem de si mesmo. | `MemberService.cs` (`UpdateComputedValues`) | ✅ E2.04 (2026-11-25), antecipada do E2.06: em qualquer profundidade, inclusive com discípulos inativos e com trocas simultâneas (RN-13 do E2.04) | Trigger |
-| HIE-02 | O nível ministerial vem da profundidade na árvore. Ao trocar o líder de alguém, a subárvore inteira é recalculada. | `MemberService.cs` + `App/EventHandlers/DomainEvents/MemberChangedHandler.cs` | 🟡 calcula o nível, mas não propaga para os descendentes | Trigger |
-| HIE-03 | Líder direto, G12 e caminho da liderança ("Pastor / G12 / … / líder") disponíveis para exibir e filtrar. | `Member.LeadershipTree`, `ComputedG12Leader` | 🟡 o G12 é calculado no cliente, só na tela de Células | View ou colunas mantidas por trigger |
-| HIE-04 | Totais por pessoa: discípulos em todos os níveis, e células lideradas na subárvore, incluindo as da própria pessoa. | `MemberChangedHandler.cs`, `CellChangedHandler.cs` | ✅ trigger (D2: não conta inativos, como o novo já faz; o legado contava) | Trigger |
+| HIE-02 | O nível ministerial vem da profundidade na árvore. Ao trocar o líder de alguém, a subárvore inteira é recalculada. | `MemberService.cs` + `App/EventHandlers/DomainEvents/MemberChangedHandler.cs` | ✅ E2.06 (2026-11-25, RN-01 a RN-03): a troca de líder, da marca de pastor ou de "sem liderança" recalcula o nível da descendência inteira (ativos e inativos) na mesma operação, sem limite de profundidade. Quem está sem liderança não tem nível (P-HIE-01) | Trigger |
+| HIE-03 | Líder direto, G12 e caminho da liderança ("Pastor / G12 / … / líder") disponíveis para exibir e filtrar. | `Member.LeadershipTree`, `ComputedG12Leader` | ✅ E2.06 (2026-11-25, RN-04, RN-10 e RN-11): cadeia e G12 no banco, na mesma operação; Membros mostra o nível e "G12 / líder", e Células o líder com o nível e o G12. O caminho em texto não aparece em tela, como no legado. O filtro é da MEM-13 (E2.07) | View ou colunas mantidas por trigger |
+| HIE-04 | Totais por pessoa: discípulos em todos os níveis, e células lideradas na subárvore, incluindo as da própria pessoa. | `MemberChangedHandler.cs`, `CellChangedHandler.cs` | ✅ E2.06 (2026-11-25, RN-05 a RN-08): na mesma operação, para todos os de cima em qualquer profundidade; células divididas pelo sexo do líder. D2: não conta inativos (o legado contava), mas a contagem passa por eles (P-HIE-06) | Trigger |
 
 ### 3.4 Células (CEL)
 
@@ -341,7 +344,7 @@ Definição da situação do relatório (CEL-05):
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| MIN-01 | Árvore de casais com o total de discípulos e de células, carregada sob demanda. | `App/Services/MinistryService.cs` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
+| MIN-01 | Árvore de casais com o total de discípulos e de células, carregada sob demanda. | `App/Services/MinistryService.cs` | ✅ E1.08 PR 4; totais do casal pela RN-09 do E2.06 (2026-11-25): sem dupla contagem quando um cônjuge está abaixo do outro, nível da posição e o cônjuge de baixo como referência | `ministry_tree_nodes` (E1.08, PR 4; E2.06) |
 | MIN-02 | A raiz é o nível mais alto visível no escopo do usuário: quem tem escopo de ministério começa pelo próprio ministério. | `MemberRepository.GetChildrenWithSpouseAsync` | ✅ E2.02 PR 1 (2026-11-25, DA-6): com "Visualizar Toda a Igreja", começa nos pastores; sem ela, no casal G12 de quem consulta ou, sem G12, no próprio casal | RPC (`ministry_tree_nodes`) |
 | MIN-03 | Só membros ativos aparecem na árvore. | `GetChildrenWithSpouseAsync` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
 
@@ -456,6 +459,7 @@ Rode depois da cópia bruta para o schema `legacy`. O que precisar de decisão h
 | Membros sem identificador real (e-mail válido, celular no formato da RN-06 ou CPF válido, RN-08 do E2.04) | Migram sem conta de acesso; listar |
 | Membros sem senha | Migram com conta, sem credencial legada; precisam de redefinição (6.4) |
 | Sem líder e sem "não tem liderança" | Só Samuel Colares e Magda Colares são pastores (D9). Os demais são listados para a liderança indicar o líder no legado (E4.05). Quem não for corrigido migra sem liderança |
+| Membros sem liderança que têm discípulos (P-HIE-02 do E2.06; `private.member_hierarchy_problems()`, `no_leadership_with_disciples`) | Listar para a liderança indicar o líder no legado (E4.05). Quem não for corrigido migra sem liderança, e a descendência conta o nível a partir dele |
 | "Não tem liderança" marcado, mas com líder preenchido | O líder é descartado |
 | Referência para registro excluído | Cônjuge excluído: o vínculo é desfeito (DEL-05). Membro ativo com líder excluído: listar para reatribuição (D10). Célula ou relatório excluído: migra com `deleted_at`, e a referência é mantida. |
 | Cônjuge não recíproco | Corrigir no legado |
@@ -502,8 +506,8 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 4. `cell_reports`.
 5. `cell_report_participants`.
 6. **Backfill.**
-   - `g12_level`, `is_pastor` e `has_leadership` (CTE recursiva a partir dos pastores).
-   - Totais (`total_disciples`, `total_cells`, `male_cells`, `female_cells`), usando **a mesma função SQL** que os triggers usam, para não duplicar a fórmula.
+   - `is_pastor` e `has_leadership` (D9).
+   - Nível, cadeia, G12 e totais: `SELECT private.rebuild_member_hierarchy();`, com as mesmas regras das gravações (RN-13 do E2.06). Antes da carga, a linha órfã que uma exclusão física em `replica` deixa em `private.member_hierarchy` precisa ser tratada (E4.07). Depois, `private.member_hierarchy_drift()` volta vazia.
    - `ANALYZE` nas tabelas carregadas. Com estatísticas desatualizadas, as views e RPCs do E1.08 podem escolher planos ruins (risco 17 do spec do E1.08).
 7. **Validação das FKs.** Como o modo `replica` não checa FKs, toda referência precisa ser conferida explicitamente.
 8. **Contas de acesso** (6.2).
@@ -583,10 +587,11 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - O líder de cada membro (via `legacy_id`) é o mesmo do legado.
   - Os cônjuges são recíprocos.
   - Não há ciclos.
+  - Nível (RN-13 do E2.06): `12 ^ g12_level = MinistryLevel` para quem tem líder no novo; "sem liderança" no novo = 9999999 no legado; quem está a mais de 6 níveis do topo é comparado com 12^6. A diferença esperada, listada, são os membros sem líder e sem "não tem liderança" que não são os pastores da D9 e não foram corrigidos no E4.05.
+  - `private.member_hierarchy_problems()` lista o que sobrou para a liderança (`no_top`, `cell_leader_deleted`, `no_leadership_with_disciples`).
 - **Regras de membro.** `private.member_rule_violations()` (E2.04) não devolve nenhuma linha: nenhum cadastro viola as regras do tipo (a) da RN-01 do E2.04 (RN-18).
-  - `12 ^ g12_level = MinistryLevel` para todos os que têm liderança.
-- **Totais.** `total_disciples` e `total_cells` batem com o legado. Como a D2 decidiu não contar inativos, a diferença esperada é só a de membros inativos; o script calcula essa diferença e confere.
-  - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o backfill deixa os totais zerados, e o ranking G12 mostra 0 células.
+- **Totais** (RN-13 do E2.06). Os totais de discípulos e de células batem com os recalculados a partir do líder de cada membro no legado, sem inativos (D2) e sem excluídos. Os totais guardados no legado não servem de base, porque ele os atualiza por evento e só até 5 ancestrais.
+  - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o recálculo deixa os carregados sem linha em `private.member_hierarchy` ("Sem liderança" e totais zero), e o ranking G12 mostra 0 células.
   - A soma de `total_cells` do ranking G12 (`dashboard_g12_ranking`) bate com as células ativas sob os G12.
 - **Relatórios.**
   - Participantes por relatório = `NumMembers`.

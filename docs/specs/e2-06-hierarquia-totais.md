@@ -1,6 +1,6 @@
 # E2.06: Hierarquia e totais
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. Negócio escrito em 2026-11-23 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia (P-HIE-15 a P-HIE-25). Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho, com as respostas às AQ-1 a AQ-7 e as decisões DA-1 a DA-6. Ficam para o usuário revisar no PR os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam (o custo de cada alternativa está na Solução técnica). O PR 1 começa depois do PR 1 do E2.02 em produção. Falta a seção Testes.
+> Status: **concluído e aceito pelo `product-owner` em 2026-11-25.** Em produção: mci-connect#39 (banco, squash `af327ef`) e #40 (front, PRs 2 a 4 num só, squash `1553f09`). Revisão final (T15) APROVADA, com o backlog em [Revisão final (T15)](#revisão-final-t15); resultados em [Testes](#testes). Ficam para o usuário revisar os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam.
 > Slug: `e2-06-hierarquia-totais` · Paridade com o legado: sim (HIE-02 a HIE-04 e os totais do casal da MIN-01). A HIE-01 (ciclos) foi para o E2.04. Tem regras novas: consistência na mesma operação, sem limite de profundidade, totais do casal sem dupla contagem e divisão das células pelo sexo do líder.
 
 ## Negócio
@@ -1936,6 +1936,41 @@ SELECT (SELECT count(*) FROM public.members) AS membros,
 ```
 **Parar e voltar ao `architect`:** (a) com `e202_pr1` falso; (b) com qualquer função ou view fora da lista; (c) ou (d) com linhas.
 
+#### Resultado da tarefa 1 e do PR 1
+_2026-11-25, `architect`._
+- **Tarefa 1:** os nomes do desenho conferem com o E2.01, o E2.02 e o E2.04 em produção (`_del_raise`, `viewer_tree_roots`, `enforce_member_rules`, chave `hashtextextended('members:leader-tree', 0)`); nenhum caso de parada. O `ac_lock_member_tree` cai entre o `ac_enforce_member_scope` (E2.02) e o `ad_enforce_member_rules`. Quem cita as colunas calculadas: só as 5 funções e as 2 views previstas.
+- **Ajuste:** a `restore_member` (E2.04) pegava as travas de identificador antes do UPDATE, e o UPDATE passaria a pegar a trava da árvore depois delas (ordem invertida da DT-06). A migration 1 a recria com o mesmo corpo, pegando a trava da árvore (exclusiva se o líder muda, senão compartilhada) antes do passo (e).
+- **Trava:** o `ac_lock_member_tree` pega a exclusiva sempre que o `ad_` pegaria; o `ad_` só reentra, e nenhuma gravação sobe de compartilhada para exclusiva.
+- **Casos aceitos, a mais dos de [Bloqueios](#bloqueios-e-concorrência):**
+  - um `INSERT` de várias linhas em `members`, com os triggers ligados e o discípulo antes do líder, falha com `hierarchy_update_failed` / `missing_row` (a carga do E4.07 roda em `replica` e termina com o recálculo);
+  - um cadastro novo debaixo de um líder "sem topo" (só por carga) entra também sem topo, sem erro; a `member_hierarchy_problems()` lista os dois;
+  - uma exclusão física em `replica` não dispara a FK em cascata e deixa linha órfã em `private.member_hierarchy` (o E4 limpa com a carga).
+- **Front em produção até o PR 3:** quem não vê a igreja toda e tem como raiz da árvore alguém sem liderança vê "Nível null" no nó raiz (antes, "Pastor(a)"). O `getLevelLabel` do PR 3 trata o nulo.
+- **Testes:** ver [Testes](#testes).
+
+#### Revisão final (T15)
+_2026-11-25, `architect`, sobre o diff acumulado do #39 (banco, em produção) e do #40 (front, `40e2d5f`)._
+
+**Veredito: APROVADO.** Nenhum achado bloqueia o promote do #40.
+
+- **Banco (#39):** segue o desenho (DT-01 a DT-13): tabela fora da API, sem privilégio e com RLS sem política; funções internas sem EXECUTE; a `ministry_tree_nodes` *definer* lê a cadeia só para ids vindos da `members_view`; trava `members:leader-tree` exclusiva ou compartilhada antes das travas de linha, em ordem de id; erros no formato `app_error`. Nada a mudar.
+- **Front (#40):** a regra pura está em `src/lib/hierarchy/*`, `src/lib/ministries/tree.ts`, `src/lib/cells/labels.ts`, `src/lib/errors.ts` (`isRecalcFailure`) e `src/lib/query-refresh.ts`; os textos, em `src/lib/hierarchy/texts.ts`. Sem `any` nem asserção de tipo nos arquivos novos, sem leitura direta de `members`, sem "12" sozinho, "Status" ou `bg-orange-500`. Toda gravação de membro e de célula (formulários, inativação, exclusão e restauração) passa por `refreshAfter…Write` (DT-16).
+- **Revisões:** o `code-reviewer` aprovou T6, T9, T12 e as correções de UI na 1ª rodada. O `ux-designer` aprovou T1 a T5 (revisão única de T7, T10 e T13). Os 5 ajustes que ele pediu já estão no `40e2d5f`: rótulo do UF no `CellForm`, Celular sem quebra, e-mail do cartão, quebra de linha a 320 px com fonte a 200% e contraste do total no *hover* da árvore (8,35:1 no claro e 9,3:1 no escuro).
+
+**Casos aceitos do PR 1, classificados:**
+| Caso | Classificação |
+|---|---|
+| Cadastro novo debaixo de um líder "sem topo" (só existe por carga) entra também sem topo, sem erro | **Aceito.** Nenhum caminho da API cria um "sem topo": a troca para debaixo de um é recusada (`no_top`). A `member_hierarchy_problems()` lista os dois, e o saneamento fica no E4.04 e no E4.09. |
+| `INSERT` de várias linhas em `members`, com o discípulo antes do líder, falha com `missing_row` | **Aceito.** O front e a `create-user-admin` gravam um membro por vez, e a carga do E4.07 roda em `replica` e termina com o `rebuild`. Está nas armadilhas do `CLAUDE.md`. |
+| Exclusão física em `replica` deixa linha órfã na tabela | **Backlog (E4.07, `backend-developer`).** A linha não aparece em tela, porque as views partem de `members`, mas a `member_hierarchy_drift()` não a lista e o `rebuild` não a apaga. A correção é uma migration com o problema `orphan_row` na `drift` e o `DELETE` no `rebuild`, antes da carga. |
+| Medição isolada de 190 ms | **Aceito, como ruído.** Foi uma leitura única acima da meta. Nas medições repetidas do volume, todas as metas do risco 6 ficaram com folga (tabela em [Testes](#testes)). Se o tempo aparecer em produção, vale o plano B do risco 6. |
+
+**Backlog (não bloqueia):**
+- `frontend-developer`, no passo dos tokens de tema: o crachá "Pastor"/"Pastora" (`LevelBadge`, variante `default`) herda o contraste de 2,97:1 do `--primary` no tema escuro. O mesmo vale para o contador da lista no tema claro. Os testes contam esse caso, mas não o cobram.
+- `backend-developer`, quando a `create-user-admin` for mexida (E2.05 ou depois): um 40P01 ou 57014 no INSERT do cadastro novo vira um 400 genérico ("Não foi possível salvar o cadastro. Tente de novo.") em vez do `hierarchy_update_failed`. O texto não é técnico, mas não é o da RN-08.
+- `frontend-developer`: no `CellForm`, a queda de conexão mostra o texto da RN-08, e não um "Sem conexão" próprio. A lista também escurece (`opacity-60`) no refetch ao voltar à aba. O `ux-designer` aceitou os dois casos.
+- "Ir para o casal" quando o casal não está no caminho aberto: a referência aparece sem o botão. O caso não acontece com dados reais, porque a referência só nasce com o cônjuge na cadeia. Está caracterizado no `Ministries.qa.test.tsx`.
+
 ### Verificações obrigatórias (para o QA)
 **pgTAP** (`supabase/tests/database/e206_*.test.sql`, autocontido, com `ROLLBACK`). A massa é a do Negócio, com os nomes e os dados que as regras do E2.04 exigem, montada com os triggers ligados.
 
@@ -2034,7 +2069,43 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois do PR 1 do E2.02 em produç
 10. **Tarefas 7, 10 e 13:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e206_01_structure_grants` (EG), `e206_02_hierarchy_rules` (HR), `e206_03_read_contract` (RC), `e206_04_load_rebuild` (LR), `concurrency/e206_concurrency.sh` (CC) e `volume/e206_volume.psql` (VOL). Cada critério de HR e RC roda num cenário desfeito (`pg_temp.scn`): grava pela API, lê a tabela inteira da hierarquia e a `member_hierarchy_drift()`, e só então compara.
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01, RN-04 | HR (tabela da massa, 23 pessoas; níveis 6 e 7 sem limite; cadeia e G12); RC (nenhuma coluna de caminho em texto na `members_view`) | ✅ |
+| RN-02, RN-10 | RC (`members_view` de Rita, André, Diego e Hugo: nível, G12, líder e totais; `g12_id`/`g12_name` no fim). Os rótulos de tela ("Pastor", "G12") são do PR 2 | ✅ (banco) |
+| RN-03 | HR: as sete trocas do critério (inclusive Zélia excluída e restaurada) | ✅ |
+| RN-05, RN-06, RN-07 | HR: todos os critérios (inativar, excluir e restaurar, cadastrar, célula inativa, ativa, líder trocado ou excluída, sexo, nada muda). O "cadastro sem sexo" só existe relaxando o NOT NULL do E2.04 dentro do cenário | ✅ |
+| RN-08 | HR (valores da troca de Fábio, as duas ordens com a C4, `missing_row` e `negative_total` desfazem tudo); RC (o que Membros, Células, Ministérios e Dashboard leem depois); CC (7 cenários nas duas ordens e em 6 rodadas simultâneas); VOL (metas) | ✅ |
+| RN-09 | RC: raízes, `Pastores`, nível da posição, referência (`spouse_above`), Hugo e Vânia, cônjuge de cima fora da árvore (André e Débora/Bob), Beatriz inativa, Magda inativa, folha, Pedro, Diego, Hugo, sem `auth.uid()` | ✅ |
+| RN-11 | RC (`cells_view`: G12 e nível do líder; células novas de Pedro, Samuel e Ester; André sob Samuel) | ✅ |
+| RN-12 | RC (PATCH e INSERT com as colunas dão 42703; `authenticated` sem acesso à tabela); EG (privilégios, RLS sem política, CHECKs) | ✅ |
+| RN-13 | LR (carga em `replica`, `drift` lista os 23, rebuild, valores, idempotência, 12^nível, problemas com ciclo e com líder excluído, `deleted_with_totals`, guarda da migration 1) | ✅ |
+| DA-2, DT-05, DT-06 | HR (`leader_cycle`, `no_top`); EG (chave `members:leader-tree` igual em 5 funções, modos de trava em `pg_locks`); CC (restauração × troca de celular: sem 40P01) | ✅ |
+| DT-10 | `db reset` com só a migration 1, depois com as duas: os 33 arquivos antigos dão 3388 ok (a carga em `replica` precisa do `rebuild`, senão `missing_row`). Com a migration 2 só diferem os que mudam de contrato (árvore, nível nulo sem liderança) | ✅ |
+
+**Resultados (PR 1, 2026-11-25, stack local `mci-e104-be`):**
+- pgTAP: 37 arquivos (33 adaptados + 4 novos), 3709 asserções ok, 0 falhas (`psql` pelo container); EG 199, HR 40, RC 69, LR 18.
+- Concorrência `e206_concurrency.sh` (`ROUNDS=6`): 288 PASS, 0 FAIL, sem 40P01. `e104`, `e201`, `e202` e `e204` seguem verdes.
+- Volume (20 mil membros, profundidade 10, 1.500 células): gravação comum 1 a 2 ms; troca de líder com 120 abaixo 5,5 ms; de um G12 com 1.999 abaixo 24,5 ms; pastor com 19.998 abaixo 298 ms; `rebuild` do zero 305 ms; página mais contagem 24 ms (membros) e 9 ms (células); `ministry_tree_nodes` com 100 ids 2,9 ms (Administrador) e 13 ms (G12); `dashboard_g12_ranking` 10 ms. A junção nova some do plano da contagem.
+- Vitest 114 arquivos e 1699 testes ok; `tsc` e `build` ok; `lint` 3 erros e 8 avisos (os da `main`).
+- Playwright `--workers=1`, suíte inteira: 296 ok, 3 falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:236`, axe claro de `sign-in.spec.ts:416`).
+
+**PR 2 (front: Membros, Células, Ministérios e gravação; T8, T11 e T14), 2026-11-25.** Testes de componente em `mci-connect/src/`: `pages/Members.hierarchy.test.tsx`, `pages/Cells.hierarchy.test.tsx`, `pages/Ministries.qa.test.tsx`, `components/MemberForm.saving.test.tsx` e `components/CellForm.saving.test.tsx`. Playwright em `e2e/`: `hierarquia-support.ts` (a massa do spec, 23 pessoas, C1 a C11, contas de Rita, Pedro, Diego, André, Hugo e Ester; gravações com os gatilhos ligados), `hierarquia-listas.spec.ts`, `hierarquia-ministerios.spec.ts` e `hierarquia-gravacao.spec.ts`.
+
+| Critério | Teste |
+|---|---|
+| UX-01, 02, 03, 04, 16, 18 | `Members.hierarchy.test.tsx` (níveis, Liderança, cabeçalho, totais, leitor de tela) + `hierarquia-listas` (Rita a 1280 e 360; André vê Débora sem link) |
+| UX-05, 06 | `Members/Cells.hierarchy.test.tsx` (`matchMedia`, primeiro render) + `hierarquia-listas` (360, 768, 1024, 1280; 320×640; zoom de 200% = 640 px com escala 2; nomes de 40 caracteres; primeiro render com a lista retida) |
+| UX-07, 20 | `hierarquia-listas` e `hierarquia-ministerios` (axe, claro e escuro, 360 a 1280; `Sem liderança` com ícone; sem `bg-orange-500`) |
+| UX-08, RN-11 | `Cells.hierarchy.test.tsx` + `hierarquia-listas` (C1, Samuel, Magda, Ester, C9 e C7 na tabela e nos cartões) |
+| UX-09, UX-10, RN-09 | `hierarquia-ministerios` (nós de Rita; Pedro, Diego, Ester sem liderança; Magda e Beatriz inativas; referência de Olga; "Ir para o casal" sem abrir nem fechar nó; Hugo e Vânia) |
+| UX-11, 12 | `Ministries.qa.test.tsx` (ajuda, estado vazio, nome acessível de Diego e Olga, `aria-expanded`, referência sem o casal no caminho) |
+| UX-17 | `hierarquia-ministerios` (alturas de 44 px a 360×800) |
+| UX-13, RN-08 (Células logo depois de salvar) | `hierarquia-gravacao` (Fábio sob Tiago; observador de DOM prova que o valor antigo nunca aparece em Células, Ministérios e Dashboard; `opacity-60` e `aria-busy` na tabela e nos cartões) |
+| UX-14, 15, 19 | `MemberForm.saving.test.tsx` e `CellForm.saving.test.tsx` (57014, 40P01, XX000 e `hierarchy_update_failed`; "Ainda salvando…" aos 3 s com relógio simulado; ✕, Esc, fora e Cancelar não fecham) |
+
+Sem teste E2E: o pastor sem sexo ("Pastor(a)"), porque `members.gender` é NOT NULL desde o E2.04; fica só no componente e em `level.test.ts`.
+
+**Resultados (PR 2, stack local `mci-e104-be`):** Vitest 125 arquivos, 1828 testes ok; `tsc`, `build` ok; `lint` 3 erros e 8 avisos (os da `main`). Playwright `--workers=1`, suíte inteira: 333 ok, 3 falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:236`, axe escuro de `sign-in.spec.ts:416`), 8 puladas por credencial e 6 não rodaram (seguem as falhas de `sign-in-stack`). Os 36 testes `hierarquia-*` passam. Achados abertos no relatório do PR: contraste do `--primary` no tema escuro (crachá "Pastor" e botões), `button-name` do `Select` de Estado do `CellForm` (anterior ao PR) e o texto cinza de 4,42:1 no hover do nó da árvore.
