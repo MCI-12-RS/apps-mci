@@ -56,6 +56,13 @@ Escreva a seção **Tarefas**:
 Siga para esta etapa quando o spec não tiver perguntas em aberto e as tarefas estiverem escritas. A exceção é quando pedirem só o desenho.
 
 **Um PR por execução.** Quando o desenho já está pronto, você coordena só o PR que pediram. Leia a seção Tarefas e, da Solução técnica, só as subseções que as tarefas desse PR citam. Não releia Negócio nem UX inteiros: busque pelo ID o que precisar.
+
+**Juntar PRs de front.** Às vezes o spec divide o front em vários PRs seguidos, sem PR de banco entre eles e sem uma ordem de implantação que obrigue a publicar um antes do outro. Nesse caso, implemente tudo num PR só e diga no relatório quais tarefas ele cobre. Ficam separados os PRs de banco e os PRs com momento próprio de publicação, como o promote logo depois de um "Deploy: banco".
+
+**Pista local.** O prompt diz em que pista você trabalha: A (`mci-connect/`, stack `mci-e104-be`) ou B (`.worktrees/mci-connect-b/`, stack `mci-b`). Veja "Pistas locais" no `CLAUDE.md`.
+- Use só a pasta, a stack e o arquivo `.worktrees/env/lane-<a|b>.env` dessa pista, e passe os três a todo agente que acionar.
+- Na pista B, crie a branch com `git switch -c <branch> origin/main`.
+- Antes de relatar, confira que nenhum commit ficou em HEAD destacado e que a branch está enviada: `git status` mostra a branch, e `git log origin/<branch>..<branch>` sai vazio.
 1. Acione o `backend-developer` e o `frontend-developer` com a ferramenta `Agent`. Cada um começa sem contexto, então passe:
    - o caminho do spec;
    - os números das tarefas;
@@ -65,8 +72,10 @@ Siga para esta etapa quando o spec não tiver perguntas em aberto e as tarefas e
 
    Schema e RPC vêm primeiro; o front só começa depois que os tipos forem regenerados. Tarefas independentes podem rodar em paralelo.
 2. Cada desenvolvedor aciona o `code-reviewer` por conta própria e corrige os achados que são dele. Os achados de outro papel voltam no relatório do desenvolvedor; encaminhe-os para quem deve corrigir.
-3. Com o código revisado, acione o `qa` passando o spec, as RNs do PR e a lista de arquivos alterados.
-   - **Revisão de UI: uma vez por passo.** Acione o `ux-designer` em paralelo com o QA só no PR que traz tela nova ou padrão novo de UI, passando os critérios `UX-` e os arquivos alterados.
+3. Com o código revisado, acione o `qa` passando o spec, as RNs do PR, a lista de arquivos alterados e **quanto testar**:
+   - **PR com migration, ou último PR do passo:** suíte inteira do Playwright, pgTAP inteiro, concorrência e volume (quando o spec pede).
+   - **Outros PRs:** Vitest, tsc, build e lint. Do Playwright, só as specs afetadas pelo diff, mais o smoke de login (`e2e/login.spec.ts`). Sem pgTAP, sem concorrência e sem volume.
+   - **Revisão de UI: uma vez por passo.** Acione o `ux-designer` em paralelo com o QA só no PR que traz tela nova ou padrão novo de UI, passando os critérios `UX-` e os arquivos alterados. Se o passo tem vários PRs com tela, escolha um: o que traz o padrão novo ou a maior parte das telas. O QA tira as capturas e roda o axe, e passa os dois ao `ux-designer`.
    - Um PR que só estende telas já revisadas, seguindo os padrões existentes, não tem revisão de UI. Os critérios `UX-` que dá para testar ficam com o QA.
 4. Bugs encontrados pelo QA e achados da revisão de UX voltam para o desenvolvedor responsável, numa nova chamada com o teste que falha e o comando para reproduzir. Repita até os testes passarem, no máximo 3 ciclos. Se ainda falhar, pare e reporte.
 5. Você **não aciona o `product-owner`**. Se surgir uma dúvida de negócio no meio do caminho, pare e devolva para a sessão principal, que fala com o usuário.

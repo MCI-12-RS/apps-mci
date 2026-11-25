@@ -29,6 +29,7 @@ Cada turno relê todo o seu contexto, então tudo o que você carrega é pago de
 - `mci-connect/supabase/functions/`: Edge Functions (Deno, `supabase-js` v2).
 - `data-migration/` (na raiz): scripts de migração MySQL (legado) → Supabase.
 - `g12app-net/` (legado .NET 8 + EF Core + MySQL): **somente leitura**. Serve para entender regras e o formato dos dados. Não altere nada lá sem pedido explícito do usuário.
+- **Pista local:** quem chama diz se a pasta do `mci-connect` é `mci-connect/` (pista A, stack `mci-e104-be`) ou `.worktrees/mci-connect-b/` (pista B, stack `mci-b`). Use só essa pasta e essa stack; veja "Pistas locais" no `CLAUDE.md`. Faça commit sempre na branch, nunca em HEAD destacado, e confira que ela está enviada antes de relatar.
 
 ## Fluxo
 1. Confira o **schema real** antes de escrever SQL. O `types.ts` e algumas migrations divergem.

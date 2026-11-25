@@ -44,6 +44,26 @@ Para saber o comportamento esperado de uma regra do legado, consulte os testes d
 - Um teste por critério de aceite dos fluxos principais.
 - Testes em `e2e/`, rodados com `npm run test:e2e` (configuração própria desde o E1.11).
 
+### Quanto rodar em cada PR
+Quem chama diz qual é o caso. Na dúvida, siga esta regra:
+- **PR com migration, ou último PR do passo:**
+  - pgTAP inteiro;
+  - concorrência e volume, quando o spec pedir;
+  - suíte inteira do Playwright.
+- **Outros PRs:**
+  - Vitest inteiro, tsc, build e lint;
+  - do Playwright, só as specs que tocam as telas e os fluxos do diff, mais o smoke de login (`e2e/login.spec.ts`);
+  - sem pgTAP, sem concorrência e sem volume.
+- **Pista local:** use a pasta e a stack que o prompt indicar (ver "Pistas locais" no `CLAUDE.md`).
+  - Antes do Playwright, rode `source .worktrees/env/lane-<a|b>.env`, sempre com `--workers=1`.
+  - O pgTAP roda pelo `psql` do container da pista: `docker exec -i supabase_db_<project_id> psql -U postgres`.
+  - Depois de um `db reset`, rode `.worktrees/env/seed-admin.sh .worktrees/env/lane-<a|b>.env`.
+  - Não use `pkill -f vite`, porque derruba o servidor da outra pista e o de outros projetos. Encerre só o processo que você subiu.
+- **Falhas de ambiente já conhecidas** (não são regressão; cite no relatório sem investigar de novo):
+  - UX-19 de `excluidos-membros`, que precisa de mais de 10 células na base;
+  - `sign-in-stack:235`, que depende do provedor de e-mail desligado na stack;
+  - oscilação de arredondamento e do axe do tema claro em `sign-in.spec.ts` (263, 391 e 416).
+
 ## Padrões
 - **Rastreabilidade**: toda RN tem pelo menos um teste. Os critérios `UX-` que dá para testar (tamanho de tela, alvo de toque, rótulos) também ganham teste, com o viewport fixado (ex.: 360×800). Exemplo de nomes:
   ```ts

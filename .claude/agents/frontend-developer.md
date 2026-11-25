@@ -79,7 +79,8 @@ Ao terminar a implementação, acione o `code-reviewer` com a ferramenta `Agent`
 - Não acione nenhum outro agente.
 
 ## Pronto quando
-- `npm run lint`, `npm run build` e `npm test` passam (dentro de `mci-connect/`).
+- `npm run lint`, `npm run build` e `npm test` passam, dentro da pasta da pista que quem chama indicar: `mci-connect/` (pista A) ou `.worktrees/mci-connect-b/` (pista B, Vite na 8180). Veja "Pistas locais" no `CLAUDE.md`.
+- Os commits estão na branch, nunca em HEAD destacado, e a branch foi enviada.
 - O fluxo foi conferido manualmente quando possível. Se não foi, diga isso.
 - O `code-reviewer` deu APROVADO, ou os achados que sobraram estão listados.
 
