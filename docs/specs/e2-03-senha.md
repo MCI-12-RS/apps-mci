@@ -2400,4 +2400,17 @@ _Seção do `qa`._
 | RN-17 | PR 1: `e203_03_reset`, `e203_04_change` (sem senha, hash ou origem; `CHECK` em `events`), `e203-password.edge` (logs) | passou |
 | RN-08 (c), RN-09 | PR 4 | — |
 
+**PRs 2 e 3 (telas), 2026-11-25, stack `mci-b`:**
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| RN-01 a RN-04, RN-07 (tela) | `redefinicao-senha.spec.ts` (linha "Senha" de Caio, Lauro, Olga e do próprio cadastro; redefinição, cópia, "Concluir", login com a temporária e com a senha antiga; senha inicial recusada e aceita, conta com a marca) | passou |
+| RN-08 b, RN-10, RN-11, RN-15, RN-16 (tela) | `senha-propria.spec.ts` (marca no login, rotas, "Sair", troca obrigatória, senha atual errada, troca voluntária, a outra sessão vai ao login com o aviso) | passou |
+| RN-13 (gêmea) | `password-policy.test.ts` sobre a tabela de casos (sem os `server_only` e sem a regra h da obrigatória, que é do bcrypt) | passou |
+| RN-17 (T8) | `auth-events.test.ts` (segunda linha e painel das seis ações), `redefinicao-senha.spec.ts` (Auditoria) | passou |
+| UX-01, 02, 04 a 09, 14, 17 a 20, 22 a 29, 32, 35, 38 | `Login.test.tsx`, `ChangePassword.test.tsx`, `ChangeOwnPasswordDialog.test.tsx`, `ResetPasswordDialog.test.tsx`, `AppSidebar.test.tsx`, `password-*.test.ts`, `temporary-password.test.ts`, `permissions.test.ts` | passou |
+| UX-03, 10 a 13, 16, 19, 21, 24, 26, 30, 31, 36, 37, 39 | `senha-propria.spec.ts`, `redefinicao-senha.spec.ts`, `RouteGuards.test.tsx`, `AuthContext.test.tsx` (marca, `session_ended`, código do portão) | passou |
+
+Vitest 2.018 testes (136 arquivos), tsc, build e lint (só os 3 erros antigos da `main`) ok. Playwright inteiro: 363 testes, 346 passaram, 8 pulados; das 6 falhas, 3 eram testes antigos que dependiam do comportamento anterior e foram ajustados (`acesso-menu` UX-11: a leitura da marca é do AuthContext; `acesso-excluido` (c): o 5xx simulado vale também para `my_password_status`; `membro-validacoes-cadastro` UX-15: a conta nova vai para a troca), 1 era o tempo do axe em `hierarquia-listas` (`test.slow()`), e 2 já falham na `main` (UX-18 claro de `sign-in.spec.ts`, axe durante a animação do cartão; UX-19 de `excluidos-membros.spec.ts`, dados). Reexecutados, os ajustados e os novos passam. Não verificados: UX-12 com o teclado virtual aberto, UX-29 com leitor de tela real e UX-30 no Chrome do Android (inspeção manual); UX-32 "13 permissões" depende da migration 5 (PR 4).
+
 PR 1 (stack `mci-b`, 2026-11-26): `supabase test db` 42 arquivos e 4.093 testes, PASS; `e203_concurrency.sh`, `e104_concurrency.sh` e `e203_migrations.sh` PASS; edge 21/21 + 21/21 (rodar um arquivo por vez); Vitest 1.719, tsc e build OK; lint só com os 3 erros antigos da `main`; Playwright inteiro 284 passaram, com uma falha de dados (UX-19 de `excluidos-membros.spec.ts`, sem células na stack) sem relação com o PR. Não verificados: a migration 2 num banco sem os passos anteriores e o volume do risco 3 (`EXPLAIN`), que ficam para o PR 4.
