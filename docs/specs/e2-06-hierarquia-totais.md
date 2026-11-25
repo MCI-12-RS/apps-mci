@@ -1,6 +1,6 @@
 # E2.06: Hierarquia e totais
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. Negócio escrito em 2026-11-23 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia (P-HIE-15 a P-HIE-25). Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho, com as respostas às AQ-1 a AQ-7 e as decisões DA-1 a DA-6. Ficam para o usuário revisar no PR os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam (o custo de cada alternativa está na Solução técnica). **PR 1 (banco) em produção em 2026-11-25** (mci-connect#39, squash `af327ef`, "Deploy: banco"; conferências de antes e de depois sem parada: drift 0, saneamento vazio, privilégios ok); ver [Resultado da tarefa 1 e do PR 1](#resultado-da-tarefa-1-e-do-pr-1). PRs 2 a 4 (front) pendentes, num PR só (regra de juntar PRs de front, 2026-11-25).
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. Negócio escrito em 2026-11-23 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia (P-HIE-15 a P-HIE-25). Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho, com as respostas às AQ-1 a AQ-7 e as decisões DA-1 a DA-6. Ficam para o usuário revisar no PR os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam (o custo de cada alternativa está na Solução técnica). **PR 1 (banco) em produção em 2026-11-25** (mci-connect#39, squash `af327ef`, "Deploy: banco"; conferências de antes e de depois sem parada: drift 0, saneamento vazio, privilégios ok); ver [Resultado da tarefa 1 e do PR 1](#resultado-da-tarefa-1-e-do-pr-1). PRs 2 a 4 (front) num PR só (regra de juntar PRs de front): mci-connect#40, em produção em 2026-11-25 (squash `1553f09`, promote). Revisão final (T15) **APROVADA** em 2026-11-25; ver [Revisão final (T15)](#revisão-final-t15). Falta o aceite do `product-owner`.
 > Slug: `e2-06-hierarquia-totais` · Paridade com o legado: sim (HIE-02 a HIE-04 e os totais do casal da MIN-01). A HIE-01 (ciclos) foi para o E2.04. Tem regras novas: consistência na mesma operação, sem limite de profundidade, totais do casal sem dupla contagem e divisão das células pelo sexo do líder.
 
 ## Negócio
@@ -1948,6 +1948,29 @@ _2026-11-25, `architect`._
 - **Front em produção até o PR 3:** quem não vê a igreja toda e tem como raiz da árvore alguém sem liderança vê "Nível null" no nó raiz (antes, "Pastor(a)"). O `getLevelLabel` do PR 3 trata o nulo.
 - **Testes:** ver [Testes](#testes).
 
+#### Revisão final (T15)
+_2026-11-25, `architect`, sobre o diff acumulado do #39 (banco, em produção) e do #40 (front, `40e2d5f`)._
+
+**Veredito: APROVADO.** Nenhum achado bloqueia o promote do #40.
+
+- **Banco (#39):** segue o desenho (DT-01 a DT-13): tabela fora da API, sem privilégio e com RLS sem política; funções internas sem EXECUTE; a `ministry_tree_nodes` *definer* lê a cadeia só para ids vindos da `members_view`; trava `members:leader-tree` exclusiva ou compartilhada antes das travas de linha, em ordem de id; erros no formato `app_error`. Nada a mudar.
+- **Front (#40):** a regra pura está em `src/lib/hierarchy/*`, `src/lib/ministries/tree.ts`, `src/lib/cells/labels.ts`, `src/lib/errors.ts` (`isRecalcFailure`) e `src/lib/query-refresh.ts`; os textos, em `src/lib/hierarchy/texts.ts`. Sem `any` nem asserção de tipo nos arquivos novos, sem leitura direta de `members`, sem "12" sozinho, "Status" ou `bg-orange-500`. Toda gravação de membro e de célula (formulários, inativação, exclusão e restauração) passa por `refreshAfter…Write` (DT-16).
+- **Revisões:** o `code-reviewer` aprovou T6, T9, T12 e as correções de UI na 1ª rodada. O `ux-designer` aprovou T1 a T5 (revisão única de T7, T10 e T13). Os 5 ajustes que ele pediu já estão no `40e2d5f`: rótulo do UF no `CellForm`, Celular sem quebra, e-mail do cartão, quebra de linha a 320 px com fonte a 200% e contraste do total no *hover* da árvore (8,35:1 no claro e 9,3:1 no escuro).
+
+**Casos aceitos do PR 1, classificados:**
+| Caso | Classificação |
+|---|---|
+| Cadastro novo debaixo de um líder "sem topo" (só existe por carga) entra também sem topo, sem erro | **Aceito.** Nenhum caminho da API cria um "sem topo": a troca para debaixo de um é recusada (`no_top`). A `member_hierarchy_problems()` lista os dois, e o saneamento fica no E4.04 e no E4.09. |
+| `INSERT` de várias linhas em `members`, com o discípulo antes do líder, falha com `missing_row` | **Aceito.** O front e a `create-user-admin` gravam um membro por vez, e a carga do E4.07 roda em `replica` e termina com o `rebuild`. Está nas armadilhas do `CLAUDE.md`. |
+| Exclusão física em `replica` deixa linha órfã na tabela | **Backlog (E4.07, `backend-developer`).** A linha não aparece em tela, porque as views partem de `members`, mas a `member_hierarchy_drift()` não a lista e o `rebuild` não a apaga. A correção é uma migration com o problema `orphan_row` na `drift` e o `DELETE` no `rebuild`, antes da carga. |
+| Medição isolada de 190 ms | **Aceito, como ruído.** Foi uma leitura única acima da meta. Nas medições repetidas do volume, todas as metas do risco 6 ficaram com folga (tabela em [Testes](#testes)). Se o tempo aparecer em produção, vale o plano B do risco 6. |
+
+**Backlog (não bloqueia):**
+- `frontend-developer`, no passo dos tokens de tema: o crachá "Pastor"/"Pastora" (`LevelBadge`, variante `default`) herda o contraste de 2,97:1 do `--primary` no tema escuro. O mesmo vale para o contador da lista no tema claro. Os testes contam esse caso, mas não o cobram.
+- `backend-developer`, quando a `create-user-admin` for mexida (E2.05 ou depois): um 40P01 ou 57014 no INSERT do cadastro novo vira um 400 genérico ("Não foi possível salvar o cadastro. Tente de novo.") em vez do `hierarchy_update_failed`. O texto não é técnico, mas não é o da RN-08.
+- `frontend-developer`: no `CellForm`, a queda de conexão mostra o texto da RN-08, e não um "Sem conexão" próprio. A lista também escurece (`opacity-60`) no refetch ao voltar à aba. O `ux-designer` aceitou os dois casos.
+- "Ir para o casal" quando o casal não está no caminho aberto: a referência aparece sem o botão. O caso não acontece com dados reais, porque a referência só nasce com o cônjuge na cadeia. Está caracterizado no `Ministries.qa.test.tsx`.
+
 ### Verificações obrigatórias (para o QA)
 **pgTAP** (`supabase/tests/database/e206_*.test.sql`, autocontido, com `ROLLBACK`). A massa é a do Negócio, com os nomes e os dados que as regras do E2.04 exigem, montada com os triggers ligados.
 
@@ -2068,3 +2091,21 @@ _Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e206_01_
 - Volume (20 mil membros, profundidade 10, 1.500 células): gravação comum 1 a 2 ms; troca de líder com 120 abaixo 5,5 ms; de um G12 com 1.999 abaixo 24,5 ms; pastor com 19.998 abaixo 298 ms; `rebuild` do zero 305 ms; página mais contagem 24 ms (membros) e 9 ms (células); `ministry_tree_nodes` com 100 ids 2,9 ms (Administrador) e 13 ms (G12); `dashboard_g12_ranking` 10 ms. A junção nova some do plano da contagem.
 - Vitest 114 arquivos e 1699 testes ok; `tsc` e `build` ok; `lint` 3 erros e 8 avisos (os da `main`).
 - Playwright `--workers=1`, suíte inteira: 296 ok, 3 falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:236`, axe claro de `sign-in.spec.ts:416`).
+
+**PR 2 (front: Membros, Células, Ministérios e gravação; T8, T11 e T14), 2026-11-25.** Testes de componente em `mci-connect/src/`: `pages/Members.hierarchy.test.tsx`, `pages/Cells.hierarchy.test.tsx`, `pages/Ministries.qa.test.tsx`, `components/MemberForm.saving.test.tsx` e `components/CellForm.saving.test.tsx`. Playwright em `e2e/`: `hierarquia-support.ts` (a massa do spec, 23 pessoas, C1 a C11, contas de Rita, Pedro, Diego, André, Hugo e Ester; gravações com os gatilhos ligados), `hierarquia-listas.spec.ts`, `hierarquia-ministerios.spec.ts` e `hierarquia-gravacao.spec.ts`.
+
+| Critério | Teste |
+|---|---|
+| UX-01, 02, 03, 04, 16, 18 | `Members.hierarchy.test.tsx` (níveis, Liderança, cabeçalho, totais, leitor de tela) + `hierarquia-listas` (Rita a 1280 e 360; André vê Débora sem link) |
+| UX-05, 06 | `Members/Cells.hierarchy.test.tsx` (`matchMedia`, primeiro render) + `hierarquia-listas` (360, 768, 1024, 1280; 320×640; zoom de 200% = 640 px com escala 2; nomes de 40 caracteres; primeiro render com a lista retida) |
+| UX-07, 20 | `hierarquia-listas` e `hierarquia-ministerios` (axe, claro e escuro, 360 a 1280; `Sem liderança` com ícone; sem `bg-orange-500`) |
+| UX-08, RN-11 | `Cells.hierarchy.test.tsx` + `hierarquia-listas` (C1, Samuel, Magda, Ester, C9 e C7 na tabela e nos cartões) |
+| UX-09, UX-10, RN-09 | `hierarquia-ministerios` (nós de Rita; Pedro, Diego, Ester sem liderança; Magda e Beatriz inativas; referência de Olga; "Ir para o casal" sem abrir nem fechar nó; Hugo e Vânia) |
+| UX-11, 12 | `Ministries.qa.test.tsx` (ajuda, estado vazio, nome acessível de Diego e Olga, `aria-expanded`, referência sem o casal no caminho) |
+| UX-17 | `hierarquia-ministerios` (alturas de 44 px a 360×800) |
+| UX-13, RN-08 (Células logo depois de salvar) | `hierarquia-gravacao` (Fábio sob Tiago; observador de DOM prova que o valor antigo nunca aparece em Células, Ministérios e Dashboard; `opacity-60` e `aria-busy` na tabela e nos cartões) |
+| UX-14, 15, 19 | `MemberForm.saving.test.tsx` e `CellForm.saving.test.tsx` (57014, 40P01, XX000 e `hierarchy_update_failed`; "Ainda salvando…" aos 3 s com relógio simulado; ✕, Esc, fora e Cancelar não fecham) |
+
+Sem teste E2E: o pastor sem sexo ("Pastor(a)"), porque `members.gender` é NOT NULL desde o E2.04; fica só no componente e em `level.test.ts`.
+
+**Resultados (PR 2, stack local `mci-e104-be`):** Vitest 125 arquivos, 1828 testes ok; `tsc`, `build` ok; `lint` 3 erros e 8 avisos (os da `main`). Playwright `--workers=1`, suíte inteira: 333 ok, 3 falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:236`, axe escuro de `sign-in.spec.ts:416`), 8 puladas por credencial e 6 não rodaram (seguem as falhas de `sign-in-stack`). Os 36 testes `hierarquia-*` passam. Achados abertos no relatório do PR: contraste do `--primary` no tema escuro (crachá "Pastor" e botões), `button-name` do `Select` de Estado do `CellForm` (anterior ao PR) e o texto cinza de 4,42:1 no hover do nó da árvore.
