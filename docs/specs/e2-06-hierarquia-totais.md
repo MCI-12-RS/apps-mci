@@ -1,6 +1,6 @@
 # E2.06: Hierarquia e totais
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. Negócio escrito em 2026-11-23 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia (P-HIE-15 a P-HIE-25). Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho, com as respostas às AQ-1 a AQ-7 e as decisões DA-1 a DA-6. Ficam para o usuário revisar no PR os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam (o custo de cada alternativa está na Solução técnica). O PR 1 começa depois do PR 1 do E2.02 em produção. Falta a seção Testes.
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. Negócio escrito em 2026-11-23 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia (P-HIE-15 a P-HIE-25). Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho, com as respostas às AQ-1 a AQ-7 e as decisões DA-1 a DA-6. Ficam para o usuário revisar no PR os padrões P-HIE-01 a P-HIE-25, as decisões DA-1 a DA-6 e as perguntas Q-1 a Q-3, que não bloqueiam (o custo de cada alternativa está na Solução técnica). **PR 1 (banco) em produção em 2026-11-25** (mci-connect#39, squash `af327ef`, "Deploy: banco"; conferências de antes e de depois sem parada: drift 0, saneamento vazio, privilégios ok); ver [Resultado da tarefa 1 e do PR 1](#resultado-da-tarefa-1-e-do-pr-1). PRs 2 a 4 (front) pendentes, num PR só (regra de juntar PRs de front, 2026-11-25).
 > Slug: `e2-06-hierarquia-totais` · Paridade com o legado: sim (HIE-02 a HIE-04 e os totais do casal da MIN-01). A HIE-01 (ciclos) foi para o E2.04. Tem regras novas: consistência na mesma operação, sem limite de profundidade, totais do casal sem dupla contagem e divisão das células pelo sexo do líder.
 
 ## Negócio
@@ -1936,6 +1936,18 @@ SELECT (SELECT count(*) FROM public.members) AS membros,
 ```
 **Parar e voltar ao `architect`:** (a) com `e202_pr1` falso; (b) com qualquer função ou view fora da lista; (c) ou (d) com linhas.
 
+#### Resultado da tarefa 1 e do PR 1
+_2026-11-25, `architect`._
+- **Tarefa 1:** os nomes do desenho conferem com o E2.01, o E2.02 e o E2.04 em produção (`_del_raise`, `viewer_tree_roots`, `enforce_member_rules`, chave `hashtextextended('members:leader-tree', 0)`); nenhum caso de parada. O `ac_lock_member_tree` cai entre o `ac_enforce_member_scope` (E2.02) e o `ad_enforce_member_rules`. Quem cita as colunas calculadas: só as 5 funções e as 2 views previstas.
+- **Ajuste:** a `restore_member` (E2.04) pegava as travas de identificador antes do UPDATE, e o UPDATE passaria a pegar a trava da árvore depois delas (ordem invertida da DT-06). A migration 1 a recria com o mesmo corpo, pegando a trava da árvore (exclusiva se o líder muda, senão compartilhada) antes do passo (e).
+- **Trava:** o `ac_lock_member_tree` pega a exclusiva sempre que o `ad_` pegaria; o `ad_` só reentra, e nenhuma gravação sobe de compartilhada para exclusiva.
+- **Casos aceitos, a mais dos de [Bloqueios](#bloqueios-e-concorrência):**
+  - um `INSERT` de várias linhas em `members`, com os triggers ligados e o discípulo antes do líder, falha com `hierarchy_update_failed` / `missing_row` (a carga do E4.07 roda em `replica` e termina com o recálculo);
+  - um cadastro novo debaixo de um líder "sem topo" (só por carga) entra também sem topo, sem erro; a `member_hierarchy_problems()` lista os dois;
+  - uma exclusão física em `replica` não dispara a FK em cascata e deixa linha órfã em `private.member_hierarchy` (o E4 limpa com a carga).
+- **Front em produção até o PR 3:** quem não vê a igreja toda e tem como raiz da árvore alguém sem liderança vê "Nível null" no nó raiz (antes, "Pastor(a)"). O `getLevelLabel` do PR 3 trata o nulo.
+- **Testes:** ver [Testes](#testes).
+
 ### Verificações obrigatórias (para o QA)
 **pgTAP** (`supabase/tests/database/e206_*.test.sql`, autocontido, com `ROLLBACK`). A massa é a do Negócio, com os nomes e os dados que as regras do E2.04 exigem, montada com os triggers ligados.
 
@@ -2034,7 +2046,25 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois do PR 1 do E2.02 em produç
 10. **Tarefas 7, 10 e 13:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e206_01_structure_grants` (EG), `e206_02_hierarchy_rules` (HR), `e206_03_read_contract` (RC), `e206_04_load_rebuild` (LR), `concurrency/e206_concurrency.sh` (CC) e `volume/e206_volume.psql` (VOL). Cada critério de HR e RC roda num cenário desfeito (`pg_temp.scn`): grava pela API, lê a tabela inteira da hierarquia e a `member_hierarchy_drift()`, e só então compara.
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01, RN-04 | HR (tabela da massa, 23 pessoas; níveis 6 e 7 sem limite; cadeia e G12); RC (nenhuma coluna de caminho em texto na `members_view`) | ✅ |
+| RN-02, RN-10 | RC (`members_view` de Rita, André, Diego e Hugo: nível, G12, líder e totais; `g12_id`/`g12_name` no fim). Os rótulos de tela ("Pastor", "G12") são do PR 2 | ✅ (banco) |
+| RN-03 | HR: as sete trocas do critério (inclusive Zélia excluída e restaurada) | ✅ |
+| RN-05, RN-06, RN-07 | HR: todos os critérios (inativar, excluir e restaurar, cadastrar, célula inativa, ativa, líder trocado ou excluída, sexo, nada muda). O "cadastro sem sexo" só existe relaxando o NOT NULL do E2.04 dentro do cenário | ✅ |
+| RN-08 | HR (valores da troca de Fábio, as duas ordens com a C4, `missing_row` e `negative_total` desfazem tudo); RC (o que Membros, Células, Ministérios e Dashboard leem depois); CC (7 cenários nas duas ordens e em 6 rodadas simultâneas); VOL (metas) | ✅ |
+| RN-09 | RC: raízes, `Pastores`, nível da posição, referência (`spouse_above`), Hugo e Vânia, cônjuge de cima fora da árvore (André e Débora/Bob), Beatriz inativa, Magda inativa, folha, Pedro, Diego, Hugo, sem `auth.uid()` | ✅ |
+| RN-11 | RC (`cells_view`: G12 e nível do líder; células novas de Pedro, Samuel e Ester; André sob Samuel) | ✅ |
+| RN-12 | RC (PATCH e INSERT com as colunas dão 42703; `authenticated` sem acesso à tabela); EG (privilégios, RLS sem política, CHECKs) | ✅ |
+| RN-13 | LR (carga em `replica`, `drift` lista os 23, rebuild, valores, idempotência, 12^nível, problemas com ciclo e com líder excluído, `deleted_with_totals`, guarda da migration 1) | ✅ |
+| DA-2, DT-05, DT-06 | HR (`leader_cycle`, `no_top`); EG (chave `members:leader-tree` igual em 5 funções, modos de trava em `pg_locks`); CC (restauração × troca de celular: sem 40P01) | ✅ |
+| DT-10 | `db reset` com só a migration 1, depois com as duas: os 33 arquivos antigos dão 3388 ok (a carga em `replica` precisa do `rebuild`, senão `missing_row`). Com a migration 2 só diferem os que mudam de contrato (árvore, nível nulo sem liderança) | ✅ |
+
+**Resultados (PR 1, 2026-11-25, stack local `mci-e104-be`):**
+- pgTAP: 37 arquivos (33 adaptados + 4 novos), 3709 asserções ok, 0 falhas (`psql` pelo container); EG 199, HR 40, RC 69, LR 18.
+- Concorrência `e206_concurrency.sh` (`ROUNDS=6`): 288 PASS, 0 FAIL, sem 40P01. `e104`, `e201`, `e202` e `e204` seguem verdes.
+- Volume (20 mil membros, profundidade 10, 1.500 células): gravação comum 1 a 2 ms; troca de líder com 120 abaixo 5,5 ms; de um G12 com 1.999 abaixo 24,5 ms; pastor com 19.998 abaixo 298 ms; `rebuild` do zero 305 ms; página mais contagem 24 ms (membros) e 9 ms (células); `ministry_tree_nodes` com 100 ids 2,9 ms (Administrador) e 13 ms (G12); `dashboard_g12_ranking` 10 ms. A junção nova some do plano da contagem.
+- Vitest 114 arquivos e 1699 testes ok; `tsc` e `build` ok; `lint` 3 erros e 8 avisos (os da `main`).
+- Playwright `--workers=1`, suíte inteira: 296 ok, 3 falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:236`, axe claro de `sign-in.spec.ts:416`).
