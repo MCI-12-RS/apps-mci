@@ -1739,3 +1739,20 @@ Resultados por PR (stack local isolada, CLI 2.84.2):
   Menor HTTP: 705 ms (piso 700). Critérios cumpridos (diferença < 100 ms; p99 do banco < piso).
 - Risco 4/16, logins com senha certa simultâneos da mesma origem (`concurrent-success.mjs`): N=10 -> 10x200, último em 480 ms; N=30 -> 30x200, 1385 ms; N=50 -> 50x200, 2267 ms; N=80 -> 80x200, 3618 ms; N=120 -> 115x200 e 5x500, 5223 ms. O `lock_timeout` de 3 s só vira 500 acima de ~100 simultâneos da mesma origem, na máquina local.
 - Bugs da implementação: nenhum. Os erros da primeira rodada eram dos testes (INSERT sem `id` em `auth.one_time_tokens`, `next_origin()` depois do `SET ROLE`, precedência de `->`/`-`, `57014` não é pego por `WHEN OTHERS`, `ip: undefined` caindo no valor padrão, INSERT duplicado do bloqueio).
+
+**PR 2 (tarefa 7, branch `feat/E1.04-pr2-tela-login`, commit `b8a466c`)**
+
+| RN / UX | Arquivo | Resultado |
+|---|---|---|
+| UX-01, 02, 04, 05, 06 (relógio simulado), 07 (fetch rejeitado, 500, fora do contrato, tempo-limite), 08, 09, 11, 12, 13, 19 | `src/pages/Login.test.tsx` (45) | passou |
+| UX-15, 16, 17, RN-15 (máscara `***`, origem ausente) | `src/pages/Events.auth.test.tsx` (14) | passou |
+| UX-01, 02, 03 (360x800), 05, 07, 10, 12, 14 (360x800 e 320x568, fonte 200 %), 19 | `e2e/sign-in.spec.ts` (rede interceptada) | passou (45) |
+| UX-18 (axe, claro e escuro: mensagem, indicador, "OK" da Auditoria) | `e2e/sign-in.spec.ts`, `e2e/sign-in-stack.spec.ts` | passou; tela inteira no escuro: achado (botão Entrar 2,97:1), marcado `test.fail` |
+| RN-01 a RN-04, RN-07, RN-08, RN-12, RN-13, RN-14, RN-15 (login real, stack local) | `e2e/sign-in-stack.spec.ts` | passou (17) |
+| AQ-7 e helpers (`login.spec`, `dashboard.spec`, `exclusao-support`, `ministries-selectors`, `create-user-admin`, `cadastro-excluido`, `excluidos-membros`) | `e2e/*` | ajustados; passam |
+
+- `npm test`: 82 arquivos, 1005 testes. `npm run lint`: 12 erros e 8 avisos (a linha de base; arquivos do PR limpos). `npm run build` ok.
+- `npx playwright test --workers=1` (stack local isolada, `sign-in` servida, `[auth.email] enable_signup = false`): 151 testes, todos passam (E1.08 e E2.01 inclusos). Em paralelo (`--workers=3`) as specs do E2.01 interferem entre si (massa e `sign_in_throttle` compartilhados): rode com 1 worker.
+- `supabase test db` (banco zerado com `db reset`): 15 arquivos, 1866 testes, PASS (`e201_03` passa; não faz login direto).
+- Devdependency nova: `@axe-core/playwright@4.10.2`. As specs do E2.01 precisam da role Administrador com todas as permissões (as migrations só dão `view_audit_log`) e de massa para paginar (Células e Relatórios).
+- Revisão de UI (tarefa 6, `ux-designer`): **APROVADO**, sem bloqueante. Sugestões que ficam para depois: o anel de foco do bloqueio usa só `focus-visible:` (`Login.tsx`), a linha da Auditoria não abre o painel pelo teclado (já existia) e o contraste do `--primary` no tema escuro (token global, o mesmo achado do axe acima). Os três vão num PR próprio, fora do E1.04.
