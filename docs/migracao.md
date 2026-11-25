@@ -55,7 +55,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | 🔄 3 de 16 | E1.01 concluído |
+| 2. Paridade | 🔄 4 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
@@ -139,7 +139,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO → architect → desenvolvedores → code-reviewer → QA → aceite do PO.
 
-- [x] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos. Spec: [`specs/e2-01-exclusao-logica.md`](specs/e2-01-exclusao-logica.md). A DEL-04 fica 🟡 até os índices únicos do E2.04. Aceite do PO (2026-11-25)
+- [x] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos. Spec: [`specs/e2-01-exclusao-logica.md`](specs/e2-01-exclusao-logica.md). A DEL-04 fechou com os índices únicos do E2.04 (2026-11-25). Aceite do PO (2026-11-25)
   - PR 1 em produção (2026-11-24, mci-connect#19): banco da exclusão lógica (colunas, FKs sem cascata, RPCs, views de excluídos, índice único da semana, suspensão da conta).
   - PRs 2 a 4 em produção (2026-11-24):
     - PR 2 (mci-connect#20): exclusão nas telas de Membros, Células e Relatórios, sem exclusão física no banco;
@@ -151,9 +151,12 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - PRs em produção (2026-11-25): mci-connect#29 (banco: escopo, leitura, escrita e funções semeadas; conferência sem parada), #30 (acesso, menu e rotas), #31 (tela de Funções), #32 (Membros), #33 (Células, Relatórios, Dashboard e Ministérios) e #34 (fecha a leitura e a escrita diretas de `roles` e `role_permissions` e mascara a `role_id`; squash `b50308d`), com smoke de produção só leitura.
   - Revisão final dos 6 PRs (tarefa 20): APROVADO, com o backlog técnico no spec. Testes do último PR: pgTAP 23 arquivos e 2.688 testes, Vitest 1.259, Playwright sem regressão (só as falhas de ambiente conhecidas).
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
-- [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
+- [x] **E2.04** Validações de membro · MEM-01 a MEM-09, complemento da MEM-10, HIE-01 (antecipada do E2.06) e fechamento da DEL-04 · depende de D5. Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md). Aceite do PO (2026-11-25)
+  - PRs em produção (2026-11-25): mci-connect#35 (funções de regra e índices únicos de e-mail, celular e CPF entre não excluídos; squash `2f6eebf`), #36 (regras no banco, `create-user-admin` com conta de e-mail técnico, vazio vira nulo; conferência pós-deploy com os 9 itens ok; squash `83e5d49`) e #37 (formulário de membro da UX; squash `d680904`).
+  - Revisão final dos 3 PRs (tarefa 12): APROVADO, com o backlog técnico no spec. Testes: pgTAP 33 arquivos e 3.388 asserções e concorrência (PRs 1 e 2); Vitest 1.699 e Playwright 296 ok no PR 3, só com as falhas de ambiente conhecidas.
+  - Ressalva: o Auth de produção aceitar o `id` próprio da conta (risco 4 do spec) só se confirma no primeiro cadastro pela tela. Se não aceitar, o cadastro novo responde erro sem deixar conta nem cadastro, e a edição continua.
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
-- [ ] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 (a HIE-01 foi para o E2.04) · depende de D2. Spec: [`specs/e2-06-hierarquia-totais.md`](specs/e2-06-hierarquia-totais.md) (desenho pronto; o PR 1 exige o PR 1 do E2.02)
+- [ ] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 (a HIE-01 foi feita no E2.04, 2026-11-25) · depende de D2. Spec: [`specs/e2-06-hierarquia-totais.md`](specs/e2-06-hierarquia-totais.md) (desenho pronto; o PR 1 exige o PR 1 do E2.02)
 - [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15. Spec: [`specs/e2-07-filtros-membros.md`](specs/e2-07-filtros-membros.md) (desenho pronto; o PR 1 exige o banco do E2.05 e o PR 1 do E2.06 em produção)
 - [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md) (desenho pronto; o PR 1 espera o E2.01 inteiro e o PR 1 do E2.02 em produção)
 - [ ] **E2.09** Situação do relatório por célula · CEL-05. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md) (desenho pronto)
@@ -259,18 +262,18 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| MEM-01 | Nome com nome **e** sobrenome. | `UI/pages/Members/details.js`; `Domain/Validators/MemberDtoValidator.cs` | ❌ | Banco (CHECK) + zod |
-| MEM-02 | Pelo menos um identificador de login real: e-mail, celular ou CPF (D5). | `UI/pages/Members/details.js` | ❌ (o novo gera e-mail fictício) | Banco (CHECK) |
-| MEM-03 | E-mail único, sem diferenciar maiúsculas; celular único. | `MemberDtoValidator.cs` | ❌ | Índices únicos (`lower(email)`, `mobile_whatsapp`) |
-| MEM-04 | CPF válido (dígitos verificadores) quando informado. | `UI/shared/utils.js` (`ValidateCPF`) | ❌ | Função SQL + CHECK; zod |
-| MEM-05 | CPF único quando informado. Regra nova, necessária porque o novo aceita login por CPF. | — | ❌ | Índice único parcial |
-| MEM-06 | E-mail em formato válido. | `MemberDtoValidator.cs` | ❌ | CHECK + zod |
-| MEM-07 | Líder obrigatório, a menos que a pessoa esteja marcada como "sem liderança" ou seja pastor. O administrador geral pode salvar sem líder. | `UI/pages/Members/details.js` | ❌ | Trigger |
-| MEM-08 | Data de nascimento entre hoje − 100 anos e hoje. | `MemberDtoValidator.cs` | ❌ | CHECK |
-| MEM-09 | Data de batismo só existe para quem é batizado. | `UI/pages/Members/details.js` | 🟡 só na tela | CHECK |
-| MEM-10 | O vínculo de cônjuge é simétrico. | `App/Services/MemberService.cs` (`UpdateSpouse`) | ✅ trigger | — |
+| MEM-01 | Nome com nome **e** sobrenome. | `UI/pages/Members/details.js`; `Domain/Validators/MemberDtoValidator.cs` | ✅ E2.04 (2026-11-25): no banco, com os espaços ajustados; vale no cadastro novo e quando o nome muda (RN-02 e RN-17 do E2.04) | Banco (CHECK) + zod |
+| MEM-02 | Pelo menos um identificador de login real: e-mail, celular ou CPF (D5). | `UI/pages/Members/details.js` | ✅ E2.04 (2026-11-25): no banco; o e-mail fictício fica só na conta de acesso, não conta como identificador e é recusado no cadastro (RN-05 e RN-08 do E2.04) | Banco (CHECK) |
+| MEM-03 | E-mail único, sem diferenciar maiúsculas; celular único. | `MemberDtoValidator.cs` | ✅ E2.04 (2026-11-25): índices únicos entre não excluídos, com a normalização do login e a equivalência do 9º dígito no celular (RN-09 e RN-10 do E2.04) | Índices únicos (`lower(email)`, `mobile_whatsapp`) |
+| MEM-04 | CPF válido (dígitos verificadores) quando informado. | `UI/shared/utils.js` (`ValidateCPF`) | ✅ E2.04 (2026-11-25): CHECK com `is_valid_cpf`, que recusa também os dígitos iguais (RN-07 do E2.04) | Função SQL + CHECK; zod |
+| MEM-05 | CPF único quando informado. Regra nova, necessária porque o novo aceita login por CPF. | — | ✅ E2.04 (2026-11-25): índice único entre não excluídos (RN-09 do E2.04) | Índice único parcial |
+| MEM-06 | E-mail em formato válido. | `MemberDtoValidator.cs` | ✅ E2.04 (2026-11-25): CHECK, gravado em minúsculas (RN-04 do E2.04) | CHECK + zod |
+| MEM-07 | Líder obrigatório, a menos que a pessoa esteja marcada como "sem liderança" ou seja pastor. O administrador geral pode salvar sem líder. | `UI/pages/Members/details.js` | ✅ E2.04 (2026-11-25): no banco, com as três situações de liderança (pastor, com líder, sem liderança) para todos; sem líder só com a decisão de quem vê a igreja toda (RN-11 e RN-12 do E2.04, RN-10 do E2.02) | Trigger |
+| MEM-08 | Data de nascimento entre hoje − 100 anos e hoje. | `MemberDtoValidator.cs` | ✅ E2.04 (2026-11-25): no banco, pelo "hoje" de Brasília, no cadastro novo e quando a data muda (RN-15 do E2.04) | CHECK |
+| MEM-09 | Data de batismo só existe para quem é batizado. | `UI/pages/Members/details.js` | ✅ E2.04 (2026-11-25): CHECK; desligar "Batizado(a)?" apaga a data (RN-16 do E2.04) | CHECK |
+| MEM-10 | O vínculo de cônjuge é simétrico. | `App/Services/MemberService.cs` (`UpdateSpouse`) | ✅ trigger; o E2.04 acrescentou a recusa de cônjuge de si mesmo, com mensagem em pt-BR (RN-14) | — |
 | MEM-11 | Exclusão lógica de membros, conforme a seção 3.8. | Repositórios (`IsDeleted`) | ✅ E2.01 (2026-11-25): exclusão e restauração por RPC; FKs `NO ACTION` | Ver 3.8 |
-| MEM-12 | Auditoria: quem criou, quem alterou e quando. | `App/Services/EntityChangeTrackingService.cs` | 🟡 Tabela `events`, alimentada por triggers. Cadastros feitos via `create-user-admin` ficam sem autor. | Colunas + trigger |
+| MEM-12 | Auditoria: quem criou, quem alterou e quando. | `App/Services/EntityChangeTrackingService.cs` | 🟡 Tabela `events`, alimentada por triggers, com o autor também nos cadastros pela `create-user-admin` (sessão de quem chama, desde o E1.02). Falta quem criou e quem alterou no próprio registro (E2.05). | Colunas + trigger |
 | MEM-13 | Filtros da listagem: nome, liderança (qualquer nível), bairro, cidade, ativo/inativo, possui liderança, batizado, nível ministerial, vínculo celular e período de cadastro. | `Domain/Querying/Filters/MemberFilter.cs`; `UI/pages/Members/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | MEM-14 | Vínculo celular: **líder**, **timóteo** ou **anfitrião** (tem célula nesse papel); **participante** (esteve em relatório nos últimos 30 dias); **sem vínculo** (nenhum dos anteriores). | `QueryingExtensions.cs` (`CellLink`) | 🟡 só no dashboard, com 28 dias | View ou RPC |
 | MEM-15 | No cadastro de membro novo, o líder já vem preenchido com o usuário logado. | `UI/pages/Members/details.js` (`GetMemberPickerId`) | ❌ | UI |
@@ -279,7 +282,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| HIE-01 | Sem ciclos: ninguém pode ser discípulo de um discípulo seu, nem de si mesmo. | `MemberService.cs` (`UpdateComputedValues`) | ❌ | Trigger |
+| HIE-01 | Sem ciclos: ninguém pode ser discípulo de um discípulo seu, nem de si mesmo. | `MemberService.cs` (`UpdateComputedValues`) | ✅ E2.04 (2026-11-25), antecipada do E2.06: em qualquer profundidade, inclusive com discípulos inativos e com trocas simultâneas (RN-13 do E2.04) | Trigger |
 | HIE-02 | O nível ministerial vem da profundidade na árvore. Ao trocar o líder de alguém, a subárvore inteira é recalculada. | `MemberService.cs` + `App/EventHandlers/DomainEvents/MemberChangedHandler.cs` | 🟡 calcula o nível, mas não propaga para os descendentes | Trigger |
 | HIE-03 | Líder direto, G12 e caminho da liderança ("Pastor / G12 / … / líder") disponíveis para exibir e filtrar. | `Member.LeadershipTree`, `ComputedG12Leader` | 🟡 o G12 é calculado no cliente, só na tela de Células | View ou colunas mantidas por trigger |
 | HIE-04 | Totais por pessoa: discípulos em todos os níveis, e células lideradas na subárvore, incluindo as da própria pessoa. | `MemberChangedHandler.cs`, `CellChangedHandler.cs` | ✅ trigger (D2: não conta inativos, como o novo já faz; o legado contava) | Trigger |
@@ -355,7 +358,7 @@ Continuam com exclusão física as tabelas de configuração (`roles`, `role_per
 | DEL-01 | Excluir marca o registro (`deleted_at`, `deleted_by`) em vez de apagá-lo. A API não permite exclusão física. | Repositórios (`IsDeleted`) | ✅ E2.01: RPCs `delete_*`; sem política nem privilégio de DELETE | RPC de exclusão; sem política de DELETE |
 | DEL-02 | Registros excluídos não aparecem em listagens, buscas, seletores, contagens, dashboard, árvore de ministérios nem nos totais de discípulos e células. | Filtro global (`HasQueryFilter`) em `Infrastructure.Data/Context/AppDbContext.cs` | ✅ E2.01: RLS, views, RPCs do dashboard, árvore e totais sem excluídos. CEL-05, novos cards (DSH) e exportação nascem já sem excluídos (E2.09, E2.13, E2.14) | RLS, e funções e triggers que ignoram excluídos |
 | DEL-03 | Excluir um relatório libera a semana: a célula pode receber outro relatório (REL-03). | `ReportApp.cs` (só considera não excluídos) | ✅ E2.01: índice `cell_reports_cell_week_key` só entre não excluídos | Índice único parcial (`WHERE deleted_at IS NULL`) |
-| DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | 🟡 E2.01: a restauração (recusa se outro não excluído usa o dado) e o aviso no cadastro consideram só não excluídos. Os índices únicos (MEM-03, MEM-05) ainda não existem e entram no E2.04, já parciais | Índices únicos parciais |
+| DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | ✅ E2.01 e E2.04 (2026-11-25): a restauração, o aviso no cadastro e os índices únicos (MEM-03, MEM-05) consideram só não excluídos, com a mesma normalização (RN-18 do E2.01, RN-09 do E2.04) | Índices únicos parciais |
 | DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ✅ E2.01: `delete_member` desfaz o vínculo nos dois lados; a restauração não refaz | RPC de exclusão |
 | DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | ✅ O login recusa o excluído (`sign-in`, motivo "Cadastro excluído"), a conta fica suspensa no Auth (E2.01 PR 1, E1.04) e a sessão aberta é encerrada na próxima leitura ou gravação (E2.01 PR 6, 2026-11-25) | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
 | DEL-07 | Excluir uma célula preserva os relatórios dela, que continuam no histórico e nas somas de períodos passados. | `IsDeleted` em `Cells` e `Reports` | ✅ E2.01: FKs `NO ACTION`; os relatórios ficam no histórico e nas somas | FKs sem cascata |
@@ -442,11 +445,15 @@ Rode depois da cópia bruta para o schema `legacy`. O que precisar de decisão h
 |---|---|
 | Contagens por tabela (ativos e excluídos) | Base da reconciliação (5.6) |
 | E-mails duplicados entre membros não excluídos (ignorando maiúsculas e espaços) | Corrigir no legado |
-| Celulares duplicados entre membros não excluídos | Corrigir no legado |
+| Celulares duplicados entre membros não excluídos, com a leitura e a equivalência do 9º dígito do E2.04 (RN-06 e RN-09) | Corrigir no legado |
 | CPFs duplicados entre membros não excluídos | Corrigir no legado |
-| CPFs inválidos | Importar como nulo e listar |
-| E-mails inválidos | Importar como nulo; a conta usa e-mail fictício (6.2) |
-| Membros sem e-mail e sem celular | Migram sem conta de acesso; listar |
+| CPFs inválidos: fora dos 11 dígitos, com os dígitos verificadores errados ou com todos os dígitos iguais (RN-07 do E2.04) | Importar como nulo e listar |
+| E-mails fora do formato da RN-04 do E2.04, ou num domínio fictício (RN-05) | Importar como nulo e listar; a conta usa o e-mail técnico (6.2) |
+| Celular fora do formato da RN-06 do E2.04 | Migra como está, só com dígitos, e é listado, com destaque quando é o único identificador |
+| Nome com uma palavra só | Migra como está, com os espaços ajustados; listado só para informação |
+| Nascimento futuro, ou de 100 anos atrás ou mais | Migra como está e é listado |
+| Cônjuge apontando para a própria pessoa | O vínculo é desfeito e listado |
+| Membros sem identificador real (e-mail válido, celular no formato da RN-06 ou CPF válido, RN-08 do E2.04) | Migram sem conta de acesso; listar |
 | Membros sem senha | Migram com conta, sem credencial legada; precisam de redefinição (6.4) |
 | Sem líder e sem "não tem liderança" | Só Samuel Colares e Magda Colares são pastores (D9). Os demais são listados para a liderança indicar o líder no legado (E4.05). Quem não for corrigido migra sem liderança |
 | "Não tem liderança" marcado, mas com líder preenchido | O líder é descartado |
@@ -507,7 +514,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 |---|---|---|
 | `Id` | `legacy_id` | — |
 | `Name` | `name` | `trim`; espaços repetidos viram um só |
-| `Email` | `email` | `lower(trim)`. Se for inválido ou vazio, recebe o e-mail fictício da conta (6.2) |
+| `Email` | `email` | `lower(trim)`. Se for inválido, fictício ou vazio, fica nulo: o e-mail técnico fica só na conta (6.2; o `CHECK` do E2.04 recusa e-mail fictício no cadastro mesmo em `replica`) |
 | `MobileNumber` / `PhoneNumber` | `mobile_whatsapp` / `phone` | Só dígitos |
 | `CPF` | `cpf` | Só dígitos; inválido vira nulo |
 | `Gender` | `gender` | `0` → `'M'`, `1` → `'F'` |
@@ -528,6 +535,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 Regras para `has_leadership`, `leader_id` e `is_pastor`:
 - `HasNoLeadership = 1` → `has_leadership = false`, `leader_id = NULL`, `is_pastor = false`.
 - `HasNoLeadership = 0` e com líder → `has_leadership = true`, `is_pastor = false`.
+- `has_leadership` fica ligado só para quem tem líder, e desligado para pastores e para quem está sem liderança (RN-11 do E2.04; o `CHECK` vale também na carga).
 - `HasNoLeadership = 0` e sem líder → `is_pastor = true` só para Samuel Colares e Magda Colares (D9), identificados na carga pelo `Id` do legado, e não pelo nome. Os demais seguem o saneamento (5.4) e, se não forem corrigidos, migram como `HasNoLeadership = 1`.
 
 #### Cells → `cells`
@@ -575,6 +583,7 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - O líder de cada membro (via `legacy_id`) é o mesmo do legado.
   - Os cônjuges são recíprocos.
   - Não há ciclos.
+- **Regras de membro.** `private.member_rule_violations()` (E2.04) não devolve nenhuma linha: nenhum cadastro viola as regras do tipo (a) da RN-01 do E2.04 (RN-18).
   - `12 ^ g12_level = MinistryLevel` para todos os que têm liderança.
 - **Totais.** `total_disciples` e `total_cells` batem com o legado. Como a D2 decidiu não contar inativos, a diferença esperada é só a de membros inativos; o script calcula essa diferença e confere.
   - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o backfill deixa os totais zerados, e o ranking G12 mostra 0 células.
@@ -613,13 +622,12 @@ O Supabase Auth não aceita importar hashes MD5. As senhas atuais só podem ser 
 
 ### 6.2 Criação das contas
 
-- **Quem recebe conta:** todo membro migrado **não excluído** que tenha e-mail ou celular.
+- **Quem recebe conta:** todo membro migrado **não excluído** que tenha um identificador real: e-mail, celular ou CPF (D5; impacto do E1.04 e do E2.04 no E4.08).
   - O status ativo/inativo não importa, porque o legado também não bloqueia login de inativo.
   - Membros excluídos não recebem conta. Se um deles for restaurado (DEL-09), a conta é criada nesse momento (E4.08).
 - **E-mail da conta:**
-  - o e-mail real, normalizado, quando for válido e único;
-  - senão, um e-mail fictício **determinístico** (para a carga poder ser refeita): `m<legacy_id>@<domínio da D7>`;
-  - o mesmo valor vai para `members.email`, como o novo já faz.
+  - para todos, o e-mail técnico `member_account_email(id)` (`<id do membro>@<domínio fictício>`), e o id da conta é o id do membro (DA-1 e DT-01 do E2.04). É determinístico: refeita, a carga acha a conta pelo e-mail e só religa;
+  - `members.email` recebe só o e-mail real válido, ou fica nulo (RN-05 do E2.04).
 - **Senha inicial:** aleatória e longa, que o usuário nunca vai saber. A senha real é gravada no primeiro login (6.3) ou por redefinição (6.4).
 - **Metadados:**
   - `email_confirm: true`;

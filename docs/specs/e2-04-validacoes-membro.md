@@ -1,6 +1,7 @@
 # E2.04: Validações de membro
 
-> Status: desenho pronto para revisão. Negócio escrito em 2026-11-23 pelo `product-owner`; Experiência (UX) escrita no mesmo dia pelo `ux-designer`, com as pendências PO-UX-1 a PO-UX-8 resolvidas pelo PO (P-VAL-19 a P-VAL-26). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto. Ficam para o usuário revisar no PR os padrões P-VAL-01 a P-VAL-26 e os pontos definidos pelo `architect` (DA-1 a DA-13). A implementação começa depois do E1.04 inteiro, do E2.01 inteiro e do PR 1 do E2.02 em produção. Falta a seção Testes (QA).
+> Status: **concluído e aceito pelo PO em 2026-11-25** (matriz do `CLAUDE.md`, seção 3 e Progresso do `docs/migracao.md` atualizados; ressalva: o risco 4 se confirma no primeiro cadastro pela tela). PR 3 (formulário da UX: T8 a T11) implementado e testado em 2026-11-25: mci-connect#37, squash `d680904`, promote e republicação da `create-user-admin` em 2026-11-25. Revisão final (T12) em 2026-11-25: **APROVADO**, com o backlog em [Revisão final](#revisão-final-do-passo-tarefa-12). T1 (conferência em produção) feita em 2026-11-25, sem linhas `a` nem `infra`. PR 1 (banco neutro: T2 e T3) implementado e testado em 2026-11-25: PR #35 do `mci-connect` (branch `feat/E2.04-pr1-banco-neutro`, migration `20261125210000_e204_01_rule_functions.sql`), em produção em 2026-11-25 (squash `2f6eebf`, "Deploy: banco"; conferência pós-deploy ok: 3 índices únicos entre não excluídos, grants, funções). PR 2 (regras no banco e cadastro com conta: T4 a T7) implementado e testado em 2026-11-25: PR #36 do `mci-connect` (branch `feat/E2.04-pr2-regras-cadastro`, migration `20261125220000_e204_02_member_rules.sql`), em produção em 2026-11-25 (squash `83e5d49`; pré-deploy sem violação; "Deploy: banco" e promote do mesmo commit com ~1 min de janela; pós-deploy: os 9 itens `true`). O risco 4 (o Auth aceitar o `id` da conta) se confirma no primeiro cadastro pela tela. O `''` em produção (2 cadastros de teste com CPF `''`, que davam `cpf` na guarda) é corrigido pela migration 2 (DT-24). Decisões novas no PR 2: DT-24 (vazio vira nulo) e DT-25 (troca de líder cruzada pode dar 40P01). Desvios do desenho: `is_placeholder_email` mantém o domínio depois do último `@` (E1.04), e a conferência (e) da `restore_member` vem depois da trava do líder (DT-09).
+> Histórico: desenho pronto para revisão. Negócio escrito em 2026-11-23 pelo `product-owner`; Experiência (UX) escrita no mesmo dia pelo `ux-designer`, com as pendências PO-UX-1 a PO-UX-8 resolvidas pelo PO (P-VAL-19 a P-VAL-26). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto. Ficam para o usuário revisar no PR os padrões P-VAL-01 a P-VAL-26 e os pontos definidos pelo `architect` (DA-1 a DA-13). A implementação começa depois do E1.04 inteiro, do E2.01 inteiro e do PR 1 do E2.02 em produção. Falta a seção Testes (QA).
 > Slug: `e2-04-validacoes-membro` · Paridade com o legado: sim (MEM-01 a MEM-09, com a MEM-10 complementada e a HIE-01 antecipada do E2.06). Tem regras novas: CPF único e identificador real (D5), e-mail fictício (D7) e coerência entre pastor, líder e "Tem Liderança?".
 
 ## Negócio
@@ -1470,7 +1471,7 @@ Pontos que as RNs não respondem por inteiro. O `architect` adotou a leitura mai
 | DA-5 | Celular antigo ilegível na unicidade | Fica fora da unicidade, como já fica fora do login. A comparação é sempre pela leitura da RN-06. | A RN-09 compara "pela leitura da RN-06". Um número sem DDD não é lido e não identifica ninguém. Quando alguém o corrige, a unicidade passa a valer. |
 | DA-6 | Regras do tipo (a) e os cadastros excluídos | Os `CHECK`s valem também para os excluídos. A unicidade conta só os não excluídos (DEL-04). | Um `CHECK` vale para todas as linhas. A restauração não pode trazer de volta um cadastro fora das regras. |
 | DA-7 | E-mail fictício no cadastro | Proibido sempre (`CHECK`), e não só no campo que muda. A publicação troca os fictícios gravados por vazio, e as contas continuam com eles. | Com a DA-1, o cadastro nunca precisa do fictício. O `CHECK` vale também na carga, que deixa de gravá-lo no cadastro (6.2). |
-| DA-8 | Dados de produção fora das regras do tipo (a) | A migration 2 corrige sozinha só o que não perde informação: e-mail em minúsculas, CPF só com dígitos, celular legível na forma lida, espaços do nome, e-mail fictício vazio e a chave "Tem Liderança?" coerente com o líder e com o pastor. Para o resto, ela para com a lista de ids, e o usuário decide. | O usuário pediu para decidir as correções. A forma do dado não é decisão. |
+| DA-8 | Dados de produção fora das regras do tipo (a) | A migration 2 corrige sozinha só o que não perde informação: e-mail em minúsculas, CPF só com dígitos, celular legível na forma lida, espaços do nome, e-mail fictício vazio, texto vazio ou só com espaços como vazio (nulo) em todo campo de texto opcional (DT-24) e a chave "Tem Liderança?" coerente com o líder e com o pastor. Para o resto, ela para com a lista de ids, e o usuário decide. | O usuário pediu para decidir as correções. A forma do dado não é decisão. |
 | DA-9 | Salvar uma edição sem nenhuma mudança | A tela não chama o servidor e fecha o formulário, como "Cancelar" sem alterações. | Nada a gravar, e não há o que confirmar. |
 | DA-10 | Tentativa repetida (`attemptId`) que não leva a um cadastro que quem chama vê | Recusa técnica `attempt_already_used`: "*Este cadastro já foi enviado. Confira na lista de Membros.*" | Só acontece pela API, ou se o cadastro saiu do escopo de quem cadastrou entre as duas tentativas. |
 | DA-11 | Ordem das recusas do servidor | Permissão e escopo (E1.03, E2.02), excluído escolhido (E2.01), depois formato (na ordem da tela), identificador, cônjuge e liderança, ciclo, batismo, dado em uso e, por último, o e-mail da conta de um excluído. A API devolve uma recusa por vez. Só o dado em uso cita mais de um campo. | RN-19 ("basta a primeira recusa") e RN-10 (unicidade antes do aviso de excluído). As conferências baratas vêm antes das que pegam travas. |
@@ -1679,9 +1680,10 @@ ALTER TABLE public.members ADD CONSTRAINT members_baptism_check             -- R
 #### Dados existentes (migration 2)
 Antes das constraints e dos triggers, na mesma transação:
 1. **Correções sem perda (DA-8)**, com `UPDATE` simples. A Auditoria registra as alterações sem autor, como na migration 1 do E2.02.
+   - texto vazio ou só com espaços (`~ '^[[:space:]]*$'`) vira nulo em todo campo de texto opcional de `members` (DT-24). Vem antes dos demais: o CPF `''` dava `cpf` na guarda (2 cadastros de teste em produção, 2026-11-25);
    - e-mail fictício vira nulo (a conta continua com ele);
    - e-mail em `normalize_email`;
-   - CPF em `normalize_digits`;
+   - CPF em `normalize_digits` só quando o resultado é um CPF válido (o inválido com letras não é apagado: para na guarda);
    - celular legível em `normalize_mobile`, e o ilegível só com dígitos;
    - nome em `normalize_person_name`;
    - `has_leadership := false` no pastor sem líder;
@@ -1781,6 +1783,7 @@ BEGIN
   RETURN NEW;
 END $$;
 ```
+- **Texto vazio (DT-24).** Também converte em nulo o texto vazio ou só com espaços de `phone`, `instagram`, `avatar_url`, `notes` e dos campos de endereço, sem mexer no conteúdo preenchido; essas colunas entram no `UPDATE OF`. Em e-mail, celular e CPF, as funções de normalização já devolvem nulo para o vazio.
 - Ele roda antes do `aa_`. Para quem não vê os dados sensíveis, a regra 6 do E1.08 devolve depois os valores gravados, e nada muda nesses campos.
 - Ele não recusa nada, então quem não pode gravar não descobre nada por ele.
 
@@ -1890,16 +1893,17 @@ Respostas (todas com `{ error, code, … }`; `error` é a mensagem pronta para a
 |---|---|---|---|
 | 200 | — | criado ou tentativa repetida | `member: { id }`, `replayed` |
 | 400 | `invalid_request` | corpo, `attemptId` ou `memberData` fora do formato | — |
-| 400 | os `app_error` do banco | recusa de regra no ensaio ou no INSERT | `field` ou `fields`, `detail` |
+| 400 | os `app_error` do banco | recusa de regra no ensaio ou no INSERT | `field` ou `fields` (o resto do `DETAIL` não vai, PR 2) |
+| 400 | `weak_password` | o Auth recusou a senha (PR 2) | `field: "password"` |
 | 401 | `unauthenticated` | sem JWT válido | — |
 | 403 | `forbidden` | sem `create_member`, ou 42501 do banco | — |
 | 409 | `value_in_use` | dado em uso | `fields` |
-| 409 | `deleted_account_email` | e-mail da conta de um excluído | `field: "email"` |
+| 409 | `deleted_account_email` | e-mail da conta de um excluído | `field: "email"` e `matches` (E2.01 PR 5, aviso com "Restaurar"): a recusa vem do ensaio, e a função busca as correspondências antes de responder (PR 2) |
 | 409 | `deleted_matches` | dado de excluído, sem confirmação (E2.01) | `matches` |
 | 409 | `attempt_already_used` | DA-10 | — |
-| 500 | `server_error` | Auth ou banco fora do ar | — |
+| 500 | `server_error` | Auth ou banco fora do ar; qualquer outra falha do Auth (PR 2: o e-mail e o id da conta são gerados pela função, a pessoa não tem o que corrigir) | — |
 
-O código puro de tradução fica em `supabase/functions/create-user-admin/lib/errors.ts`, com testes em Deno: `app_error` → `{ status, code, field, fields }`; o `23505` pelo nome do índice; nunca o `details` do Postgres.
+O código puro de tradução fica em `supabase/functions/create-user-admin/lib/errors.ts`, com testes em Vitest (como os do E2.01; não há Deno na máquina de desenvolvimento): `app_error` → `{ status, code, field, fields }`; o `23505` pelo nome do índice; nunca o `details` do Postgres.
 
 ### Seletor de líder com os discípulos (AQ-4)
 ```sql
@@ -1981,7 +1985,8 @@ Os casos dos critérios:
   - pela `create-user-admin`, a conta da segunda é desfeita no passo 9. O índice único cobre qualquer caminho sem trava.
 - **Lúcia → Paulo e Paulo → Lúcia ao mesmo tempo (RN-13):**
   - as duas trocas pedem a trava da árvore;
-  - a segunda espera, sobe a partir de Lúcia, encontra Paulo (já gravado como discípulo dela) e recusa com `leader_cycle`.
+  - a segunda espera, sobe a partir de Lúcia, encontra Paulo (já gravado como discípulo dela) e recusa com `leader_cycle`;
+  - **na implementação (DT-25),** quando as duas trocas são simultâneas, a segunda costuma terminar em 40P01, e não em `leader_cycle`: cada UPDATE já tem a própria linha travada antes da árvore, e o recálculo dos totais da primeira precisa da linha da segunda. O ciclo nunca nasce; a nova tentativa recebe `leader_cycle`.
 - **Caio troca o e-mail enquanto Rita cadastra Lúcia com o e-mail antigo (P-VAL-10):**
   - os dois pegam travas de chaves diferentes (o e-mail novo e o antigo);
   - o cadastro de Lúcia é aceito se a troca de Caio terminou antes. Senão, o índice recusa no *commit*, e a função devolve `value_in_use`.
@@ -1989,6 +1994,7 @@ Os casos dos critérios:
 
 Casos aceitos com *deadlock* detectado (40P01, "tente de novo"), raros:
 - uma gravação de várias linhas que pega travas de identificador em ordens diferentes;
+- duas trocas de líder cruzadas ao mesmo tempo (DT-25);
 - os casos do risco 3 do E2.01.
 
 ### Contratos
@@ -2120,6 +2126,8 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 | DT-21 | Migration 2: correções sem perda, depois uma guarda que para com a lista de ids das violações do tipo (a) que pedem decisão. | Ponto 2 e DA-8; nada de dado pessoal nos logs |
 | DT-22 | Três PRs: (1) banco neutro; (2) regras no banco, `create-user-admin` e ajuste mínimo do front, publicados juntos; (3) o formulário da UX. | Cada PR vai ao ar sozinho; a janela do PR 2 é de minutos |
 | DT-23 | As massas dos pgTAP existentes passam a seguir as regras, no PR 2. | RN-01 vale para o `postgres` |
+| DT-24 | Texto vazio ou só com espaços é gravado como nulo em todo campo de texto opcional de `members`: a migration 2 corrige o que existe (antes da guarda) e o `a0_` impede que volte. Sem `CHECK` nos campos livres: a carga (E4) grava nulo na transformação. | `''` e nulo dizem o mesmo (DA-8), mas o `''` no CPF viola o `members_cpf_check`; achado na conferência pós-PR 1 |
+| DT-25 | Troca de líder cruzada e simultânea pode terminar em 40P01 ("tente de novo"), sem trava da árvore antes da linha. A tela trata 40P01 como falha técnica com nova tentativa (PR 3). | Um trigger por comando que pegasse a árvore antes da linha serializaria todo PATCH com `leader_id` (o front atual manda o formulário inteiro até o PR 3) e criaria outro 40P01 com a `restore_member`. O caso é raro e nunca cria ciclo. Achado do PR 2 |
 
 ### Riscos (concorrência, escala, segurança)
 1. **Janela do PR 2.** Entre o "Deploy: banco" e o promote, o front antigo monta o e-mail fictício no navegador, e o banco recusa (`email_placeholder`). O cadastro de quem não tem e-mail fica indisponível por minutos, com a mensagem no toast. A edição continua.
@@ -2128,7 +2136,8 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
    - A conta nova tem o e-mail técnico, e a publicação apaga o fictício do cadastro. O login antigo (`get-user-email` + `signInWithPassword` com o e-mail do cadastro) deixaria de funcionar para essas pessoas.
    - Mitigação: a migration 1 confere as funções do E1.04, e a [Implantação](#implantação) exige o PR 3 do E1.04 antes do PR 2 daqui.
 3. **Domínio fictício de terceiros até o E1.06.** Todas as contas novas ficam em `mci12fakemail.com`. Nada é enviado para elas: o provedor de e-mail está desligado (E1.04), e o `createUser` e o `generateLink` não enviam e-mail. O E1.06 troca o domínio de geração e decide se migra as contas antigas.
-4. **`id` próprio na criação da conta.** Se o Auth deixar de aceitar, a função cai no caminho alternativo: conta com id do Auth e procura pelo e-mail técnico com uma RPC da *service role*.
+4. **`id` próprio na criação da conta.** Se o Auth deixar de aceitar ou ignorar o `id`, a função falha fechada (PR 2): desfaz a conta criada e responde 500, sem caminho alternativo. A primeira conta criada em produção depois do deploy confirma (conferência pós-deploy).
+   - Numa corrida da mesma tentativa, a chamada que criou a conta pode cair numa regra e desfazê-la enquanto a outra a reaproveita; a outra recebe um 400 genérico. Raro: o duplo clique já cai na tentativa repetida.
 5. **Conta órfã.** Só sobra se o `deleteUser` do desfazimento falhar. Ela tem e-mail técnico e nenhum cadastro, então a `sign-in` nunca chega a ela. Uma nova tentativa com o mesmo `attemptId` a reaproveita. A reconciliação lista as órfãs.
 6. **Serialização das trocas de líder.** A trava da árvore é única e dura até o *commit*, que inclui o recálculo dos totais (até cerca de 1 s no volume de referência). Trocas de líder simultâneas ficam em fila. Com o volume da igreja (poucas por minuto), é aceitável. O E2.06 pode trocar a subida pelo caminho materializado sem mudar o contrato.
 7. **Isolamento.** As pré-checagens contam com `READ COMMITTED`. Um script em `REPEATABLE READ` que troque líderes em paralelo pode criar um ciclo; a unicidade continua garantida pelos índices.
@@ -2221,6 +2230,12 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 > - `auto` · RN-05 e-mail fictício no cadastro: 4 cadastros (viram vazio na migration 2; as contas continuam).
 > - `b` · RN-08 sem identificador real: os mesmos 4 cadastros (aviso no formulário).
 > - Nenhum repetido, ciclo, pastor com líder, CPF ou e-mail inválido; classificação de letras ok. O PR 1 não está bloqueado.
+>
+> **Resultado em 2026-11-25 (sessão principal, só leitura, com o E1.04, o E2.01 e o E2.02 inteiros em produção).** Nenhuma linha `a` nem `infra` (o sexo vazio de 2026-11-24 foi corrigido):
+> - `auto` · RN-05 e-mail fictício no cadastro: 4 cadastros (viram vazio na migration 2).
+> - `b` · RN-08 sem identificador real: os mesmos 4 cadastros.
+> - Nenhum repetido. O PR 1 e o PR 2 estão liberados; rodar de novo antes do "Deploy: banco" do PR 2.
+
 Só leitura. O usuário roda no SQL Editor de produção (papel `postgres`), antes do "Deploy: banco" do PR 1 e de novo antes do PR 2.
 - A saída traz só o tipo, o problema, o tratamento e os ids, sem nome, e-mail, celular ou CPF.
 - Ela funciona com ou sem as colunas do E2.01, porque lê `deleted_at` por `to_jsonb`.
@@ -2285,7 +2300,7 @@ problems (tipo, problema, tratamento, id) AS (
    WHERE email_n IS NOT NULL AND NOT email_fake AND NOT email_ok
   UNION ALL
   SELECT 'a', 'RN-07 CPF inválido', 'corrigir ou apagar', id FROM k
-   WHERE cpf_d IS NOT NULL AND NOT cpf_valid
+   WHERE cpf !~ '^[[:space:]]*$' AND NOT cpf_valid        -- sem dígitos também conta; vazio é 'auto'
   UNION ALL
   SELECT 'a', 'RN-09 e-mail repetido (não excluídos)', 'deixar num cadastro só', k1.id FROM k k1
    WHERE NOT k1.is_deleted AND k1.email_n IS NOT NULL
@@ -2315,6 +2330,12 @@ problems (tipo, problema, tratamento, id) AS (
   SELECT 'a', 'RN-16 data do batismo sem "Batizado(a)?"', 'apagar a data ou marcar batizado', id FROM k
    WHERE NOT is_baptized AND baptism_date IS NOT NULL
   -- Corrigidos sozinhos pela migration 2 (DA-8)
+  UNION ALL
+  SELECT 'auto', 'Texto vazio ou só com espaços (CPF, e-mail, celular, telefone, endereço etc.)', 'vira vazio (nulo)', m.id
+    FROM public.members m
+   WHERE EXISTS (SELECT 1 FROM unnest(ARRAY[m.email, m.cpf, m.mobile_whatsapp, m.phone, m.instagram, m.avatar_url,
+                                            m.notes, m.street, m.number, m.complement, m.neighborhood, m.city,
+                                            m.state, m.zip_code]) v WHERE v ~ '^[[:space:]]*$')
   UNION ALL
   SELECT 'auto', 'RN-05 e-mail fictício no cadastro', 'vira vazio; a conta continua com ele', id FROM k WHERE email_fake
   UNION ALL
@@ -2392,10 +2413,11 @@ SELECT tipo, problema, tratamento, count(*) AS cadastros, array_agg(id ORDER BY 
 - **Ensaio (`check_member_insert`):** as mesmas recusas do INSERT real, nada gravado e nenhum evento de Auditoria.
 - **`member_descendants_among`:** 42501 sem `edit_member`; nada sobre quem não é visível (Diego para Pedro); inativos incluídos; a própria pessoa fora; mais de 100 ids recusado.
 - **Invariantes:** `private.member_rule_violations()` sem linhas no fim de cada arquivo.
+- **Correções da migration 2 (DA-8, DT-24):** um cadastro com `''` ou só espaços em CPF, celular, telefone, e-mail, Instagram, observações e endereço não para a guarda e fica com nulo nesses campos; o CPF válido com máscara vira só dígitos e o CPF com letras para a guarda (`cpf`); o `a0_` grava nulo para o vazio em todos esses campos, no INSERT e no UPDATE, inclusive pela *service role*; a conferência mostra o vazio como `auto`.
 
 **Concorrência** (`supabase/tests/concurrency/e204_concurrency.sh`, duas ou três conexões e `pg_sleep`, como no E2.01):
 - dois INSERTs com o mesmo CPF: um aceito, o outro com `value_in_use`, sem `23505`;
-- Lúcia → Paulo × Paulo → Lúcia: um aceito, o outro com `leader_cycle`;
+- Lúcia → Paulo × Paulo → Lúcia: um aceito, o outro com `leader_cycle` ou 40P01 (DT-25); nunca os dois aceitos;
 - A → B, B → C e C → A em três conexões: no máximo duas aceitas;
 - restauração de Bruno × cadastro com o celular equivalente;
 - Caio troca o e-mail × cadastro com o e-mail antigo.
@@ -2480,8 +2502,69 @@ Três PRs no `mci-connect`. **Tudo começa depois do E1.04 inteiro, do E2.01 int
    - o domínio fictício não aparece em nenhum lugar do DOM (UX-24).
 7. **Tarefa 10:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
+### Revisão final do passo (tarefa 12)
+2026-11-25, `architect`, sobre o diff acumulado dos PRs #35, #36 e #37 (base `b50308d`). **Veredito: APROVADO.** Nenhum achado bloqueia.
+
+Conferido:
+- **Desenho × implementação:** as duas migrations seguem a Solução técnica, com os desvios do Status. O front segue [Front](#front): regra pura em `src/lib/members/`, `src/lib/dates/sao-paulo.ts` e `src/lib/masks.ts`; gravação no `use-member-save` (fecha o backlog 3 do E2.02; o `MemberForm` caiu de 817 para ~410 linhas); "Carregando…" no "Criar membro" (backlog 5 do E2.02). As três pendências do PR 2 (recusas no campo, celular com máscara ao abrir, "Tem Liderança?" ligado no cadastro novo) foram fechadas.
+- **Segurança:** as funções *definer* novas têm `search_path` e checam a permissão dentro (`member_descendants_among`: `edit_member` e `viewer_sees_member` no alvo e nos candidatos); `_member_values_in_use`, `member_account_email` e `private.member_rule_violations()` sem EXECUTE para `authenticated`; nada novo para `anon`. Na `create-user-admin`: permissão antes de tudo, `attemptId` só UUID v4, a procura da tentativa olha também os excluídos (um `attemptId` igual ao id de um cadastro nunca mexe na conta dele), e a senha só é regravada numa conta órfã com o e-mail técnico do mesmo id. As respostas não trazem dado de outro cadastro.
+- **Concorrência:** unicidade pelos índices, com as travas por valor só para citar todos os campos; ciclo sob a trava única da árvore; 40P01 tratado na tela (DT-25); cadastro idempotente, o que torna seguro o tempo-limite de 20 s do cliente (a nova tentativa repete o `attemptId`; a corrida da mesma tentativa é o risco 4).
+- **Escala:** metas do risco 11 dentro, menos a troca de líder (abaixo). Seletor de líder: uma chamada da RPC por página, sem N+1.
+- **Front:** sem `any` e sem asserção de tipo nos arquivos novos; sem leitura de `members` (só a escrita com `.select("id")`); textos em `src/lib/members/texts.ts`.
+
+Backlog (responsável, prioridade):
+1. `backend-developer`, baixa: o item 8 do backlog do E2.02 **não** foi fechado pelo E2.04. Proposta: no INSERT de `members`, `auth_user_id IS NULL OR auth_user_id = id` (a `create-user-admin` e a carga do E4.08 já usam o id do membro na conta). Migration própria, para não pôr "Deploy: banco" num PR só de front.
+2. E2.06: a troca de líder leva de 39 a 55 ms com 20 mil membros (meta de 20 ms), quase tudo no `trg_refresh_stats_members`, e segura a trava `members:leader-tree` até o *commit*.
+3. `frontend-developer`, baixa: o *placeholder* "Selecione a função" do `MemberRoleField` (E2.02) fora de `texts.ts`; o `save` do `use-member-save` repete a conta do `hasMemberChanges`; o CEP do `MemberAddressSection` usa `replace(/\D/g, "")` em vez de `normalizeDigits`.
+4. Aceitos pelo `ux-designer`: o rodapé do `ResponsiveDialogContent` com `0.75rem` + área segura (o P1 pede `1rem`); o motivo da opção desabilitada anunciado de forma própria só no VoiceOver (nos outros leitores vai no texto da opção). UX-29 (leitor de tela) fica para inspeção manual.
+
 ## Testes
 _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-02, DA-12 | PR 1: `e204_01_functions_cases` (N01–N20, gerado de `member-validation-cases.json`) | ✅ |
+| RN-04, DA-3 | PR 1: `e204_01_functions_cases` (E01–E23) | ✅ |
+| RN-05, DT-18 | PR 1: `e204_01_functions_cases` (domínios iguais ao JSON), `e204_01_structure_grants` | ✅ |
+| RN-06, DA-5 | PR 1: `e204_01_functions_cases` (M01–M13) | ✅ |
+| RN-07 | PR 1: `e204_01_functions_cases` (C01–C13) | ✅ |
+| RN-08 | PR 1: `e204_01_functions_cases` (I01–I12) | ✅ |
+| RN-15, DA-13 | PR 1: `e204_01_functions_cases` (B01–B16: 23/11/2026, 29/02/2000) | ✅ |
+| RN-09, RN-10, DT-07 | PR 1: `e204_01_unique_restore` (9º dígito nos dois sentidos, inativo e casal contam, excluído não conta, celular ilegível fora, dado liberado, restauração de Bruno, `find_deleted_member_matches`, `_member_values_in_use`) | ✅ |
+| RN-13, AQ-4 | PR 1: `e204_01_descendants` (42501 sem `edit_member`, `anon`, Diego para Pedro, inativos, a própria pessoa fora, N1–N8, ciclo antigo, 100/101 ids) | ✅ |
+| RN-09, RN-18 | PR 1: `e204_01_duplicates_guard` (mensagem só com ids e campo, nada criado); `e204_01_member_rule_violations` (as 15 regras) | ✅ |
+| Estrutura e grants | PR 1: `e204_01_structure_grants` | ✅ |
+| Sincronia (DT-17) | PR 1: `src/test/member-validation-cases-sync.test.ts` | ✅ |
+
+PR 1 (2026-11-25, stack local): pgTAP 29 arquivos e 3083 asserções ok; Vitest 98 arquivos e 1264 testes ok; `tsc` e `build` ok (o `lint` tem 3 erros antigos em arquivos fora do PR); Playwright `--workers=1` com 231 ok e 3 falhas de ambiente (UX-19 de `excluidos-membros`, `sign-in-stack:235`, `sign-in.spec.ts:391` oscilante). Volume (`e204_volume.psql`, 20 mil membros, 21 ids): `member_descendants_among` em 2,8 ms (igreja toda) e 14,4 ms (G12), meta de 20 ms; quase todo o custo do G12 é o `viewer_sees_member` por candidato.
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-01, leitura técnica 1 | PR 2: `e204_02_rules_api` (service role e `postgres` recebem as regras; `replica` só `CHECK`s e índices; sem `create_member`, 42501 antes de qualquer regra); `create-user-admin.spec` (403 antes das regras, sem conta) | ✅ |
+| RN-02 a RN-08 | PR 2: `e204_02_rules_api`; `create-user-admin.spec` (`email_placeholder`, `members.email` nulo, conta técnica, gravado normalizado); `cadastro-membro-regras.spec` | ✅ |
+| RN-09, RN-10, DT-07 | PR 2: `e204_02_rules_api`; `e204_concurrency` (CPF, restauração de Bruno, e-mail de Caio); `create-user-admin.spec` (corrida do CPF com uma conta só, dois campos, `value_in_use` antes de `deleted_matches`); `cadastro-membro-regras.spec` (edição com celular em uso) | ✅ |
+| RN-11, RN-12 | PR 2: `e204_02_rules_api` (derivações, chave omitida); `e204_02_insert_check` | ✅ |
+| RN-13, RN-14, DT-08, DT-25 | PR 2: `e204_02_rules_api` (N1 a N8, subida por excluído); `e204_concurrency` (Lúcia × Paulo: `leader_cycle` ou 40P01, nunca os dois; A → B → C → A: no máximo duas) | ✅ |
+| RN-15 a RN-17 | PR 2: `e204_02_rules_api` (datas relativas a `sp_today()`, Fábio, Pedro sem dados sensíveis) | ✅ |
+| RN-19, DA-11 | PR 2: `e204_02_rules_api` (14 pares de ordem, nada gravado); `e204_02_insert_check` (ensaio igual ao INSERT, sem evento, grava `id`) | ✅ |
+| DA-8, DT-24 | PR 2: `e204_02_normalize_corrections` (vazio vira nulo no INSERT e no UPDATE, inclusive pela *service role*; correções da migration; CPF com máscara e com letras; guarda sem dado pessoal; condição `cpf` de `member_rule_violations`) | ✅ |
+| DT-11, DA-10, RN-18 do E2.01 | PR 2: `create-user-admin.spec` (`attemptId` em sequência e em paralelo, `attempt_already_used`, `deleted_account_email` com `matches`); `cadastro-excluido.spec` | ✅ |
+| Estrutura e grants | PR 2: `e204_02_structure_grants` | ✅ |
+
+PR 2 (2026-11-25, stack local): pgTAP 33 arquivos e 3388 asserções ok; concorrência `e204` em 3 execuções (139 PASS cada), `e104` 26, `e201` 71, `e202` 47 (o cenário 3b passou a considerar outros administradores do banco), `e202_migrations` 29; Vitest 1302 ok; `tsc` e `build` ok (`lint` com 3 erros antigos); Playwright `--workers=1` com 235 ok e falhas de ambiente conhecidas (UX-19 de `excluidos-membros`, `sign-in-stack:235` e o axe do tema claro em `sign-in.spec.ts:416`, que oscila igual no commit base). Volume (20 mil membros): PATCH sem troca de líder de 1,2 a 3,2 ms, ensaio 3,4 ms, INSERT 3,3 ms; a troca de líder leva de 39 a 55 ms, quase tudo no recálculo de totais (`trg_refresh_stats_members`), anterior a este passo (E2.06). A `create-user-admin` levou de 90 a 160 ms com o banco quase vazio; não foi medida com 20 mil membros.
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| UX-02 a UX-07, UX-09, UX-18, UX-20, UX-22 a UX-27, UX-30, Tarefa 9 | PR 3: `MemberForm.validation.test.tsx` (85 testes: ordem e grupo, rótulos, Sexo, atributos, tabelas da T3, conferência fora do salvar, dados antigos, e-mail fictício, envio, descartar, `text-foreground`, nenhum texto técnico, PATCH só do que mudou, "Carregando…") | ✅ (também com `TZ=UTC` no UX-20) |
+| UX-08, UX-10, UX-11, UX-12 | PR 3: componente (4 erros, resumo, foco, um caso por código) e `membro-validacoes-cadastro` / `-edicao` (UX-08 e UX-11 pela tela, Elisa) | ✅ |
+| UX-01, UX-02, UX-04, UX-31 | PR 3: `membro-validacoes-cadastro` (360×800 e 1280, medidas, toque entre o texto e o interruptor) | ✅ |
+| UX-06 | PR 3: componente (tabela) e `membro-validacoes-cadastro` (teclado real, cursor depois do 3º dígito) | ✅ |
+| UX-13, UX-14, UX-15, UX-16, UX-17, UX-19, UX-21, UX-25 | PR 3: `membro-validacoes-cadastro` e `-edicao` (massa "QA6 Val"; falta de rede por `route.abort` e chamada pendurada (tempo-limite de 20 s); discípulo desabilitado; sem a AQ-4 por `route` na RPC; André sem dados sensíveis vê só Nome e Nascimento) | ✅ |
+| UX-26 | PR 3: componente e `membro-validacoes-edicao` (clique fora, ✕, Esc, Cancelar; foco em "Continuar editando") | ✅ (clique fora e foco em "Continuar editando": 6 de 6) |
+| UX-27 | PR 3: componente e axe nos dois temas (erros e avisos, sem o botão primário do tema escuro, que é do `--primary`) | ✅ |
+| UX-28 | PR 3: `membro-validacoes-cadastro` (320 px, fonte a 200%) | ✅ (corrigido em `cb2dca5`; 6 de 6) |
+| RN-02 a RN-08, RN-15, RN-16, RN-19 | PR 3: `membro-validacoes-cadastro` (um caso por regra, nada criado; só e-mail, só CPF; batismo apagado) | ✅ |
+| RN-09, RN-10, RN-11, RN-12, RN-13, RN-14, RN-17 | PR 3: `membro-validacoes-cadastro` e `-edicao` (e-mail e CPF em uso, 9º dígito, líder obrigatório, pastor, ciclo, Fábio) | ✅ |
+| Login (`sign-in`) | PR 3: *smoke* no `membro-validacoes-cadastro` (celular recém-cadastrado, senha inicial) | ✅ |
+
+PR 3 (2026-11-25, stack local, após `cb2dca5`): Vitest 114 arquivos e 1699 testes ok; `tsc` e `build` ok (`lint` com os 3 erros antigos); Playwright `--workers=1` com 296 ok, 8 ignorados (já eram), 3 falhas de ambiente (UX-19 de `excluidos-membros:611`, `sign-in-stack:235` e `sign-in.spec.ts:416` claro) e 6 que não rodam por depender do `sign-in-stack:235`; nenhuma falha nova. O UX-02 oscilava por medir durante a animação de entrada do diálogo: agora espera `getAnimations()` (10 de 10). Os specs antigos de e2e foram ajustados ao formulário novo (Sexo em radio, "Líder *", "Salvar alterações", celular com máscara). Axe (UX-27): nada nas mensagens e nos campos deste PR; o botão primário do tema escuro (2,97:1) e os `badge`/`Button` da lista atrás do diálogo vêm do `--primary` global.
