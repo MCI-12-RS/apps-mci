@@ -1,6 +1,6 @@
 # E2.08: Cadastro de células
 
-> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-CEL-14 a P-CEL-23). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-9 e os pontos "definidos pelo architect" DA-1 a DA-12. Ficam para o usuário revisar no PR os padrões P-CEL-01 a P-CEL-23, as DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam (a T9 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). A conferência em produção (tarefa 1) roda antes do PR 2. Falta Testes (QA, na implementação).
+> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-CEL-14 a P-CEL-23). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-9 e os pontos "definidos pelo architect" DA-1 a DA-12. Ficam para o usuário revisar no PR os padrões P-CEL-01 a P-CEL-23, as DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam (a T9 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). A conferência em produção (tarefa 1) roda antes do PR 2. **PR 1 (banco: célula inativa) implementado em 2026-11-25** na branch `feat/E2.08-pr1-celula-inativa` do `mci-connect` (tarefas 2 e 3; migration `20261126120000_e208_01_inactive_cell_reports.sql`), aguardando merge e "Deploy: banco". PRs 2 a 5 por fazer.
 > Slug: `e2-08-cadastro-celulas` · Paridade com o legado: sim (CEL-01 a CEL-04, com a D4). Tem regras novas: a situação ativa ou inativa da célula (o legado não tem), a célula nova sempre ativa, a célula inativa sem relatório novo e o endereço do anfitrião com a máscara do E1.08.
 
 ## Negócio
@@ -2302,7 +2302,20 @@ Cinco PRs no `mci-connect`. **Os de banco começam depois do E2.01 inteiro e do 
 6. **Tarefas 11 e 15:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e208_01_inactive_cell` (IC, 89 testes), a paridade do E2.02 em `database/e202_01_scope` (PS), `concurrency/e208_concurrency.sh` (CC), `concurrency/e208_migrations.sh` (MG) e `volume/e208_volume.psql` (VOL).
+
+**PR 1 (2026-11-25, pista local A, `supabase_db_mci-e104-be` zerado com todas as migrations):**
+- pgTAP inteiro: 43 arquivos, 4182 testes, PASS (4093 de antes + 89 do IC). Sem o trigger novo, 16 testes do IC falham (conferido).
+- CC: os cinco cenários, com as duas ordens na troca de célula e no tema (7 pares, 26 verificações), PASS em duas execuções. Esperas medidas: o segundo espera cerca de 2 s nos cenários 1 a 4 e menos de 0,1 s no 5.
+- MG: a migration roda de novo sem erro e sem mudar a `cells_view` nem os triggers de `cell_reports`.
+- VOL (20 mil membros, 1.500 células, 150 inativas, 100 mil relatórios, 800 mil participações): lançamento com o trigger 12,10 ms e sem ele 12,09 ms (diferença 0,01 ms, meta 1 ms; o `ac_` levou 0,23 ms no `EXPLAIN` frio); PATCH de célula 2,5 ms (meta 20); página da `cells_view` com contagem 13,7 ms (Administrador) e 55,6 ms (G12) (meta 300).
+- `types.ts` regenerado: igual ao da `main` (a view mantém as colunas e os tipos; a função de trigger não aparece na API). `tsc` sem erro.
+- Playwright: PLAYWRIGHT_RESULT.
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01 | IC (Carla, Pedro, Rita, *service role* e `postgres` recebem `cell_inactive`; em `replica` a carga passa) | ✅ |
+| RN-11 (c) | IC (código, mensagem, `cell_id` sem `field`; nada gravado; troca de C2 para C1 inativa recusada para Pedro, *service role* e `postgres`; `cells_view.can_submit_report` falso para 5 pessoas; `my_access().can_submit_some_report` de Carla some e volta; reativada, aceita); PS e IC (a coluna = `is_active AND can_submit_report(id)`, 17 pessoas, antes e depois da reativação); CC 1, 3a, 4; VOL | ✅ (banco) |
+| RN-11 (d), DA-5, DA-6 | IC (tema, mesma célula reenviada, incluir e retirar participantes, Carla grava os participantes do relatório lançado antes da inativação, excluir, restaurar); CC 2, 3b, 5a, 5b | ✅ |
+| RN-14, DA-7 | IC (ordem dos triggers `BEFORE`; Hugo 42501, Diego `not_found_or_deleted` no INSERT e na troca, Fábio `report_submit_not_allowed`; nenhum recebe `cell_inactive`) | ✅ |
+| DT-06, DT-07 | IC (trigger `BEFORE INSERT OR UPDATE OF cell_id`, *definer* com `search_path`, sem EXECUTE para `anon` e `authenticated`; `cells_view` com as mesmas colunas, *security definer*, dona `postgres`, só SELECT para `authenticated`); CC; MG | ✅ |
