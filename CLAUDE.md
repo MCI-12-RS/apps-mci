@@ -275,7 +275,7 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Roles semeadas: Administrador (`is_system`), Líder e Membro. Das permissões novas, as migrations só concedem `view_audit_log`, e só a quem tem `manage_roles`. As demais dependem de configuração na tela de Funções.
 - `events` (auditoria): `occurred_at`, `actor_user_id`, `actor_label`, `action`, `entity`, `entity_id`, `entity_label`, `description`, `changed_fields`, `metadata`, `success`, `error_reason`. Tem só política de SELECT (`view_audit_log`).
 - Confirmar no banco real (E1.01): `male_cells` e `female_cells` existem? `cells.name` foi removida? Qual definição de `cell_reports` / `cell_report_participants` valeu?
-- **Exclusão lógica (E2.01 PR 1):**
+- **Exclusão lógica (E2.01):**
   - `deleted_at` e `deleted_by` (→ `members`) em `members`, `cells` e `cell_reports`. As FKs entre essas tabelas e os participantes são `NO ACTION`: nada é apagado em cascata nem zerado. `role_id` e `auth_user_id` continuam `SET NULL`.
   - Índices parciais `WHERE deleted_at IS NULL` nas listas e o índice único `cell_reports_cell_week_key` (`cell_id`, `week_start(date)`) entre os não excluídos.
   - Views de excluídos (`members_deleted_view`, `cells_deleted_view`, `cell_reports_deleted_view`), só para `manage_roles`; `cell_reports_view.cell_deleted` e `cell_report_participants_view.member_deleted`.
@@ -341,13 +341,15 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
 
 ### Front
-- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries`, `/roles` e `/events` (Auditoria, só com `view_audit_log`). O menu é filtrado por permissão (`AppSidebar.tsx`). Todo usuário logado tem "Editar meus dados". Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
+- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries`, `/roles`, `/events` (Auditoria, só com `view_audit_log`) e as listas de excluídos `/members/deleted`, `/cells/deleted` e `/cell-reports/deleted` (só com `manage_roles`). O menu é filtrado por permissão (`AppSidebar.tsx`). Todo usuário logado tem "Editar meus dados". Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
 - `MemberForm`, tudo só na UI:
   - campos sensíveis escondidos sem `view_sensitive_data`;
   - seletor de função só com `assign_role`, com a role padrão pré-selecionada;
   - bloco ministerial só com `edit_member`;
   - botão "Alterar senha".
-- `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Relatório e participantes ainda são gravados em chamadas separadas.
+- `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Os participantes são gravados pela `set_cell_report_participants` (pela diferença, numa chamada, preservando participante excluído); o relatório ainda vai numa chamada à parte (o E2.11 junta).
+- Exclusão e restauração (E2.01): "Excluir" no menu da linha (`RowActionsMenu`) com `ConfirmDeleteDialog`, bloqueio da exclusão de membro com vínculos (`BlockedActionDialog`), selos (`StatusBadge`), listas de excluídos com restauração, `CellReportSheet` (`?report=<id>`) para relatório de célula excluída e `DeletedMatchesDialog` no cadastro com dados de excluído. Textos em `src/lib/deletion/texts.ts`, erros `app_error` por `parseAppError` (`src/lib/errors.ts`), regras puras em `src/lib/deletion/*`.
+- **Fim forçado da sessão (E2.01 PR 6):** toda recusa 42501 (`QueryCache`/`MutationCache` em `App.tsx` e os hooks de escrita que devolvem o erro classificado) e todo "0 linhas" numa escrita pedem a releitura do próprio cadastro na `members_view` (`src/lib/auth/session-check.ts`, uma por vez); a volta do foco também, no máximo a cada 10 s. Sem linha e sem erro (`shouldEndSession`), o `AuthContext` sai só localmente e o `ProtectedRoute` leva a `/login` com `state: { reason: 'session_ended' }`. O `SIGNED_OUT` não pedido (renovação recusada, outra aba) mostra o mesmo aviso; rede, 5xx e 401 nunca encerram.
 - Login por e-mail, CPF ou celular, só pela `sign-in` (`src/services/auth/sign-in.ts`, `fetch` com tempo-limite de 20 s). O `AuthContext.signIn` devolve um resultado tipado e passa a sessão ao cliente com `setSession`. A regra de identificação da tela fica em `src/lib/auth/identifier.ts` e os textos em `src/lib/auth/session.ts`; a tabela de casos `supabase/tests/fixtures/login-identifier-cases.json` é a mesma do pgTAP, e um teste quebra se as duas regras divergirem.
 - Auditoria (`Events.tsx`): rótulos de falha e bloqueio, segunda linha e painel lidos do `metadata` por *type guard* (`src/lib/audit/auth-events.ts`).
 - Membro sem e-mail recebe um e-mail fictício `<nome>_<hash>@mci12fakemail.com`, porque o Auth exige e-mail. A UI esconde esses e-mails.
@@ -384,6 +386,13 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
 - O trigger de semana atual também barra a carga dos relatórios antigos do legado. Na migração, os triggers são desligados (`session_replication_role = replica`).
 - O índice único da semana (`cell_reports_cell_week_key`) vale mesmo com `session_replication_role = replica`: relatórios do legado duplicados por célula e semana precisam ser tratados antes da carga.
 - Excluir é só pelas RPCs. Um `DELETE` físico falha pelas FKs `NO ACTION`, e um `UPDATE deleted_at` direto (service role) não suspende a conta no Auth.
+- **Exclusão lógica (E2.01):**
+  - toda consulta, view, contagem, trigger de totais e helper novo filtra `deleted_at IS NULL`; as listas de excluídos usam o **mesmo predicado de escopo** da view principal (mudou uma, mude as três: view, view de excluídos e política);
+  - escrita com `.update(…).eq('id', id).select('id')`: sem linha de volta, o registro não existe ou foi excluído ("0 linhas", DT-19); trate como `gone`, nunca como sucesso;
+  - um hook de escrita que **devolve** o erro em vez de lançar não passa pelo `MutationCache`: chame `requestSessionCheck()` no 42501 e no "0 linhas", como `use-dialog-write.ts`, senão a sessão de um excluído não termina por ali;
+  - a `_del_suspend_access`/`_del_resume_access` escrevem em `auth.users`, `auth.sessions` e `auth.refresh_tokens` (DT-13, risco 1 do spec). Se o Supabase mudar essas tabelas, a exclusão de membro com conta falha inteira; o plano B está no spec;
+  - entidade nova com exclusão lógica segue o molde de "Pontos de extensão" do spec E2.01 (colunas e `CHECK`, índices parciais, `delete_*`/`restore_*` com `_del_raise`, view de excluídos só para `manage_roles`);
+  - participantes de relatório **não** têm exclusão lógica: a `set_cell_report_participants` apaga e insere pela diferença (a política de DELETE de participantes fica de propósito).
 - `gender` usa 'M'/'F', mas as funções de stats também aceitam 'Masculino'/'Feminino'. Padronize em 'M'/'F'. Células de líder sem gênero ficam fora de `total_cells`.
 - `meeting_day` é salvo como 'Segunda', 'Terça'…. A lista de dias fica só em `src/lib/cells/weekdays.ts`, espelho de `public.weekday_index`; não crie outra.
 - O `PaginatedSelect` tem contornos para funcionar dentro do Dialog do Radix (Esc, blur, toque, `onOptionHover`), cobertos por testes. Rode esses testes ao atualizar o react-select ou o Radix.
@@ -468,6 +477,6 @@ Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
 - As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
 - A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
-- Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e regravação dos participantes do relatório.
+- Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e a gravação do relatório com os participantes (duas chamadas até o E2.11; a regravação dos participantes já é atômica).
 - A Auditoria lê só os 500 eventos mais recentes, sem paginação, e os eventos de falha e de bloqueio de login não têm retenção definida (risco 5 do E1.04, decisão do PO pendente).
 - No tema escuro, o `--primary` não tem contraste suficiente com o texto do botão (2,97:1, achado do axe no E1.04). A linha da Auditoria não abre o painel pelo teclado.

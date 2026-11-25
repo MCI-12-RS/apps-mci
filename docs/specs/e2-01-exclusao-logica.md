@@ -3,7 +3,8 @@
 > Status: em implementação. Negócio, Experiência (UX), Solução técnica e Tarefas escritos em 2026-11-23 (DA-1 a DA-10 para revisão).
 > - PR 1 (banco) em produção (2026-11-24, mci-connect#19): tarefas 1 a 5 concluídas. A conferência em produção (14 blocos, só leitura) bateu em 2026-11-24.
 > - PRs 2 a 4 em produção (2026-11-24, mci-connect#20, #21 e #22): tarefas 6 a 16 concluídas.
-> - Faltam o PR 5 (tarefas 17 a 20), o PR 6 (tarefas 21 a 23) e a tarefa 24. O PR 6 fica reduzido e entra depois do PR 2 do E1.04 (ver Tarefas).
+> - PR 5 em produção (2026-11-24, mci-connect#23): tarefas 17 a 20 concluídas.
+> - PR 6 (tarefas 21 a 23, encerramento da sessão) implementado e revisado em 2026-11-25 (mci-connect#28); aguarda merge e promote. Tarefa 24 (revisão final dos 6 PRs): ver "Revisão final" no fim da Solução técnica.
 > - **E1.04 (2026-11-25):** PRs 1, 1b e 2 em produção; o PR 3 remove a `get-user-email` (DT-14 encerrada). O PR 6 daqui fica só com o encerramento da sessão (T21 e T23 ajustadas).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
@@ -2058,6 +2059,22 @@ Cada cenário termina num estado válido, com a mensagem amigável ou 40P01 nos 
 - a exclusão de um membro com a sessão dele aberta em outro contexto (UX-36);
 - o modo *offline*, que não encerra a sessão.
 
+### Revisão final (tarefa 24, 2026-11-25)
+**Veredito: APROVADO.** Diff acumulado de mci-connect#19 a #23 e do PR 6 (`bef0877..feat/E2.01-pr6-encerrar-sessao`).
+- **Banco:** as 37 funções `SECURITY DEFINER` das migrations `e201_*` têm `SET search_path`; nenhuma função do E2.01 tem EXECUTE para `anon`, e as `_del_*` não têm para `authenticated` (conferido no catálogo da stack local). Sem política de DELETE em `members`, `cells` e `cell_reports`; DELETE só em participantes (de propósito, pela `set_cell_report_participants`). Escrita no Auth concentrada nas duas `_del_*_access`.
+- **Front:** sem `any` nem `as Tipo` nos arquivos do passo; `members` só é escrito com `.select('id')` e lido pela `members_view`; exclusão e restauração só por RPC; textos em `src/lib/deletion/texts.ts` e `src/lib/auth/session.ts`; regras puras em `src/lib/`.
+- **PR 6:** um canal sem React (`session-check.ts`) liga o cache do TanStack e os hooks ao `AuthContext`, com uma releitura por vez e o aviso ligado antes de a sessão sumir (sem corrida com o `ProtectedRoute`).
+
+**Backlog (não bloqueia o passo):**
+| # | O quê | Onde fecha |
+|---|---|---|
+| 1 | Unicidade de e-mail, celular e CPF só conferida antes de gravar (risco 5): uma corrida rara entre restauração e cadastro duplica | E2.04 |
+| 2 | Relatório e participantes em duas chamadas do cliente | E2.11 |
+| 3 | Deadlocks residuais nos totais (risco 3) e custo do recálculo na subárvore (risco 4) | E2.06 |
+| 4 | Escrita nas tabelas do Auth (risco 1): uma mudança do GoTrue quebra a exclusão de quem tem conta (falha inteira, sem meio-termo). O pgTAP e o E2E de acesso pegam | monitorar a cada atualização do Supabase |
+| 5 | A `change-member-password` não recusa alvo excluído (a senha trocada seria sobrescrita na restauração) | E2.03 |
+| 6 | 42501 por falta de permissão (não por exclusão) também gera uma releitura leve do próprio cadastro; o 403 da `create-user-admin` não gera, e o fim fica para a próxima leitura ou volta do foco | aceito |
+
 ## Tarefas
 _Seção do `architect`._
 
@@ -2170,3 +2187,20 @@ _Seção do `qa`._
 
 - **Resultados:** `npm test` 681/681 (71 arquivos); `npm run build` ok; `npm run lint` 15 erros e 8 avisos, igual à base; Playwright completo `--workers=1`: 84 passaram, 5 pulados (dashboard e ministérios, que pedem outras variáveis; fora do PR).
 - **Não verificado:** administrador com escopo restrito (DA-8, "fora do escopo" pela tela); produção.
+
+### PR 6: login e sessão (tarefa 23)
+- **Stack local:** `mci-e104-be` (API 57321) com as migrations até `20261125120000`; a `sign-in` servida pelo *edge runtime* dela (cópia idêntica à da branch). Foi preciso criar o Administrador de teste com todas as permissões e a função "Membro" com o id que o `sign-in-stack.spec.ts` espera. `--workers=1`.
+- **Vitest (dev, tarefa 21):** `session.test.ts`, `session-check.test.ts` e `AuthContext.test.tsx` cobrem `shouldEndSession`, o disparo único, o intervalo de 10 s e o `SIGNED_OUT` não pedido; sem lacuna encontrada.
+- **Playwright:** `e2e/acesso-excluido.spec.ts` (11, pelo login real e dois contextos do navegador).
+
+| RN / UX / critério | Teste | Resultado |
+|---|---|---|
+| RN-14: e-mail, CPF e celular de excluído dão 401 com o mesmo corpo do cadastro inexistente e da senha errada | `acesso-excluido.spec.ts` | passou |
+| UX-35: mesma mensagem, `role="alert"`, identificação mantida, senha limpa com foco, sem "excluído" na tela | `acesso-excluido.spec.ts` | passou |
+| RN-14: `login_failed` com `metadata.reason = member_deleted` ("Cadastro excluído"); login direto no Auth sem revelar nada nem contar tentativa | `acesso-excluido.spec.ts` | passou |
+| RN-14, restauração: depois de `restore_member`, entra de novo (e-mail, CPF, celular) com a mesma senha; excluído de novo, recusa | `acesso-excluido.spec.ts` | passou |
+| UX-36 (a): próxima leitura (Dashboard) e próxima gravação (Salvar os próprios dados) recusadas levam a `/login` com o aviso (`role="status"`) | `acesso-excluido.spec.ts` | passou |
+| UX-36 (b): volta do foco encerra a sessão; (c) offline e 5xx não encerram, e a releitura seguinte encerra; (d) Sair sem aviso | `acesso-excluido.spec.ts` | passou |
+
+- **Resultados:** `npm test` 1030/1030 (84 arquivos); `npm run build` ok; `npm run lint` 12 erros e 8 avisos, igual à base; `acesso-excluido.spec.ts` 11/11; regressão `login`, `sign-in`, `exclusao-membros`, `cadastro-excluido`, `exclusao-celulas-relatorios`: passou.
+- **Não verificado:** `sign-in-stack.spec.ts` RN-14 "grant_type=password recusado" falha só nesta stack (provedor de e-mail do Auth ligado no `config.toml` dela); `excluidos-membros.spec.ts` UX-19 (AD) precisa de mais de 10 membros com "a" no banco e a stack tinha 1; ambos são ambiente, não o PR. Produção.
