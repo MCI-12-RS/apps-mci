@@ -1,6 +1,6 @@
 # E2.02: Perfis e escopo de visibilidade e escrita
 
-> Status: **PR 1 (banco, tarefas 1 a 5) em produção em 2026-11-25** (mci-connect#29, merge `ecbbee4`, "Deploy: banco"; conferência da tarefa 1 sem parada). **PR 2 (acesso, menu e rotas, tarefas 6 a 8) em produção em 2026-11-25** (mci-connect#30, squash `c70e66b`, promote). **PR 3 (tela de Funções, tarefas 9 a 11) em produção em 2026-11-25** (mci-connect#31, squash `b4e148d`, promote); o risco 7 está fechado. **PR 4 (Membros, tarefas 12 a 14) em produção em 2026-11-25 (mci-connect#32, squash `26c5b4d`, promote). **PR 5 (Células, Relatórios, Dashboard e Ministérios, tarefas 15 a 17) em produção em 2026-11-25 (mci-connect#33, squash `35d6782`, promote). PR 6 pendente. Desenho: Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A seção Testes cobre os PRs 1 a 5.
+> Status: **PR 1 (banco, tarefas 1 a 5) em produção em 2026-11-25** (mci-connect#29, merge `ecbbee4`, "Deploy: banco"; conferência da tarefa 1 sem parada). **PR 2 (acesso, menu e rotas, tarefas 6 a 8) em produção em 2026-11-25** (mci-connect#30, squash `c70e66b`, promote). **PR 3 (tela de Funções, tarefas 9 a 11) em produção em 2026-11-25** (mci-connect#31, squash `b4e148d`, promote); o risco 7 está fechado. **PR 4 (Membros, tarefas 12 a 14) em produção em 2026-11-25 (mci-connect#32, squash `26c5b4d`, promote). **PR 5 (Células, Relatórios, Dashboard e Ministérios, tarefas 15 a 17) em produção em 2026-11-25 (mci-connect#33, squash `35d6782`, promote). **PR 6 (fechar funções, tarefas 18 e 19) em produção em 2026-11-25** (mci-connect#34, squash `b50308d`, "Deploy: banco"; smoke de produção só leitura ok: `roles`/`role_permissions` só SELECT, `role_id` de outros nula na view, 42501 na leitura direta, simulação como Líder). **Revisão final do passo (tarefa 20) em 2026-11-25: APROVADO**, com o backlog listado em [Revisão final](#revisão-final-do-passo-tarefa-20). Desenho: Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A seção Testes cobre os PRs 1 a 6.
 > Slug: `e2-02-perfis-escopo` · Paridade com o legado: sim (AUT-02, AUT-03, AUT-04, AUT-05, AUT-07, CEL-04 e a parte "quem lança" da REL-11), com regras novas (D3, funções semeadas, função padrão, exclusão de funções e privacidade das consultas de permissão).
 
 ## Negócio
@@ -2389,6 +2389,28 @@ Seis PRs no `mci-connect`. **Tudo começa depois de todo o E2.01 em produção.*
 10. **Tarefa 18:** depois do deploy, nenhuma tela quebra; `select * from roles` como Pedro volta vazio; a `role_id` de outra pessoa não sai para Pedro, nem pela view nem pela tabela.
 11. **Tarefas 7, 10, 13 e 16:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
+### Revisão final do passo (tarefa 20)
+2026-11-25, `architect`, sobre o diff acumulado dos PRs #29 a #34 (base `c6b9d5e`). **Veredito: APROVADO.** Nenhum achado bloqueia; os itens abaixo vão para o backlog.
+
+Conferido:
+- **Desenho × implementação:** as cinco migrations seguem a Solução técnica; o RN-23 fecha no PR 6 (DA-9, DT-11). O `restore_member` devolve o nome da função só a quem tem `manage_roles`, e quem atribui funções pode tirar a função de alguém (RN-18, "tirar"), o que está de acordo.
+- **Segurança (catálogo da stack local, depois do PR 6):** nenhuma função *definer* do `public` sem `search_path`; nenhuma função do `public` com EXECUTE para `anon`; todas as tabelas com RLS; nenhuma política de INSERT ou UPDATE sem `WITH CHECK`; a única política de DELETE é a de participantes (de propósito, E2.01); as 8 views são *definer*, com `security_barrier` e dona `postgres`; nenhuma função INVOKER lê `roles`, `role_permissions` ou `members.role_id`. Escalada pela função: `can_assign_role` exige cobrir a atual e a nova, a `save_role` só acrescenta o que quem salva tem (DA-3), e a `create-user-admin` ensaia o cadastro antes de criar a conta.
+- **Concorrência:** os 4 cenários do `e202_concurrency.sh`; padrão exata por constraint trigger adiado; trava consultiva no último administrador.
+- **Escala:** metas do risco 8 dentro (o lançamento com 30 participantes caiu para ~110 ms no `4eca02e`).
+- **Front:** sem `any`, sem asserção de tipo nos arquivos novos, sem `isSystem`, sem leitura direta de `roles`, `role_permissions` ou `members` (só as escritas com `.select("id")`); regras em `src/lib/access/`.
+
+Backlog (responsável, prioridade):
+1. `frontend-developer` + `ux-designer`, média: tokens globais de tema em `src/index.css` (`--primary` no escuro, `--accent`, `--secondary`, `--muted-foreground` sobre `--muted`). Passo próprio de acessibilidade, porque muda todas as telas.
+2. `frontend-developer`, média: formulário de relatório no `ResponsiveDialogContent` (P1) em Células, Relatórios e Dashboard. Junto do E2.11, que reescreve o `CellReportForm`.
+3. `frontend-developer`, média: a gravação do `MemberForm` (826 linhas) para um hook, em PR de refatoração separado, antes do próximo passo que mexer no formulário (E2.03).
+4. `frontend-developer`, baixa: `button-name` no seletor de UF do `CellForm`. Correção avulsa.
+5. `product-owner` → `frontend-developer`, baixa: texto que explique "Criar membro" desabilitado enquanto as funções carregam.
+6. `calculateCellDate`: E2.11.
+7. `backend-developer`, baixa (anterior ao E2.02): `events` tem INSERT, UPDATE, DELETE e TRUNCATE para `anon` e `authenticated` (sem política, o RLS barra o DML, e o PostgREST não expõe TRUNCATE), e `anon` tem SELECT, REFERENCES e TRIGGER nas tabelas de células e relatórios (sem política para `anon`). Revogar por defesa em profundidade.
+8. `backend-developer`, baixa (anterior ao E2.02): o INSERT direto em `members` por quem tem "Criar Membro" aceita qualquer `auth_user_id` que não seja o próprio. Como o cadastro público está desligado, só uma conta de acesso sem cadastro poderia ser vinculada, com uma função que quem cadastra cobre. Restringir o vínculo à `create-user-admin`.
+9. `backend-developer`, baixa: `_assert_admin_remains(uuid)` aparece como RPC para `authenticated`; só age para quem cobre a Administrador. Pode virar interna se o trigger de `members` passar a chamá-la por um *definer*.
+10. `qa`, baixa: `e202_migrations.sh` usa por padrão o container `supabase_db_mci-connect` (passar `PSQL`); `supabase test db` sem `--db-url` não acha a stack `mci-e104-be`; UX-14 de `sign-in.spec.ts:263` oscila por arredondamento (43,99997 px).
+
 ## Testes
 _Seção do `qa`._
 
@@ -2402,10 +2424,10 @@ Arquivos (em `mci-connect/supabase/tests/`): pgTAP `database/e202_01_scope`, `e2
 | 12, 13, 14, 15 | `e202_04` (célula, lançar, editar e excluir relatório, participantes, DA-5), `e202_01` (excluídos) | passa |
 | 16, 17, 22 | `e202_05`, `e202_migrations.sh` (Recepção, `view_members`, permissão nova no banco de rascunho) | passa |
 | 18, 19, 20, 21 | `e202_02` (`role_options`), `e202_03`, `e202_05` (`save_role`, `delete_role`), `e202_concurrency.sh` 1 a 3 | passa |
-| 23 | `e202_02` (EXECUTE, obsoletas, `my_access`, `role_options`); "depois do PR 6" fica fora | passa |
+| 23 | `e202_02` (EXECUTE, obsoletas, `my_access`, `role_options`); depois do PR 6: `e202_07_close_roles` | passa |
 | Grants e estrutura | `e202_02`; migrations de novo sem erro e duas `is_system` em `e202_migrations.sh` | passa |
 | Concorrência (4 cenários) | `e202_concurrency.sh` | passa |
-| Volume (risco 8) | `e202_volume.psql` | 1 meta fora |
+| Volume (risco 8) | `e202_volume.psql` | passa (o lançamento com 30 participantes ficou fora na 1ª medição e caiu para ~110 ms com o `4eca02e`, ainda no PR 1) |
 
 Resultados do PR 1:
 - `supabase test db`: 22 arquivos, 2.604 testes, passa (os do E1.04, E1.08 e E2.01 foram atualizados para o escopo novo, as funções novas e as colunas novas das views).
@@ -2463,3 +2485,10 @@ Resultados do PR 5 (2026-11-25, mci-connect#33, tarefa 17):
 - axe (10 estados, 320, 360 e 1280 px, claro e escuro): no claro, sem violações depois do ajuste; no escuro, resta só o `--primary` do botão (token global, fora do PR). Fora do PR e já na `main`: `button-name` no seletor de UF do `CellForm`.
 - Revisão de UI (tarefa 16): AJUSTES NECESSÁRIOS pelo contraste do selo "Meu Ministério" (`secondary`, 2,97:1 no claro), mais 2 sugestões no estado vazio de Ministérios. Aplicados em `826accb` (selo `outline`), conferidos pelo `code-reviewer` e pelo axe.
 - Não verificado: zoom de 200% (UX-31), leitor de tela (UX-32) e o UX-13 da conta X pela tela (ela não faz login pela `sign-in`; fica no Vitest).
+
+Resultados do PR 6 (2026-11-25, mci-connect#34, tarefas 18 e 19):
+- Banco: migration `20261125200000_e202_05_close_roles.sql`; pgTAP novo `e202_07_close_roles` (78: privilégios e políticas das duas tabelas; Pedro com 0 linhas e 42501 em INSERT, UPDATE, DELETE e TRUNCATE; Rita, Gil e Vera leem; `select role_id from members`, filtro e `RETURNING role_id` dão 42501 até para a Administrador; `members_view.role_id` nula para Pedro e Vera em outra pessoa, preenchida no próprio cadastro e para Ana, Gil e Rita; UPDATE de `role_id` com `RETURNING id`, INSERT sem RETURNING, `check_member_insert`, `roles_view`, `my_access`, `role_options`, `save_role` e `delete_role` continuam; nenhuma função INVOKER lê as tabelas ou a coluna). Ajustados `e108_pr5_members_column_lock` (`role_id` numa categoria própria), `e202_05_roles` (escrita direta só como `service_role`) e `e201_03`.
+- `supabase test db` (pelo `psql` do container): 23 arquivos, 2.688 testes, passa. `e202_migrations.sh`: passa (as cinco migrations duas vezes, sem erro).
+- Vitest 97 arquivos, 1.259 testes; `tsc`, `npm run build`: passam. `npm run lint`: 3 erros e 8 avisos, os mesmos da `main`.
+- Playwright (`--workers=1`): `e2e/funcoes-fechadas.spec.ts` (4, novo, com a sessão de um Líder pela API) passa; suíte inteira 231 passam, 8 puladas, 6 não rodaram e 3 falhas, nenhuma do PR: as 2 de ambiente já conhecidas e a UX-14 de `sign-in.spec.ts:263` (43,99997 px, intermitente).
+- Não verificado: o *smoke* em produção (sem conta de teste com cadastro em produção). Depois do "Deploy: banco", o usuário roda o SQL só de leitura do relatório do `architect`; o login real de um Líder, o menu, a tela de Funções e o cadastro pela tela ficam para a primeira sessão de uso.

@@ -269,10 +269,11 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `meeting_time`, endereço inline e `is_active`.
 - `cell_reports`: `cell_id`, `date`, `time`, `was_held`, `reason_not_held`, `theme`, `observations`, `visitors` (lista de nomes) e `offering`.
 - `cell_report_participants`: `report_id`, `member_id`.
-- `roles` (`is_system`; `is_default`, com no máximo uma role padrão) e `role_permissions`, com permissões do enum `permission_action` (24 valores):
+- `roles` (`is_system`, no máximo uma, por `roles_single_system_idx`; `is_default`, **exatamente uma** padrão, conferida no *commit* pelo constraint trigger `zz_roles_exactly_one_default`) e `role_permissions`, com permissões do enum `permission_action` (24 valores):
   - Originais: `view_dashboard`, `view_members`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `manage_roles`, `view_roles`, `view_all_church`, `view_own_ministry`, `edit_own_data`.
   - Vindas do merge da `ai`: `view_own_reports`, `view_all_reports`, `submit_own_cell_report`, `submit_any_visible_report`, `assign_role`, `view_sensitive_data`, `change_member_password`, `view_own_ministry_dashboard`, `edit_cell_report`, `delete_cell_report`, `view_audit_log`.
-  - Roles semeadas: Administrador (`is_system`), Líder e Membro. Das permissões novas, as migrations só concedem `view_audit_log`, e só a quem tem `manage_roles`. As demais dependem de configuração na tela de Funções.
+  - **Aposentadas (E2.02, RN-22):** `view_members` e `view_own_ministry_dashboard` ficam no enum, mas não liberam nada, não aparecem na tela e são recusadas pela `save_role` (`permission_retired`). A lista das que valem é `active_permissions()`.
+  - Funções semeadas (E2.02, RN-16): **Administrador** (`is_system`: todas as permissões ativas, inclusive as criadas depois, por `role_effective_permissions`; não pode ser editada, excluída nem ser a padrão), **Líder** (o ministério: `view_own_ministry`, criar, editar e excluir membros e células, editar e excluir relatórios; sem `view_roles`, `assign_role` e `view_sensitive_data`) e **Membro** (padrão: `view_own_ministry`, `edit_own_data`, `submit_own_cell_report`). A tabela completa está na RN-16 do spec E2.02.
 - `events` (auditoria): `occurred_at`, `actor_user_id`, `actor_label`, `action`, `entity`, `entity_id`, `entity_label`, `description`, `changed_fields`, `metadata`, `success`, `error_reason`. Tem só política de SELECT (`view_audit_log`).
 - Confirmar no banco real (E1.01): `male_cells` e `female_cells` existem? `cells.name` foi removida? Qual definição de `cell_reports` / `cell_report_participants` valeu?
 - **Exclusão lógica (E2.01):**
@@ -307,46 +308,49 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - `total_disciples`: descendentes ativos.
   - `male_cells` / `female_cells`: células ativas lideradas na subárvore, separadas pelo gênero do líder.
   - `total_cells = male_cells + female_cells`.
-- Funções usadas no RLS:
-  - `user_has_permission(uid, perm)`.
-  - `is_admin`: quem tem `manage_roles`.
-  - `get_ministry_root`: o ancestral com `g12_level = 1`.
-  - `is_in_same_ministry` (v2): o mesmo G12, incluindo o cônjuge do G12 e a subárvore dele.
-  - `is_leader_of_visible_member`: ainda existe, mas a política de SELECT de `members` não a usa mais (E1.13). O nome de quem está fora do escopo vem de `member_names`.
-  - `can_manage_own_cell`: é líder ou timóteo da célula.
+- **Escopo (E2.02)**, pela árvore real de `leader_id`, nunca por `g12_level`. Detalhes em "Solução técnica" do spec `docs/specs/e2-02-perfis-escopo.md`.
+  - Âncoras (`_viewer_scope_anchors`, interna): quem consulta, o cônjuge, o G12 (logo abaixo do topo da cadeia) e o cônjuge do G12. O escopo é as âncoras e toda a descendência delas; pastores e quem está sem liderança são o próprio topo (sem G12).
+  - Duas formas, com teste de equivalência: a descida em conjunto `viewer_ministry_member_ids()` (views) e a subida por id `viewer_scope_contains_any(ids)` (políticas e triggers). Funções de linha: `viewer_sees_member`, `viewer_sees_cell`, `viewer_sees_cell_people`, `cell_in_viewer_ministry`, `viewer_is_cell_person`, `can_submit_report(cell_id)`. Todas respondem só sobre quem está logado e voltam vazias ou falsas sem permissão de escopo (DT-28).
+  - Permissões: `viewer_has(perm)` e `viewer_permissions()` aplicam o atalho da Administrador (`is_system`) e ignoram cadastro excluído; `viewer_covers_role(role)` e `can_assign_role(role)` (RN-18: atribui funções e tem todas as permissões da função); `default_role_id()`.
+  - `user_has_permission`, `is_admin`, `role_effective_permissions`, `viewer_permissions` e `_viewer_scope_anchors` não têm EXECUTE para `authenticated` (só `service_role`); com usuário logado, as duas primeiras respondem só sobre ele. `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member` e `can_manage_own_cell` foram **removidas** (E2.02 PR 1).
+- Escrita com escopo (E2.02): `enforce_member_write_rules` (função: RN-18, RN-19, RN-21 com `_assert_admin_remains`), `ac_enforce_member_scope` (pessoas escolhidas visíveis; pastor e sem liderança só para quem vê a igreja toda), `zz_enforce_member_visible_after` (AFTER: o cadastro continua visível; roda depois do `sync_spouse_relationship_trigger` pela ordem alfabética), e os triggers de escopo de célula, relatório e participantes. `check_member_insert(jsonb)` ensaia o cadastro sem gravar (usada pela `create-user-admin`). Funções só por `save_role` e `delete_role` (*definer*, `manage_roles`; a troca da padrão é atômica; só se acrescenta permissão que quem salva tem, DA-3), com os triggers `aa_protect_roles` e `aa_protect_role_permissions`.
 - Leitura pelo front (E1.08), sempre por views ou RPCs:
   - Views *security definer* cujo `WHERE` espelha a política de SELECT da tabela: `members_view` (com a máscara de dados sensíveis), `cells_view`, `cell_reports_view` e `cell_report_participants_view`. Têm colunas calculadas (nomes, G12 da célula, último relatório, contagens) e `search_text` sem acento.
-  - RPCs do dashboard (`dashboard_summary(_at)`, `dashboard_cells_by_type`, `dashboard_g12_ranking`): `SECURITY INVOKER`, leem só das views e herdam o escopo. `_dashboard_assert_access` devolve 42501 sem `view_dashboard` nem `view_own_ministry_dashboard`.
-  - `ministry_tree_nodes(_parent_ids)`: `SECURITY INVOKER` sobre a `members_view`; devolve um nível da árvore de casais, com as contagens, numa chamada só.
+  - RPCs do dashboard (`dashboard_summary(_at)`, `dashboard_cells_by_type`, `dashboard_g12_ranking`): `SECURITY INVOKER`, leem só das views e herdam o escopo. `_dashboard_assert_access` devolve 42501 sem `view_dashboard`.
+  - `ministry_tree_nodes(_parent_ids)`: `SECURITY INVOKER` sobre a `members_view`; devolve um nível da árvore de casais, com as contagens, numa chamada só. As raízes são os pastores para quem tem `view_all_church` e, para os demais, `viewer_tree_roots()`: o casal G12 de quem consulta ou, sem G12, o próprio casal (DA-6 do E2.02).
+  - Acesso de quem está logado (E2.02): `my_access()` (uma linha: função, permissões efetivas, alcance, `can_create_member`, `can_assign_roles`, `can_submit_some_report`), `role_options(_member_id)` (as funções que quem chama pode atribuir e a atual, só para quem atribui; RN-23) e a `roles_view` (*security definer*, para a tela de Funções, com `members_count`).
   - Funções de escopo sobre a sessão atual: `viewer_member_id`, `viewer_has`, `viewer_ministry_member_ids`; utilitários `sp_today`, `week_start`, `weekday_index`, `search_normalize`; nomes de referência por `member_names`.
-- O que cada permissão libera:
-  - `view_members` e `view_all_church`: veem a igreja inteira.
-  - `view_own_ministry`: vê só o próprio ministério (mesmo G12).
-  - `edit_own_data`: edita o próprio cadastro e as células/relatórios em que é líder ou timóteo.
-  - Relatórios:
-    - inserir: `edit_cell` ou `submit_any_visible_report` (em qualquer célula, sem checar visibilidade), ou `submit_own_cell_report` na própria célula;
-    - editar: `edit_cell_report`; excluir: `delete_cell_report`. Ambos sem escopo.
+- O que cada permissão libera (E2.02):
+  - `view_all_church`: a igreja inteira. `view_own_ministry`: o escopo do ministério. Sem as duas: só o próprio cadastro, as células em que a pessoa é líder, timóteo ou anfitrião e os relatórios delas.
+  - `view_all_reports` / `view_own_reports`: só relatórios (da igreja ou do escopo); não liberam Membros nem Células.
+  - `edit_own_data`: só os dados pessoais do próprio cadastro. Não dá mais direito de editar célula nem de lançar relatório.
+  - Toda escrita exige ver o registro antes e depois e ver as pessoas escolhidas (RN-09); quem vê só o ministério não marca pastor nem sem liderança.
+  - Relatórios: lançar com `can_submit_report` (`submit_own_cell_report` para líder, timóteo ou anfitrião da célula; `edit_cell` ou `submit_any_visible_report` nas células visíveis); editar com `edit_cell_report` e excluir com `delete_cell_report`, só nos visíveis.
+  - Função de alguém: `assign_role` ou `manage_roles`, cobrindo a atual e a nova; ninguém muda a própria. Quem não atribui cadastra com a padrão, se a cobrir.
   - `view_sensitive_data`: imposta na `members_view` e travada na tabela. `authenticated` só tem SELECT por coluna nas colunas não sensíveis de `members`, e `anon` não lê a tabela (E1.08 PR 5).
-  - `view_own_ministry_dashboard`: libera as RPCs do dashboard, como `view_dashboard`. O escopo dos números vem das permissões de leitura; o selo "Meu Ministério" é só da UI.
-- No front, `hasPermission` retorna `true` para tudo quando a role é `is_system`. O RLS **não** tem esse atalho.
+  - `view_roles` ou `manage_roles`: leem `roles` e `role_permissions` (E2.02 PR 6, DA-9). A `role_id` de outra pessoa sai na `members_view` só para quem tem `assign_role` ou `manage_roles`; a própria, sempre.
+- O atalho da Administrador está **no banco** (`is_system` recebe todas as permissões ativas). O front não tem mais `isSystem`: `hasPermission` lê as permissões efetivas que vêm da `my_access()`.
 
 ### Edge Functions
-- `create-user-admin`: exige JWT e `create_member`, valida a função atribuída, cria o usuário no Auth (com service role) e grava o membro com a sessão de quem chama (o RLS vale e a auditoria registra o autor). Devolve só o `id`. É usada no cadastro de membro.
+- `create-user-admin`: exige JWT, ensaia o cadastro no banco com a sessão de quem chama (`check_member_insert`: `create_member`, escopo, pastor e sem liderança, função; nada gravado) **antes** de criar a conta, cria o usuário no Auth (com service role) e grava o membro com a sessão de quem chama (o RLS e os triggers valem e a auditoria registra o autor). Se a gravação falha, apaga a conta criada. Recusas: 403 no 42501 e 400 com `{ error, code, field? }` nas regras. Devolve só o `id`. É usada no cadastro de membro.
   - Antes de criar a conta, procura cadastros excluídos com o mesmo e-mail, celular ou CPF (`find_deleted_member_matches`, com a sessão de quem chama) e responde 409: `deleted_account_email` (o e-mail é login de um excluído; nunca cria) ou `deleted_matches` (cria só com `confirmDeletedMatches: true`). E2.01 PR 5.
 - `sign-in` (E1.04): o **único** caminho de login. `verify_jwt = false` (a tela chama só com a chave pública). Corpo `{ identifier, password }`; respostas 200 `{ result: 'ok', session }` (só os tokens), 400 `empty_fields`, 401 `invalid_credentials` (corpo único para toda falha, piso de 700 ms), 429 `locked` com `retry_after_minutes` e `Retry-After`, 500 `server_error`.
   - A origem vem só do `CF-Connecting-IP`; sem ele, fora da stack local, 500 (falha fechada).
   - Emite a sessão com `generateLink(magiclink)` + `POST /auth/v1/verify`, com a chave secreta nova (`SUPABASE_SECRET_KEYS`, obrigatória em produção) e `Sb-Forwarded-For` (o limite de `/verify` é por pessoa: `security_sb_forwarded_for_enabled = true`, `rate_limit_verify = 150`).
   - Logs só com o resultado, o tempo e um código interno.
 - A `get-user-email` foi removida no E1.04 PR 3 e é apagada do projeto a cada "Deploy: banco" (`EDGE_FUNCTIONS_REMOVED`).
-- `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo.
+- `change-member-password`: valida o JWT e checa `change_member_password` ou `is_admin` antes de usar a Admin API, e registra em `events`. Não checa escopo nem o perfil do alvo. Chama `user_has_permission`/`is_admin` com a service role (que ainda tem EXECUTE) até o E2.03 reescrevê-la (risco 12 do E2.02).
 
 ### Front
-- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries`, `/roles`, `/events` (Auditoria, só com `view_audit_log`) e as listas de excluídos `/members/deleted`, `/cells/deleted` e `/cell-reports/deleted` (só com `manage_roles`). O menu é filtrado por permissão (`AppSidebar.tsx`). Todo usuário logado tem "Editar meus dados". Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
-- `MemberForm`, tudo só na UI:
+- Rotas: `/login`, `/` (Dashboard), `/members`, `/cells`, `/cell-reports`, `/ministries`, `/roles`, `/events` (Auditoria, só com `view_audit_log`) e as listas de excluídos `/members/deleted`, `/cells/deleted` e `/cell-reports/deleted` (só com `manage_roles`). Cadastro e edição acontecem em diálogos (`MemberForm`, `CellForm`, `CellReportForm`).
+- **Acesso (E2.02):** o `AuthContext` lê a `my_access()` (`use-access`) e a relê ao voltar para a aba, ao navegar e depois de um 42501, com o aviso "Seu acesso foi atualizado." uma vez. Regras puras em `src/lib/access/` (`permissions.ts` com o catálogo e os grupos, `access.ts` com menu, rotas e subtítulos, `codes.ts` com os códigos `app_error`, `member-form.ts`, `cell-form.ts`, `texts.ts`). O menu (`AppSidebar`) mostra a própria função embaixo do nome e "Editar meus dados" ou "Ver meus dados"; rota sem permissão mostra `NoAccess` sem pedir dados.
+- Funções (`Roles.tsx`, `RoleForm`, `RoleDeleteFlow`, `use-roles`): lê a `roles_view` e grava só pela `save_role` e `delete_role`.
+- `MemberForm` (a regra vale no banco; a tela replica):
   - campos sensíveis escondidos sem `view_sensitive_data`;
-  - seletor de função só com `assign_role`, com a role padrão pré-selecionada;
-  - bloco ministerial só com `edit_member`;
+  - Função por `role_options` (nunca pela `role_id` da linha), editável só para quem atribui; "Novo membro" bloqueado se quem cadastra não cobre a padrão (RN-19);
+  - bloco ministerial com `edit_member`/`create_member`; pastor e sem liderança só para quem vê a igreja toda; líder obrigatório e já preenchido com quem cadastra; recusas do servidor no campo (`detail.field`) ou no `Alert` do topo;
   - botão "Alterar senha".
+- Células e Relatórios: "Novo relatório" por `can_submit_report` (na célula) e `can_submit_some_report` (da `my_access`); "Editar" célula só com `edit_cell`. Os seletores mostram pelo nome salvo quem já está no registro e saiu do escopo (DT-23).
 - `CellReportForm`: limita a data à semana atual pelo relógio do navegador e traduz os erros dos triggers. Os participantes são gravados pela `set_cell_report_participants` (pela diferença, numa chamada, preservando participante excluído); o relatório ainda vai numa chamada à parte (o E2.11 junta).
 - Exclusão e restauração (E2.01): "Excluir" no menu da linha (`RowActionsMenu`) com `ConfirmDeleteDialog`, bloqueio da exclusão de membro com vínculos (`BlockedActionDialog`), selos (`StatusBadge`), listas de excluídos com restauração, `CellReportSheet` (`?report=<id>`) para relatório de célula excluída e `DeletedMatchesDialog` no cadastro com dados de excluído. Textos em `src/lib/deletion/texts.ts`, erros `app_error` por `parseAppError` (`src/lib/errors.ts`), regras puras em `src/lib/deletion/*`.
 - **Fim forçado da sessão (E2.01 PR 6):** toda recusa 42501 (`QueryCache`/`MutationCache` em `App.tsx` e os hooks de escrita que devolvem o erro classificado) e todo "0 linhas" numa escrita pedem a releitura do próprio cadastro na `members_view` (`src/lib/auth/session-check.ts`, uma por vez); a volta do foco também, no máximo a cada 10 s. Sem linha e sem erro (`shouldEndSession`), o `AuthContext` sai só localmente e o `ProtectedRoute` leva a `/login` com `state: { reason: 'session_ended' }`. O `SIGNED_OUT` não pedido (renovação recusada, outra aba) mostra o mesmo aviso; rede, 5xx e 401 nunca encerram.
@@ -361,7 +365,8 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Ranking dos casais G12 por número de células (masculinas e femininas); cada célula conta uma vez.
   - Sem vínculo celular (janela de 30 dias).
   - Estatísticas da semana (domingo a sábado, horário de Brasília).
-- Ministérios: árvore de casais a partir dos pastores, pela `ministry_tree_nodes`, com uma chamada por expansão.
+- Dashboard: o cabeçalho diz "Visão geral da igreja" ou "Meu Ministério" conforme o que a pessoa vê (`dashboardHeader`); os números já vêm no escopo.
+- Ministérios: árvore de casais pela `ministry_tree_nodes`, com uma chamada por expansão, a partir dos pastores (igreja toda) ou do topo do escopo (DA-6). Quem não vê ninguém vê o estado vazio.
 - Membros, Células e Relatórios são paginadas no servidor pelas views (busca sem acento, total exato, estado na URL, via `useListSearchParams`). Os seletores de membro e de célula usam o `PaginatedSelect`: 20 opções por vez, busca no servidor e "Carregar mais". Ver `docs/specs/e1-08-paginacao-servidor.md`.
 
 ### Armadilhas do novo
@@ -404,9 +409,14 @@ Todos os números respeitam o escopo do usuário, e cada card abre a listagem j�
   - Na rede da igreja todos saem pelo mesmo IP: 50 senhas erradas de pessoas diferentes em 15 min bloqueiam todos os logins dali por 15 min (risco 16).
   - **Playwright com `--workers=1`** na stack local: em paralelo, as specs do E2.01 e do E1.04 dividem a massa e a `sign_in_throttle` (todas as chamadas locais vêm de `127.0.0.1`) e falham. A `sign-in` precisa estar servida (`supabase functions serve` ou o *edge runtime* do `supabase start`).
 - `has_leadership` no novo quer dizer "tem líder", o inverso de `HasNoLeadership` no legado.
-- Um membro sem líder que não é pastor fica com `g12_level = 0`, igual a pastor.
-- `get_ministry_root` devolve NULL para pastores, então `view_own_ministry` não funciona para eles. Pastores precisam de `view_all_church`.
-- A role semeada "Líder" tem `view_members`, que libera a igreja inteira, e não o ministério.
+- Um membro sem líder que não é pastor fica com `g12_level = 0`, igual a pastor. O escopo não usa `g12_level` (segue a árvore real); não o use em regra de visibilidade.
+- **Perfis e escopo (E2.02):**
+  - **Três formas de cada escopo** (view, política e função de linha) mais as views de excluídos: mudou uma, mude todas. O cabeçalho da migration `e202_03_read` tem a tabela de predicados canônicos, e o pgTAP de paridade por persona (`e202_01_scope`) compara as três. A descida e a subida do escopo têm teste de equivalência.
+  - `roles` e `role_permissions` não são lidas nem gravadas direto pelo front: a própria função vem de `my_access()`, as opções do cadastro de `role_options()`, a tela de Funções da `roles_view`, e a escrita é só por `save_role`/`delete_role`. A partir do E2.02 PR 6, `authenticated` só lê as duas tabelas com `view_roles` ou `manage_roles` e não tem nenhum privilégio de escrita nelas; e `members.role_id` **não tem SELECT por coluna** (o UPDATE e o INSERT continuam, sem RETURNING da coluna). Nunca leia `role_id` em `select` de `members`/`members_view` para outra pessoa.
+  - Toda transação que mexe em `roles` precisa terminar com **exatamente uma** função padrão (constraint trigger adiado), inclusive a massa dos testes e a carga do E4.
+  - Função nova `SECURITY INVOKER` chamada por trigger de `members` não pode ler `roles`, `role_permissions` nem `members.role_id` com o papel de quem grava: use os helpers *definer* (`default_role_id`, `can_assign_role`, `viewer_covers_role`). E `_del_raise` só tem EXECUTE para `postgres` e `service_role`: trigger INVOKER que recusa precisa levantar o erro direto ou ser *definer*.
+  - A ordem dos triggers de `members` é alfabética e importa: o `zz_enforce_member_visible_after` precisa rodar depois do `sync_spouse_relationship_trigger` (caso André e Beatriz). Não renomeie esses triggers.
+  - Permissão nova no enum: a Administrador a recebe sozinha; se for aposentar uma, tire-a de `active_permissions()` e do catálogo de `src/lib/access/permissions.ts`.
 
 ## Matriz de paridade
 
@@ -475,8 +485,9 @@ Use esses IDs nos specs e nos testes. Em resumo:
 Problemas do `mci-connect`. Corrija quando estiver mexendo no código em volta.
 
 - `change-member-password` não checa escopo nem o perfil do alvo: quem tem a permissão troca a senha de um Administrador.
-- As funções do RLS (`user_has_permission`, `is_admin`, `is_in_same_ministry`, `get_ministry_root`, `is_leader_of_visible_member`) são `SECURITY DEFINER` e aceitam qualquer `_user_id`/`_member_id`. Assim, um usuário logado descobre as permissões, a raiz de ministério e a liderança de outras pessoas. Para corrigir, restrinja a `auth.uid()`, deixando a service role e os triggers passarem. Isso pede um passo próprio, porque mexe no RLS inteiro e na `create-user-admin`.
-- A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data.
-- Operações que não são atômicas: troca da role padrão (`Roles.tsx`) e a gravação do relatório com os participantes (duas chamadas até o E2.11; a regravação dos participantes já é atômica).
+- A data sugerida no `CellReportForm` (`calculateCellDate`) cai na semana passada quando a célula ainda não se reuniu, e o trigger rejeita essa data (E2.11).
+- Operação que não é atômica: a gravação do relatório com os participantes (duas chamadas até o E2.11; a regravação dos participantes já é atômica).
+- O formulário de relatório abre num `Dialog` comum, e não no `ResponsiveDialogContent` (tela cheia no celular, P1 do E2.02), em Células, Relatórios e Dashboard. A gravação do `MemberForm` ainda está no componente, e não num hook.
+- No seletor de UF do `CellForm`, o botão não tem nome acessível (axe `button-name`).
 - A Auditoria lê só os 500 eventos mais recentes, sem paginação, e os eventos de falha e de bloqueio de login não têm retenção definida (risco 5 do E1.04, decisão do PO pendente).
-- No tema escuro, o `--primary` não tem contraste suficiente com o texto do botão (2,97:1, achado do axe no E1.04). A linha da Auditoria não abre o painel pelo teclado.
+- Contraste dos tokens globais de tema (`src/index.css`, axe no E1.04 e no E2.02): no escuro, o `--primary` com o texto do botão (2,97:1); no claro, o `--accent` em *hover* (2,97:1), o `--secondary` (2,97:1) e o `--muted-foreground` sobre `--muted` (4,34:1). A linha da Auditoria não abre o painel pelo teclado.
