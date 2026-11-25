@@ -2310,7 +2310,11 @@ _Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e208_01_
 - MG: a migration roda de novo sem erro e sem mudar a `cells_view` nem os triggers de `cell_reports`.
 - VOL (20 mil membros, 1.500 células, 150 inativas, 100 mil relatórios, 800 mil participações): lançamento com o trigger 12,10 ms e sem ele 12,09 ms (diferença 0,01 ms, meta 1 ms; o `ac_` levou 0,23 ms no `EXPLAIN` frio); PATCH de célula 2,5 ms (meta 20); página da `cells_view` com contagem 13,7 ms (Administrador) e 55,6 ms (G12) (meta 300).
 - `types.ts` regenerado: igual ao da `main` (a view mantém as colunas e os tipos; a função de trigger não aparece na API). `tsc` sem erro.
-- Playwright: PLAYWRIGHT_RESULT.
+- Playwright (suíte inteira, `--workers=1`): 339 passaram, 8 pulados, 2 falharam, nenhum ligado a este PR (o PR não muda o front):
+  - `sign-in.spec.ts:416` (axe, tema claro, contraste 4,29:1 numa transição): passou na nova rodada isolada (instável);
+  - `excluidos-membros.spec.ts:612` (UX-19, "página 2" da busca "a"): depende de haver mais de 10 resultados na massa local; falhou em `/cells` na suíte e em `/members` isolado. A `cells_view` mantém as mesmas linhas; só muda `can_submit_report`.
+  - Smoke de login (`login.spec.ts`): passou. Vitest 1848/1848, `tsc` e `build` verdes; o `lint` tem 3 erros que já existem na `main` (`ui/command.tsx`, `ui/textarea.tsx`, `tailwind.config.ts`).
+- Revisão: o `code-reviewer`, o `qa` e os desenvolvedores não foram acionados como agentes (a ferramenta de acionar agentes não estava disponível nesta execução). O `architect` implementou e revisou o PR 1, que só tem banco e testes.
 
 | RN | Testes | Resultado |
 |---|---|---|
