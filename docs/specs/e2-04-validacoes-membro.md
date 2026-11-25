@@ -1,6 +1,7 @@
 # E2.04: Validações de membro
 
-> Status: desenho pronto para revisão. Negócio escrito em 2026-11-23 pelo `product-owner`; Experiência (UX) escrita no mesmo dia pelo `ux-designer`, com as pendências PO-UX-1 a PO-UX-8 resolvidas pelo PO (P-VAL-19 a P-VAL-26). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto. Ficam para o usuário revisar no PR os padrões P-VAL-01 a P-VAL-26 e os pontos definidos pelo `architect` (DA-1 a DA-13). A implementação começa depois do E1.04 inteiro, do E2.01 inteiro e do PR 1 do E2.02 em produção. Falta a seção Testes (QA).
+> Status: **em implementação.** T1 (conferência em produção) feita em 2026-11-25, sem linhas `a` nem `infra`. PR 1 (banco neutro: T2 e T3) implementado e testado em 2026-11-25: PR #35 do `mci-connect` (branch `feat/E2.04-pr1-banco-neutro`, migration `20261125210000_e204_01_rule_functions.sql`), em produção em 2026-11-25 (squash `2f6eebf`, "Deploy: banco"; conferência pós-deploy ok: 3 índices únicos entre não excluídos, grants, funções). **Achado para o PR 2:** `private.member_rule_violations()` em produção dá `cpf` = 2 porque 2 cadastros de teste têm `''` (texto vazio) em CPF, celular, telefone e endereço (vindos do formulário antigo); a migration 2 precisa tratar `''` como vazio antes da guarda. Desvios do desenho: `is_placeholder_email` mantém o domínio depois do último `@` (E1.04), e a conferência (e) da `restore_member` vem depois da trava do líder (DT-09).
+> Histórico: desenho pronto para revisão. Negócio escrito em 2026-11-23 pelo `product-owner`; Experiência (UX) escrita no mesmo dia pelo `ux-designer`, com as pendências PO-UX-1 a PO-UX-8 resolvidas pelo PO (P-VAL-19 a P-VAL-26). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-23, sem perguntas em aberto. Ficam para o usuário revisar no PR os padrões P-VAL-01 a P-VAL-26 e os pontos definidos pelo `architect` (DA-1 a DA-13). A implementação começa depois do E1.04 inteiro, do E2.01 inteiro e do PR 1 do E2.02 em produção. Falta a seção Testes (QA).
 > Slug: `e2-04-validacoes-membro` · Paridade com o legado: sim (MEM-01 a MEM-09, com a MEM-10 complementada e a HIE-01 antecipada do E2.06). Tem regras novas: CPF único e identificador real (D5), e-mail fictício (D7) e coerência entre pastor, líder e "Tem Liderança?".
 
 ## Negócio
@@ -2221,6 +2222,12 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 > - `auto` · RN-05 e-mail fictício no cadastro: 4 cadastros (viram vazio na migration 2; as contas continuam).
 > - `b` · RN-08 sem identificador real: os mesmos 4 cadastros (aviso no formulário).
 > - Nenhum repetido, ciclo, pastor com líder, CPF ou e-mail inválido; classificação de letras ok. O PR 1 não está bloqueado.
+>
+> **Resultado em 2026-11-25 (sessão principal, só leitura, com o E1.04, o E2.01 e o E2.02 inteiros em produção).** Nenhuma linha `a` nem `infra` (o sexo vazio de 2026-11-24 foi corrigido):
+> - `auto` · RN-05 e-mail fictício no cadastro: 4 cadastros (viram vazio na migration 2).
+> - `b` · RN-08 sem identificador real: os mesmos 4 cadastros.
+> - Nenhum repetido. O PR 1 e o PR 2 estão liberados; rodar de novo antes do "Deploy: banco" do PR 2.
+
 Só leitura. O usuário roda no SQL Editor de produção (papel `postgres`), antes do "Deploy: banco" do PR 1 e de novo antes do PR 2.
 - A saída traz só o tipo, o problema, o tratamento e os ids, sem nome, e-mail, celular ou CPF.
 - Ela funciona com ou sem as colunas do E2.01, porque lê `deleted_at` por `to_jsonb`.
@@ -2485,3 +2492,17 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-02, DA-12 | PR 1: `e204_01_functions_cases` (N01–N20, gerado de `member-validation-cases.json`) | ✅ |
+| RN-04, DA-3 | PR 1: `e204_01_functions_cases` (E01–E23) | ✅ |
+| RN-05, DT-18 | PR 1: `e204_01_functions_cases` (domínios iguais ao JSON), `e204_01_structure_grants` | ✅ |
+| RN-06, DA-5 | PR 1: `e204_01_functions_cases` (M01–M13) | ✅ |
+| RN-07 | PR 1: `e204_01_functions_cases` (C01–C13) | ✅ |
+| RN-08 | PR 1: `e204_01_functions_cases` (I01–I12) | ✅ |
+| RN-15, DA-13 | PR 1: `e204_01_functions_cases` (B01–B16: 23/11/2026, 29/02/2000) | ✅ |
+| RN-09, RN-10, DT-07 | PR 1: `e204_01_unique_restore` (9º dígito nos dois sentidos, inativo e casal contam, excluído não conta, celular ilegível fora, dado liberado, restauração de Bruno, `find_deleted_member_matches`, `_member_values_in_use`) | ✅ |
+| RN-13, AQ-4 | PR 1: `e204_01_descendants` (42501 sem `edit_member`, `anon`, Diego para Pedro, inativos, a própria pessoa fora, N1–N8, ciclo antigo, 100/101 ids) | ✅ |
+| RN-09, RN-18 | PR 1: `e204_01_duplicates_guard` (mensagem só com ids e campo, nada criado); `e204_01_member_rule_violations` (as 15 regras) | ✅ |
+| Estrutura e grants | PR 1: `e204_01_structure_grants` | ✅ |
+| Sincronia (DT-17) | PR 1: `src/test/member-validation-cases-sync.test.ts` | ✅ |
+
+PR 1 (2026-11-25, stack local): pgTAP 29 arquivos e 3083 asserções ok; Vitest 98 arquivos e 1264 testes ok; `tsc` e `build` ok (o `lint` tem 3 erros antigos em arquivos fora do PR); Playwright `--workers=1` com 231 ok e 3 falhas de ambiente (UX-19 de `excluidos-membros`, `sign-in-stack:235`, `sign-in.spec.ts:391` oscilante). Volume (`e204_volume.psql`, 20 mil membros, 21 ids): `member_descendants_among` em 2,8 ms (igreja toda) e 14,4 ms (G12), meta de 20 ms; quase todo o custo do G12 é o `viewer_sees_member` por candidato.
