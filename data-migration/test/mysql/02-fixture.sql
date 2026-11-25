@@ -51,7 +51,8 @@ INSERT INTO `Members` (`Id`,`Name`,`Gender`,`Email`,`MobileNumber`,`CPF`,`BirthD
  (42,'Carla Ficticio42',0,'m42@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,1,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
  (43,'Diego Ficticio43',1,'m43@exemplo.org',NULL,'000','1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL),
  (44,'Elisa Ficticio44',0,'dup@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL),
- (45,'Iris Ficticio45',0,'m45@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',45,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL);
+ (45,'Iris Ficticio45',0,'m45@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',45,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL),
+ (46,'Joao Ficticio46',0,'m46@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',46,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL);
 
 INSERT INTO `Cells` (`Id`,`LeadId`,`TimothyId`,`HostId`,`WeekDay`,`Time`,`PlaceId`,`CellType`,`ReportMandatory`,`CreationDate`,`IsDeleted`) VALUES
  (1, 3, 5, 6, 3, '20:00', 1, 0, 0, '2024-02-01 08:00:00.000000', 0),

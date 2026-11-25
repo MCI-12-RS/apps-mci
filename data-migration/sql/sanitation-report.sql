@@ -15,9 +15,9 @@
 -- Saída: dois comandos.
 --   1. Contagens por tabela (ativos, inativos, excluídos).
 --   2. Uma linha por verificação: ord, code, category, entity, title,
---      treatment, n (itens) e items (jsonb: [{id, info, deleted}]); deleted
---      diz se o próprio registro listado (membro, célula ou relatório) está
---      excluído no legado.
+--      treatment, n (itens) e items (jsonb: [{id, info, exists, deleted}]);
+--      exists e deleted dizem se o próprio registro listado (membro, célula
+--      ou relatório) existe e se está excluído no legado.
 -- Nenhuma coluna de saída tem nome, e-mail, CPF ou telefone: só Ids do
 -- legado e textos fixos.
 --
@@ -139,9 +139,12 @@ defs (ord, code, category, entity, title, treatment) AS (
   (145, 'member_leader_deleted', 'legacy_fix', 'Members',
    'Membro não excluído com líder excluído (D10)',
    'Reatribuir o líder no legado (E4.05). O info diz o Id do líder excluído.'),
-  (147, 'member_leader_self', 'decide', 'Members',
-   'Líder apontando para a própria pessoa (o CHECK members_leader_not_self_check vale também para excluídos)',
-   'Não excluídos: corrigir no legado (E4.05). Excluídos (info "excluído"): não dá para corrigir na tela do legado; sugestão: descartar o líder na transformação, como no cônjuge.'),
+  (147, 'member_leader_self', 'legacy_fix', 'Members',
+   'Membro não excluído com líder apontando para a própria pessoa (CHECK members_leader_not_self_check)',
+   'Corrigir no legado (E4.05).'),
+  (148, 'member_leader_self_deleted', 'decide', 'Members',
+   'Membro excluído com líder apontando para a própria pessoa (o CHECK vale também para excluídos)',
+   'Não dá para corrigir na tela do legado. Sugestão: descartar o líder na transformação, como no cônjuge.'),
   (146, 'member_leadership_cycle', 'legacy_fix', 'Members',
    'Ciclo na hierarquia (a cadeia de líderes volta para a própria pessoa)',
    'Corrigir no legado (E4.05).'),
@@ -412,7 +415,9 @@ hits (code, id, info) AS (
   SELECT 'member_leader_deleted', id, 'líder excluído: ' || eff_leader FROM ml
    WHERE NOT del AND l_del
   UNION ALL
-  SELECT 'member_leader_self', id, CASE WHEN del THEN 'excluído' END FROM me WHERE eff_leader = id
+  SELECT 'member_leader_self', id, NULL FROM me WHERE NOT del AND eff_leader = id
+  UNION ALL
+  SELECT 'member_leader_self_deleted', id, NULL FROM me WHERE del AND eff_leader = id
   UNION ALL
   SELECT 'member_leadership_cycle', c.id, CASE WHEN me.del THEN 'excluído' END
     FROM cycle_walk c JOIN me ON me.id = c.id
@@ -516,17 +521,18 @@ hits (code, id, info) AS (
 )
 SELECT d.ord, d.code, d.category, d.entity, d.title, d.treatment,
        count(h.code) AS n,
-       coalesce(jsonb_agg(jsonb_build_object('id', h.id, 'info', nullif(h.info, ''), 'deleted', coalesce(x.del, false))
-                          ORDER BY h.id, h.info)
+       coalesce(jsonb_agg(jsonb_build_object(
+                  'id', h.id,
+                  'info', nullif(h.info, ''),
+                  'exists', coalesce(xm."Id", xc."Id", xr."Id") IS NOT NULL,
+                  'deleted', coalesce(xm."IsDeleted", xc."IsDeleted", xr."IsDeleted", false))
+                ORDER BY h.id, h.info)
                 FILTER (WHERE h.code IS NOT NULL), '[]'::jsonb) AS items
   FROM defs d
   LEFT JOIN hits h ON h.code = d.code
-  LEFT JOIN LATERAL (
-    SELECT CASE d.entity
-             WHEN 'Members' THEN (SELECT me.del FROM me WHERE me.id = h.id)
-             WHEN 'Cells' THEN (SELECT c.del FROM cells c WHERE c.id = h.id)
-             ELSE (SELECT r.del FROM reports r WHERE r.id = h.id)
-           END AS del
-  ) x ON true
+  -- Situação do próprio registro listado (pela chave primária, com índice)
+  LEFT JOIN legacy."Members" xm ON d.entity = 'Members' AND xm."Id" = h.id
+  LEFT JOIN legacy."Cells" xc ON d.entity = 'Cells' AND xc."Id" = h.id
+  LEFT JOIN legacy."Reports" xr ON d.entity IN ('Reports', 'ReportMembers') AND xr."Id" = h.id
  GROUP BY d.ord, d.code, d.category, d.entity, d.title, d.treatment
  ORDER BY d.ord;

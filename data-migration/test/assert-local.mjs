@@ -82,7 +82,15 @@ try {
       await assert.rejects(client.query('SELECT 1 FROM legacy."Members" LIMIT 1'), /permission denied/);
       await client.query('ROLLBACK');
     }
-    console.log('ok: anon, authenticated e service_role não alcançam o schema legacy');
+    // A conferência acusa privilégio em coluna e em sequência.
+    await client.query('BEGIN');
+    await client.query('GRANT SELECT ("Id") ON legacy."Members" TO anon');
+    await client.query('GRANT USAGE ON SEQUENCE legacy._copy_runs_id_seq TO authenticated');
+    const found = await legacyPrivilegeProblems(client, roles);
+    await client.query('ROLLBACK');
+    assert.ok(found.some((p) => /^anon tem SELECT em alguma coluna de legacy\.Members$/.test(p)), found.join('; '));
+    assert.ok(found.some((p) => /^authenticated tem USAGE na sequência legacy\._copy_runs_id_seq$/.test(p)), found.join('; '));
+    console.log('ok: anon, authenticated e service_role não alcançam o schema legacy (e a conferência acusa coluna e sequência)');
   } else {
     throw new Error(`modo desconhecido: ${mode}`);
   }

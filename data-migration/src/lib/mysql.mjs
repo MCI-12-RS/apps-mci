@@ -21,13 +21,23 @@ export class LegacyReader {
   constructor(options) {
     this.conn = mysql.createConnection(options);
     this.p = this.conn.promise();
-    // Erros fatais da conexão chegam pelas consultas; sem este ouvinte, um
-    // erro de rede depois do destroy() derrubaria o processo sem a mensagem.
-    this.conn.on('error', () => {});
+    // Sem este ouvinte, um erro de rede derrubaria o processo sem a
+    // mensagem. Depois do destroy() o erro é esperado e ignorado; antes, ele
+    // é guardado e devolvido na próxima chamada (com a causa real).
+    this.destroyed = false;
+    this.fatalError = null;
+    this.conn.on('error', (err) => {
+      if (!this.destroyed) this.fatalError = err;
+    });
+  }
+
+  throwIfBroken() {
+    if (this.fatalError) throw this.fatalError;
   }
 
   async query(sql, params = []) {
     assertReadOnlySql(sql);
+    this.throwIfBroken();
     const [rows] = await this.p.query(sql, params);
     return rows;
   }
@@ -52,7 +62,8 @@ export class LegacyReader {
    * leitura; o servidor a descarta).
    */
   async end({ failed = false } = {}) {
-    if (failed) {
+    if (failed || this.fatalError) {
+      this.destroyed = true;
       this.conn.destroy();
       return;
     }
@@ -66,6 +77,7 @@ export class LegacyReader {
   /** Stream das linhas, em ordem de chave primária. */
   stream(sql) {
     assertReadOnlySql(sql);
+    this.throwIfBroken();
     return this.conn.query({ sql }).stream({ highWaterMark: 500 });
   }
 

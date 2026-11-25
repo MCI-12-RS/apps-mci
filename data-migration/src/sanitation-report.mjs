@@ -61,8 +61,8 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('pt-BR', {
 const mdEscape = (s) => String(s ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
 
 function legacyLink(baseUrl, entity, item) {
-  const { id, deleted } = item;
-  if (!baseUrl || id == null) return String(id ?? '—');
+  const { id, deleted, exists } = item;
+  if (!baseUrl || id == null || !exists) return String(id ?? '—');
   const path = entity === 'Members' ? 'members' : entity === 'Cells' ? 'cells' : null;
   if (!path || deleted) return String(id);
   return `[${id}](${baseUrl.replace(/\/+$/, '')}/${path}/${id})`;

@@ -77,7 +77,9 @@ $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --dry-run >/dev/null
 $A no-legacy
 
 step "Cópia 1"
-$N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" >"$WORK/copy1.log" 2>&1
+if ! $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" >"$WORK/copy1.log" 2>&1; then
+  cat "$WORK/copy1.log"; echo "FALHA: cópia 1"; exit 1
+fi
 grep -vE '^AVISO: o certificado' "$WORK/copy1.log" | tail -n 8
 check "tinyint(1) fora de 0 e 1 avisado e contado" grep -q 'Members: 1 valores tinyint(1)' "$WORK/copy1.log"
 FP1="$($A fingerprint)"
@@ -132,6 +134,7 @@ done
 echo "ok: relatório sem dados pessoais da massa"
 check "link para o membro ativo com líder excluído" grep -q '\[27\](https://legado.invalid/members/27) | líder excluído: 28' "$REPORT"
 check "sem link para o membro excluído" grep -q '^| 45 | excluído |' "$REPORT"
+check "sem link para Id que não existe" grep -q '^| 99999 | não existe |' "$REPORT"
 
 step "Limpeza final"
 $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes | tail -n 1
