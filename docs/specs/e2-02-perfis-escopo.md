@@ -1,6 +1,6 @@
 # E2.02: Perfis e escopo de visibilidade e escrita
 
-> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A implementação começa depois de todo o E2.01 em produção. Falta só Testes.
+> Status: **PR 1 (banco, tarefas 1 a 5) implementado em 2026-11-25**, em revisão (branch `feat/E2.02-pr1-banco-escopo` do `mci-connect`), ainda não aplicado em produção. PRs 2 a 6 pendentes. Desenho: Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A seção Testes cobre o PR 1.
 > Slug: `e2-02-perfis-escopo` · Paridade com o legado: sim (AUT-02, AUT-03, AUT-04, AUT-05, AUT-07, CEL-04 e a parte "quem lança" da REL-11), com regras novas (D3, funções semeadas, função padrão, exclusão de funções e privacidade das consultas de permissão).
 
 ## Negócio
@@ -2133,6 +2133,7 @@ Segue o padrão do E1.08 e do E2.01: os componentes cuidam da tela, o acesso a d
 7. **Janela entre o PR 1 e os PRs de front.** O front em produção ainda mostra "É Pastor(a)?", "Tem Liderança?", o seletor de função e "Novo relatório" para quem não pode usá-los.
    - O banco recusa, e a tela mostra a mensagem do servidor num toast.
    - A tela de Funções antiga não consegue trocar a função padrão, porque o constraint trigger recusa a desmarcação isolada. Ela edita o resto normalmente.
+   - **Achado da implementação (PR 1, 2026-11-25):** a tela antiga apaga todas as permissões da função e depois insere as marcadas, em duas requisições, sem checar o erro do DELETE. Se o INSERT for recusado (`permission_retired`, porque ela ainda oferece "Visualizar Membros (legado)", ou `permission_not_covered`), a função fica **sem nenhuma permissão**. A Administrador não é afetada (os triggers recusam as duas requisições). Decisão do `architect`: aceitar, porque a produção só tem dados de teste; **entre o "Deploy: banco" do PR 1 e o promote do PR 3, não editar funções pela tela**. Se precisar, corrigir pela `save_role`.
 8. **Volume.**
    - Medir no volume de referência do E1.08 (20 mil membros, 1.500 células, 100 mil relatórios e 800 mil participações), com um pastor e um G12 com "Visualizar Seu Ministério".
    - Metas:
@@ -2391,5 +2392,23 @@ Seis PRs no `mci-connect`. **Tudo começa depois de todo o E2.01 em produção.*
 ## Testes
 _Seção do `qa`._
 
+Arquivos (em `mci-connect/supabase/tests/`): pgTAP `database/e202_01_scope`, `e202_02_rn23_grants`, `e202_03_write_members`, `e202_04_write_cells_reports`, `e202_05_roles`, `e202_06_read_contract` (cada um autocontido, com a massa do spec); `concurrency/e202_concurrency.sh` (4 cenários) e `e202_migrations.sh` (migrations de novo, duas `is_system`, Recepção, permissão nova); `volume/e202_volume.psql` (metas do risco 8).
+
 | RN | Testes | Resultado |
 |---|---|---|
+| 01 a 06 | `e202_01` (tabela "O que cada um vê" na view e na tabela, casal, inativo, excluído, descida × subida com ciclo, DT-28, paridade por persona), `e202_06` (raízes DA-6) | passa |
+| 07, 08 | `e202_01` (conta X, Hugo, escopo na hora), `e202_03`, `e202_05` (Hugo só com Enviar) | passa |
+| 09, 10, 11 | `e202_03` (person_not_visible, would_leave_scope, André e Beatriz, `check_member_insert`, pastor, Ester, DA-2/DA-7/DA-11) | passa |
+| 12, 13, 14, 15 | `e202_04` (célula, lançar, editar e excluir relatório, participantes, DA-5), `e202_01` (excluídos) | passa |
+| 16, 17, 22 | `e202_05`, `e202_migrations.sh` (Recepção, `view_members`, permissão nova no banco de rascunho) | passa |
+| 18, 19, 20, 21 | `e202_02` (`role_options`), `e202_03`, `e202_05` (`save_role`, `delete_role`), `e202_concurrency.sh` 1 a 3 | passa |
+| 23 | `e202_02` (EXECUTE, obsoletas, `my_access`, `role_options`); "depois do PR 6" fica fora | passa |
+| Grants e estrutura | `e202_02`; migrations de novo sem erro e duas `is_system` em `e202_migrations.sh` | passa |
+| Concorrência (4 cenários) | `e202_concurrency.sh` | passa |
+| Volume (risco 8) | `e202_volume.psql` | 1 meta fora |
+
+Resultados do PR 1:
+- `supabase test db`: 22 arquivos, 2.604 testes, passa (os do E1.04, E1.08 e E2.01 foram atualizados para o escopo novo, as funções novas e as colunas novas das views).
+- `e202_concurrency.sh`: 48 verificações; `e202_migrations.sh`: 28; `e201_concurrency.sh` (ajustado): passa.
+- Playwright (`--workers=1`, stack local): 138 de 162 passam (5 puladas, 18 não rodaram depois de uma falha em série). Falham: `grant_type=password` (a stack local não desliga o provedor de e-mail) e UX-19 (precisa de mais de 10 células na base, e o banco foi zerado). A massa de 6 specs trocou `view_members` por `view_all_church`.
+- Volume (20 mil membros, 1.500 células, 100 mil relatórios, 800 mil participações), pastor e G12: listas com contagem de 23 a 123 ms; `dashboard_summary` 86 a 103 ms; `my_access` 8 a 16 ms; PATCH de membro 3 ms. **Fora da meta:** lançamento com 30 participantes, 880 ms (pastor) e 390 ms (G12), contra 300 ms. A política de INSERT de participantes chama `viewer_can_insert_cell_report_participant`, que lê a `cell_reports_view` por id (cerca de 15 ms por chamada, uma por participante).
