@@ -1,6 +1,6 @@
 # E2.08: Cadastro de células
 
-> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-CEL-14 a P-CEL-23). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-9 e os pontos "definidos pelo architect" DA-1 a DA-12. Ficam para o usuário revisar no PR os padrões P-CEL-01 a P-CEL-23, as DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam (a T9 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). A conferência em produção (tarefa 1) roda antes do PR 2. **PR 1 (banco: célula inativa) implementado em 2026-11-25** na branch `feat/E2.08-pr1-celula-inativa` do `mci-connect` (tarefas 2 e 3; migration `20261126120000_e208_01_inactive_cell_reports.sql`), aguardando merge e "Deploy: banco". PRs 2 a 5 por fazer.
+> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-CEL-14 a P-CEL-23). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-9 e os pontos "definidos pelo architect" DA-1 a DA-12. Ficam para o usuário revisar no PR os padrões P-CEL-01 a P-CEL-23, as DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam (a T9 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). A conferência em produção (tarefa 1) roda antes do PR 2. **PR 1 (banco: célula inativa) implementado em 2026-11-25** na branch `feat/E2.08-pr1-celula-inativa` do `mci-connect` (tarefas 2 e 3; migration `20261126120000_e208_01_inactive_cell_reports.sql`), aguardando merge e "Deploy: banco". **PR 2 (banco: regras do cadastro, com o ajuste mínimo do front) implementado em 2026-11-25** na branch `feat/E2.08-pr2-regras-celula`, criada a partir da do PR 1 (tarefas 4 a 7; migration `20261126130000_e208_02_cell_rules.sql`); a conferência em produção de 2026-11-25 não teve nenhuma linha. Vai ao ar depois do PR 1: merge, "Deploy: banco" e promote em seguida. PRs 3 a 5 por fazer.
 > Slug: `e2-08-cadastro-celulas` · Paridade com o legado: sim (CEL-01 a CEL-04, com a D4). Tem regras novas: a situação ativa ou inativa da célula (o legado não tem), a célula nova sempre ativa, a célula inativa sem relatório novo e o endereço do anfitrião com a máscara do E1.08.
 
 ## Negócio
@@ -2076,6 +2076,8 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 
 ### Conferência em produção (tarefa 1)
 
+> **Resultado em 2026-11-25 (sessão principal, só leitura, depois do E2.03 PR 1 em produção, migrations até `20261126100300`): nenhuma linha.** Sem `a`, `auto`, `info` nem `infra`; as 2 células têm líder, timóteo e anfitrião. O PR 2 pode seguir.
+>
 > **Resultado em 2026-11-24 (sessão principal, só leitura, com o E2.01 PR 2 em produção).** Só dados de teste:
 > - `a` · RN-02 sem timóteo: 2 células. Bloqueia o PR 2; decidir a correção antes dele.
 > - `infra` · E2.02 PR 1 ainda não está em produção (esperado; o PR 1 do E2.08 espera por ele).
