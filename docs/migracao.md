@@ -28,7 +28,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | 2. Paridade | Implementar no novo as regras da seção 3 | Aceite geral do PO (E2.16) |
 | 3. Contas e senhas | Login com a senha antiga, perfis e administradores (seção 6) | Passos E3 concluídos |
 | 4. Ferramentas de migração | Scripts de cópia, saneamento, carga e validação (seção 5) | Passos E4 concluídos |
-| 5. Ensaios | Migração completa em homologação (5.7) | Go/no-go aprovado |
+| 5. Ensaios | Migração completa no Supabase de produção, antes do cutover (5.7) | Go/no-go aprovado |
 | 6. Cutover | Congelar o legado, migrar a produção e liberar o novo (7.2) | Novo no ar |
 | 7. Desligamento | Limpeza e desligamento do legado (7.4) | Legado desligado e backup arquivado |
 
@@ -54,10 +54,10 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 | Fase | Status | Pode começar quando |
 |---|---|---|
 | 0. Decisões | ✅ | Já |
-| 1. Preparação | 🔄 10 de 14 | Já |
+| 1. Preparação | ✅ 14 de 14 | Já |
 | 2. Paridade | ⬜ | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
-| 4. Ferramentas de migração | ⬜ | E1.01 e E1.10 concluídos |
+| 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
 | 6. Cutover | ⬜ | E5.05 (go/no-go) |
 | 7. Desligamento | ⬜ | Fim do plantão de suporte (E6.07) |
@@ -72,7 +72,7 @@ Responsável: liderança da igreja, com o `product-owner`.
 - [x] **E0.04** D4: timóteo e anfitrião obrigatórios na célula: **sim, como no legado.** Libera o E2.08 (2026-11-23)
 - [x] **E0.05** D5: identificadores de login aceitos: **e-mail real, celular ou CPF, cada um único.** Libera o E1.04 e o E2.04 (2026-11-23)
 - [x] **E0.06** D6: prazo da migração de senhas: **sem prazo.** O E7.01 não será feito (2026-11-23)
-- [x] **E0.07** D7: domínio dos e-mails fictícios: **um domínio controlado pela igreja.** Libera o E1.06 e o E4.08 (2026-11-23)
+- [x] **E0.07** D7: domínio dos e-mails fictícios: ~~um domínio controlado pela igreja~~ **revista em 2026-11-25: continua o `mci12fakemail.com`** (o E1.06 não será feito). Libera o E4.08 (2026-11-23; revista em 2026-11-25)
 - [x] **E0.08** D8: retenção do banco legado: **backup criptografado por 12 meses, depois descartado** (2026-11-23)
 - [x] **E0.09** D9: pastores: **Samuel Colares e Magda Colares** (casal). Libera o E4.06 (2026-11-23)
 - [x] **E0.10** D10: exclusão de membro com discípulos ou células: **bloquear até reatribuir.** Libera o E2.01 (2026-11-23)
@@ -98,8 +98,8 @@ Responsável: liderança da igreja, com o `product-owner`.
   - *Smoke* de falha em produção ok (401 e Auditoria com as máscaras). O login com sucesso **com cadastro de membro** não foi testado em produção, por falta de conta de teste; foi coberto na stack local e, em produção, pela emissão com a conta temporária.
   - Revisão final do `architect`: APROVADO (2026-11-25). Backlog fora do E1.04: contraste do `--primary` no tema escuro, foco do bloqueio e teclado na Auditoria, paginação e retenção da Auditoria (risco 5), id fixo de role no e2e. (2026-11-25)
 - [x] **E1.05** ~~Remover a senha padrão `123456`~~ · **Não será feito.** Decisão D11: o `123456` fica como senha inicial padrão (2026-11-15)
-- [ ] **E1.06** Configurar o domínio dos e-mails fictícios (D7) · _backend_
-- [ ] **E1.07** Configurar SMTP próprio no Supabase Auth · _infra_
+- [x] **E1.06** ~~Configurar o domínio dos e-mails fictícios (D7)~~ · **Não será feito** (decisão do usuário, 2026-11-25). Os e-mails fictícios continuam em `mci12fakemail.com`. Como o provedor de e-mail do Auth está desligado e não há SMTP próprio, nada é enviado para eles.
+- [x] **E1.07** ~~Configurar SMTP próprio no Supabase Auth~~ · **Não será feito** (decisão do usuário, 2026-11-25). Não há recuperação de senha por e-mail: a redefinição é sempre assistida, pelo líder ou administrador (E2.03, 6.4).
 - [x] **E1.08** Paginação e contagem no servidor em Membros, Células, Relatórios, Ministérios e Dashboard · _frontend + backend_ (concluído em 2026-11-23)
   - Spec: `docs/specs/e1-08-paginacao-servidor.md` (decisões D-1 a D-5 respondidas em 2026-11-15). Cinco PRs.
   - PR 1 em produção (2026-11-15, mci-connect#12): `members_view` com o escopo do RLS, máscara de dados sensíveis (só para o próprio membro e quem tem `view_sensitive_data`), regra 6 do trigger (quem não vê não altera) e a tela de Membros paginada no servidor.
@@ -109,8 +109,8 @@ Responsável: liderança da igreja, com o `product-owner`.
     - PR 4 (mci-connect#16): árvore de Ministérios no banco (`ministry_tree_nodes`, uma chamada por expansão) e seletores com busca e paginação no servidor. Depois dele, o front não lê mais as tabelas `members` e `cells` diretamente.
   - PR 5 em produção (2026-11-23, mci-connect#17): SELECT por coluna em `members` para `authenticated`, sem as 8 colunas sensíveis; `anon` sem leitura; a `create-user-admin` devolve só o `id`.
   - Inclui: leituras de `members` por view ou RPC que mascara as colunas sensíveis (CPF, e-mail, telefones, endereço) para quem não tem `view_sensitive_data` (vindo do E1.13).
-- [ ] **E1.09** Criar o projeto Supabase de homologação, com as mesmas migrations · _infra_
-- [ ] **E1.10** Criar um usuário MySQL somente leitura em produção para a extração. Hoje o `local.config` usa o `doadmin` · _infra_
+- [x] **E1.09** ~~Criar o projeto Supabase de homologação~~ · **Não será feito** (decisão do usuário, 2026-11-25). Os ensaios e a homologação de uso rodam no próprio Supabase de produção, antes do cutover, e a carga de ensaio é limpa antes da carga final (5.7).
+- [x] **E1.10** ~~Criar um usuário MySQL somente leitura~~ · **Não será feito** (decisão do usuário, 2026-11-25). A extração usa a conexão que já está no `local.config`, só com comandos de leitura (5.1).
 - [x] **E1.11** Remover as dependências do Lovable: `lovable-tagger` no `vite.config.ts`, a configuração do Playwright e o README do `mci-connect` · _frontend_. Também saíram os lockfiles do bun; o Playwright ganhou configuração própria e um teste de login (`npm run test:e2e`) (2026-11-15, mci-connect#11)
 - [x] **E1.12** Definir e documentar o deploy: workflows manuais "Deploy: banco (Supabase)" e "Deploy: promote (Vercel)". O *auto-assign* de domínios foi desligado na Vercel, e o fluxo foi validado de ponta a ponta (2026-11-15, mci-connect#9). Ver "Deploy de produção" no `CLAUDE.md`
 - [x] **E1.13** Auditoria e dados sensíveis: grants de `_log_event`, `log_auth_event` fechada para `anon`, autor nos cadastros via Edge Function, SELECT de `members` sem expor os líderes, e `view_sensitive_data` imposta no banco · _backend_
@@ -175,7 +175,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 
 - [ ] **E4.01** Estrutura de `data-migration/`: README, variáveis de ambiente e modo `--dry-run` · _backend_
 - [ ] **E4.02** Migrations de preparação: `legacy_id` e colunas de snapshot · 5.3 · depende de E2.01 e E2.05 · _backend_
-- [ ] **E4.03** Cópia bruta do MySQL para o schema `legacy` · 5.2 · depende de E1.10 · _backend_
+- [ ] **E4.03** Cópia bruta do MySQL para o schema `legacy` · 5.2 · usa a conexão do `local.config`, só leitura (5.1) · _backend_
 - [ ] **E4.04** Relatório de saneamento · 5.4 · _backend_
 - [ ] **E4.05** Correções feitas no legado pela liderança, a partir do relatório de saneamento · 5.4 · _liderança_
 - [ ] **E4.06** SQL de transformação e carga · 5.5 · depende de D9 · _backend_
@@ -185,10 +185,10 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 
 ### Fase 5: Ensaios (5.7)
 
-- [ ] **E5.01** Ensaio 1 em homologação, com dump recente. Registrar a duração e as divergências · _backend + qa_
+- [ ] **E5.01** Ensaio 1 no Supabase de produção (antes do cutover), com dump recente. Registrar a duração e as divergências · _backend + qa_
 - [ ] **E5.02** Corrigir scripts e dados a partir do ensaio 1 · _backend + liderança_
 - [ ] **E5.03** Ensaio 2 com reconciliação sem divergências · _backend + qa_
-- [ ] **E5.04** Homologação de uso pela liderança, incluindo login com a senha antiga · _liderança + product-owner_
+- [ ] **E5.04** Homologação de uso pela liderança no Supabase de produção (carga de ensaio), incluindo login com a senha antiga · _liderança + product-owner_
 - [ ] **E5.05** Go/no-go aprovado pelos critérios da 7.1 · _liderança + architect + product-owner_
 
 ### Fase 6: Cutover (7.2)
@@ -198,7 +198,7 @@ Data marcada: _a definir_
 - [ ] **E6.01** D−7: comunicação enviada aos usuários; schema do novo congelado
 - [ ] **E6.02** D−1: backups do MySQL e do Supabase de produção
 - [ ] **E6.03** D0: legado fora do ar
-- [ ] **E6.04** D0: dump final, carga e criação das contas
+- [ ] **E6.04** D0: limpeza da carga de ensaio, dump final, carga e criação das contas
 - [ ] **E6.05** D0: reconciliação sem divergências
 - [ ] **E6.06** D0: novo liberado e endereço do legado redirecionado
 - [ ] **E6.07** D+30: plantão de suporte encerrado. Senhas migradas: __%
@@ -227,8 +227,7 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis. ✅ Feito no E1.13.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
   - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`). ✅ Feito no E1.03 (`assign_role`) e no E1.08 (`view_sensitive_data`, com a trava por coluna).
-  - Trocar o domínio dos e-mails fictícios (`mci12fakemail.com`) por um domínio controlado pela igreja (D7, E1.06). Quem controla esse domínio recebe os e-mails das contas fictícias, inclusive os de redefinição de senha.
-  - Configurar SMTP próprio no Supabase Auth. O envio padrão tem limite baixo e não serve para produção.
+  - ~~Trocar o domínio dos e-mails fictícios e configurar SMTP próprio no Auth~~: não será feito (E1.06 e E1.07, 2026-11-25). O provedor de e-mail do Auth está desligado (E1.04), e nenhum e-mail é enviado.
 - **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar. ✅ Feito no E1.08, exceto a Auditoria (`Events.tsx` carrega os 500 eventos mais recentes).
 - **Perfis e escopo** configurados conforme a seção 6.5.
 - **Exclusão lógica** (seção 3.8) implementada antes de existir histórico real. Hoje, excluir uma célula apaga todos os relatórios dela, e excluir um membro apaga as participações dele.
@@ -384,7 +383,7 @@ Pontos de atenção para o `architect`:
 | D4 | Timóteo e anfitrião obrigatórios na célula | O legado obriga; o novo não | ✅ **Decidido em 2026-11-23:** seguir o legado. Os três são obrigatórios. |
 | D5 | Identificadores de login aceitos | E-mail ou celular (legado); também CPF (novo) | ✅ **Decidido em 2026-11-23:** e-mail real, celular ou CPF, com unicidade dos três. |
 | D6 | Prazo da migração transparente de senhas (6.3) | 60, 90 ou 180 dias | ✅ **Decidido em 2026-11-23:** **sem prazo.** A senha antiga vale até o primeiro login de cada usuário no novo, sem data para acabar. As credenciais legadas não são apagadas em lote (6.3, 7.4). |
-| D7 | Domínio dos e-mails fictícios | Manter `mci12fakemail.com` ou usar um domínio da igreja | ✅ **Decidido em 2026-11-23:** um domínio controlado pela igreja (ex.: um subdomínio de `mci12rs.com.br`). O nome final é escolhido no E1.06. |
+| D7 | Domínio dos e-mails fictícios | Manter `mci12fakemail.com` ou usar um domínio da igreja | ✅ **Revista em 2026-11-25:** continua o `mci12fakemail.com` (o E1.06 saiu do plano). A decisão de 2026-11-23 era um domínio da igreja. |
 | D8 | Retenção do banco legado depois do desligamento | — | ✅ **Decidido em 2026-11-23:** backup criptografado guardado por 12 meses e depois descartado. |
 | D9 | Quem é pastor | Lista dos membros sem líder e sem "não tem liderança" | ✅ **Decidido em 2026-11-23:** os pastores são **Samuel Colares e Magda Colares** (casal). Os demais membros sem líder e sem "não tem liderança" seguem o saneamento (5.4). |
 | D10 | Excluir um membro que tem discípulos ou células ativas (DEL-08) | Bloquear até reatribuir; permitir e deixar os discípulos sem líder; ou passar os discípulos automaticamente para o líder de quem foi excluído | ✅ **Decidido em 2026-11-23:** bloquear até reatribuir, com uma mensagem que diga o que falta (DEL-08). |
@@ -394,10 +393,10 @@ Pontos de atenção para o `architect`:
 
 ### 5.1 Princípios
 
-- **O legado não é alterado.** A extração usa um usuário MySQL somente leitura.
+- **O legado não é alterado.** A extração usa a conexão que já está no `local.config` (decisão do usuário, 2026-11-25; o E1.10 não será feito). Essa conexão tem privilégio de escrita, então os scripts só podem usar `SELECT` e `mysqldump --single-transaction`, sem nenhum comando que escreva no legado.
 - **Idempotência.** Os scripts podem rodar várias vezes com o mesmo resultado (upsert por `legacy_id`).
 - **Reprodutibilidade.** Tudo fica versionado em `data-migration/`, na raiz deste repositório.
-- **Ensaio antes da produção.** A migração completa roda em um projeto Supabase de homologação antes do cutover.
+- **Ensaio antes do cutover, no próprio Supabase de produção** (decisão do usuário, 2026-11-25; sem projeto de homologação). A carga de ensaio é identificada por `legacy_id` e pelas contas que a carga cria no Auth, e a limpeza apaga só isso, preservando o que foi cadastrado direto no novo. A limpeza roda antes de cada novo ensaio e antes da carga final.
 - **LGPD.** Os dados incluem convicção religiosa, que é dado pessoal sensível (Lei 13.709/2018, art. 5º, II). Por isso:
   - dumps sempre criptografados e com acesso restrito;
   - nenhuma cópia em máquina pessoal depois do uso;
@@ -588,8 +587,12 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
 
 ### 5.7 Ensaios
 
-1. **Ensaio 1**, em homologação, com um dump recente: medir a duração, rodar as validações e corrigir os scripts.
+Os ensaios rodam no Supabase de produção, antes do cutover (5.1). Antes de cada ensaio, faça backup do banco e limpe a carga anterior.
+
+1. **Ensaio 1**, com um dump recente: medir a duração, rodar as validações e corrigir os scripts.
 2. **Ensaio 2**, depois do saneamento: validação pela liderança (homologação de uso), incluindo o login com a senha antiga.
+   - A senha que alguém trocar durante o ensaio se perde na limpeza. Na carga final, vale de novo a senha do legado.
+   - Durante os ensaios, os dados reais do legado ficam visíveis no novo para quem já tem conta lá, conforme o perfil de cada um.
 3. **Go/no-go** (7.1).
 
 ## 6. Usuários, perfis e senhas
@@ -662,9 +665,9 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 
 ### 6.4 Redefinição de senha
 
-- **Quem tem e-mail real:** usa o "Esqueci minha senha" padrão do Supabase Auth (precisa do SMTP próprio, ver seção 2).
+- **Sem recuperação por e-mail** (E1.07 fora do plano, 2026-11-25; o provedor de e-mail do Auth está desligado desde o E1.04). Quem esquece a senha fala com o líder ou com um administrador e recebe uma senha temporária (redefinição assistida).
 - **Redefinição assistida (AUT-06):** um administrador define uma senha temporária para um membro do seu escopo. É uma Edge Function que checa a permissão e o escopo de quem chama, grava a senha e marca `must_change_password`. É o caminho para quem só tem celular.
-- A troca obrigatória no próximo login vale para os dois casos.
+- A troca obrigatória vale no próximo login depois da redefinição assistida.
 
 ### 6.5 Perfis
 
