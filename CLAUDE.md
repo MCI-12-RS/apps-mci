@@ -418,7 +418,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 já inclui o cônjuge do G12. Faltam o cônjuge do próprio usuário, o anfitrião nos relatórios, o escopo nas escritas e os pastores; as roles semeadas não usam escopo |
 | CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
 | Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
-| Exclusão lógica de membros, células e relatórios | banco e telas (E2.01 PRs 1 a 5): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída e aviso no cadastro com dados de excluído | 🟡 falta o encerramento da sessão do excluído (PR 6) |
+| Exclusão lógica de membros, células e relatórios | banco e telas (E2.01, aceito em 2026-11-25): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída, aviso no cadastro com dados de excluído e encerramento da sessão do excluído | ✅ (a unicidade de e-mail, celular e CPF entre não excluídos, DEL-04, fecha com os índices do E2.04) |
 | Validações de membro: nome e sobrenome, e-mail ou celular obrigatório, e-mail e celular únicos, CPF válido, líder obrigatório, sem ciclos | nenhuma no banco | ❌ |
 | Cônjuge simétrico | trigger | ✅ |
 | Campos computados: árvore de liderança, G12, líder direto | só `g12_level`; o G12 é calculado no cliente, na tela de Células | 🟡 |

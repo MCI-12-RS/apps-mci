@@ -55,7 +55,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | ⬜ | E1.01 concluído |
+| 2. Paridade | 🔄 1 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
@@ -139,14 +139,14 @@ Responsável: liderança da igreja, com o `product-owner`.
 
 Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO → architect → desenvolvedores → code-reviewer → QA → aceite do PO.
 
-- [ ] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos. Spec: [`specs/e2-01-exclusao-logica.md`](specs/e2-01-exclusao-logica.md) (desenho pronto; implementação depois do PR 4 do E1.08)
+- [x] **E2.01** Exclusão lógica · DEL-01 a DEL-09, MEM-11, CEL-08 · depende de D10 · é a base dos demais passos. Spec: [`specs/e2-01-exclusao-logica.md`](specs/e2-01-exclusao-logica.md). A DEL-04 fica 🟡 até os índices únicos do E2.04. Aceite do PO (2026-11-25)
   - PR 1 em produção (2026-11-24, mci-connect#19): banco da exclusão lógica (colunas, FKs sem cascata, RPCs, views de excluídos, índice único da semana, suspensão da conta).
   - PRs 2 a 4 em produção (2026-11-24):
     - PR 2 (mci-connect#20): exclusão nas telas de Membros, Células e Relatórios, sem exclusão física no banco;
     - PR 3 (mci-connect#21): listas de excluídos e restauração;
     - PR 4 (mci-connect#22): consulta do relatório de célula excluída.
   - PR 5 em produção (2026-11-24, mci-connect#23): aviso no cadastro de membro novo com o e-mail, o celular ou o CPF de um excluído (RN-18), com "Restaurar" para o administrador e "Cadastrar mesmo assim"; o e-mail de login de um excluído nunca entra. Sem migration; `create-user-admin` republicada.
-  - Faltam o PR 6 (encerramento da sessão, depois do PR 2 do E1.04) e a revisão final.
+  - PR 6 em produção (2026-11-25, mci-connect#28, merge `c6b9d5e`): encerramento da sessão de quem foi excluído (RN-14). Revisão final dos 6 PRs (tarefa 24): APROVADO, com o backlog atribuído ao E2.03, E2.04, E2.06 e E2.11.
 - [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
@@ -160,7 +160,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13. Spec: [`specs/e2-12-listagem-relatorios.md`](specs/e2-12-listagem-relatorios.md) (desenho pronto; entra depois do E2.10 e do E2.11)
 - [ ] **E2.13** Exportação dos relatórios para Excel · REL-14
 - [ ] **E2.14** Dashboard, incluindo a correção do mapa de dias da semana · DSH-01 a DSH-06. A dupla contagem no ranking G12 já foi corrigida (2026-11-22, mci-connect#13). Spec: [`specs/e2-14-dashboard.md`](specs/e2-14-dashboard.md) (desenho pronto; os links de cada grupo entram quando a lista correspondente estiver em produção)
-- [ ] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02
+- [ ] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02. Entra no PR 1 do E2.02: a `ministry_tree_nodes` passa a começar no topo do escopo (DA-6 e DT-24 de [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md)). Fecha no aceite do E2.02, se a DA-6 for mantida.
 - [ ] **E2.16** Aceite geral da paridade: matriz do `CLAUDE.md` toda em ✅ · _product-owner_
 
 ### Fase 3: Contas e senhas (seção 6)
@@ -267,7 +267,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | MEM-08 | Data de nascimento entre hoje − 100 anos e hoje. | `MemberDtoValidator.cs` | ❌ | CHECK |
 | MEM-09 | Data de batismo só existe para quem é batizado. | `UI/pages/Members/details.js` | 🟡 só na tela | CHECK |
 | MEM-10 | O vínculo de cônjuge é simétrico. | `App/Services/MemberService.cs` (`UpdateSpouse`) | ✅ trigger | — |
-| MEM-11 | Exclusão lógica de membros, conforme a seção 3.8. | Repositórios (`IsDeleted`) | ❌ exclusão física; `leader_id ON DELETE SET NULL` e participações `ON DELETE CASCADE` | Ver 3.8 |
+| MEM-11 | Exclusão lógica de membros, conforme a seção 3.8. | Repositórios (`IsDeleted`) | ✅ E2.01 (2026-11-25): exclusão e restauração por RPC; FKs `NO ACTION` | Ver 3.8 |
 | MEM-12 | Auditoria: quem criou, quem alterou e quando. | `App/Services/EntityChangeTrackingService.cs` | 🟡 Tabela `events`, alimentada por triggers. Cadastros feitos via `create-user-admin` ficam sem autor. | Colunas + trigger |
 | MEM-13 | Filtros da listagem: nome, liderança (qualquer nível), bairro, cidade, ativo/inativo, possui liderança, batizado, nível ministerial, vínculo celular e período de cadastro. | `Domain/Querying/Filters/MemberFilter.cs`; `UI/pages/Members/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | MEM-14 | Vínculo celular: **líder**, **timóteo** ou **anfitrião** (tem célula nesse papel); **participante** (esteve em relatório nos últimos 30 dias); **sem vínculo** (nenhum dos anteriores). | `QueryingExtensions.cs` (`CellLink`) | 🟡 só no dashboard, com 28 dias | View ou RPC |
@@ -293,7 +293,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ❌ | Função SQL |
 | CEL-06 | Filtros: líder, G12, logradouro, bairro, cidade, tipo, dia da semana, situação do relatório e período de cadastro. | `Domain/Querying/Filters/CellFilter.cs`; `UI/pages/Cells/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | CEL-07 | O detalhe da célula mostra os 3 últimos relatórios e dá acesso à lista completa. | `CellController.GetLastReportsByCellId`; `UI/pages/Cells/details.js` | ❌ | UI |
-| CEL-08 | Exclusão lógica de células, preservando os relatórios (seção 3.8). | `IsDeleted` | ❌ `ON DELETE CASCADE` apaga os relatórios | Ver 3.8 |
+| CEL-08 | Exclusão lógica de células, preservando os relatórios (seção 3.8). | `IsDeleted` | ✅ E2.01 (2026-11-25): os relatórios ficam, com "Célula excluída" | Ver 3.8 |
 
 Definição da situação do relatório (CEL-05):
 - **Em dia**: já tem relatório nesta semana, ou a reunião ainda não aconteceu.
@@ -350,20 +350,20 @@ Continuam com exclusão física as tabelas de configuração (`roles`, `role_per
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| DEL-01 | Excluir marca o registro (`deleted_at`, `deleted_by`) em vez de apagá-lo. A API não permite exclusão física. | Repositórios (`IsDeleted`) | ❌ | RPC de exclusão; sem política de DELETE |
-| DEL-02 | Registros excluídos não aparecem em listagens, buscas, seletores, contagens, dashboard, árvore de ministérios nem nos totais de discípulos e células. | Filtro global (`HasQueryFilter`) em `Infrastructure.Data/Context/AppDbContext.cs` | ❌ | RLS, e funções e triggers que ignoram excluídos |
-| DEL-03 | Excluir um relatório libera a semana: a célula pode receber outro relatório (REL-03). | `ReportApp.cs` (só considera não excluídos) | ❌ | Índice único parcial (`WHERE deleted_at IS NULL`) |
-| DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | ❌ | Índices únicos parciais |
-| DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ❌ | RPC de exclusão |
-| DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | 🟡 O login recusa o excluído (`sign-in`, motivo "Cadastro excluído") e a conta fica suspensa no Auth (E2.01 PR 1, E1.04). Falta encerrar a sessão já aberta (E2.01 PR 6). | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
-| DEL-07 | Excluir uma célula preserva os relatórios dela, que continuam no histórico e nas somas de períodos passados. | `IsDeleted` em `Cells` e `Reports` | ❌ hoje apaga em cascata | FKs sem cascata |
-| DEL-08 | Um membro com discípulos ativos, ou que é líder, timóteo ou anfitrião de célula ativa, só pode ser excluído depois que essas ligações forem reatribuídas. | Nova (D10) | ❌ | RPC de exclusão |
-| DEL-09 | Administradores podem reativar um registro excluído. Ao cadastrar alguém com o e-mail, o celular ou o CPF de um membro excluído, o sistema oferece reativar o cadastro existente em vez de criar outro. | Nova | ❌ | RPC + UI |
+| DEL-01 | Excluir marca o registro (`deleted_at`, `deleted_by`) em vez de apagá-lo. A API não permite exclusão física. | Repositórios (`IsDeleted`) | ✅ E2.01: RPCs `delete_*`; sem política nem privilégio de DELETE | RPC de exclusão; sem política de DELETE |
+| DEL-02 | Registros excluídos não aparecem em listagens, buscas, seletores, contagens, dashboard, árvore de ministérios nem nos totais de discípulos e células. | Filtro global (`HasQueryFilter`) em `Infrastructure.Data/Context/AppDbContext.cs` | ✅ E2.01: RLS, views, RPCs do dashboard, árvore e totais sem excluídos. CEL-05, novos cards (DSH) e exportação nascem já sem excluídos (E2.09, E2.13, E2.14) | RLS, e funções e triggers que ignoram excluídos |
+| DEL-03 | Excluir um relatório libera a semana: a célula pode receber outro relatório (REL-03). | `ReportApp.cs` (só considera não excluídos) | ✅ E2.01: índice `cell_reports_cell_week_key` só entre não excluídos | Índice único parcial (`WHERE deleted_at IS NULL`) |
+| DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | 🟡 E2.01: a restauração (recusa se outro não excluído usa o dado) e o aviso no cadastro consideram só não excluídos. Os índices únicos (MEM-03, MEM-05) ainda não existem e entram no E2.04, já parciais | Índices únicos parciais |
+| DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ✅ E2.01: `delete_member` desfaz o vínculo nos dois lados; a restauração não refaz | RPC de exclusão |
+| DEL-06 | Um membro excluído não consegue mais entrar no sistema. | O login só busca não excluídos | ✅ O login recusa o excluído (`sign-in`, motivo "Cadastro excluído"), a conta fica suspensa no Auth (E2.01 PR 1, E1.04) e a sessão aberta é encerrada na próxima leitura ou gravação (E2.01 PR 6, 2026-11-25) | Função de login + bloqueio da conta no Auth; helpers de permissão ignoram excluídos |
+| DEL-07 | Excluir uma célula preserva os relatórios dela, que continuam no histórico e nas somas de períodos passados. | `IsDeleted` em `Cells` e `Reports` | ✅ E2.01: FKs `NO ACTION`; os relatórios ficam no histórico e nas somas | FKs sem cascata |
+| DEL-08 | Um membro com discípulos não excluídos, ou que é líder, timóteo ou anfitrião de célula não excluída, só pode ser excluído depois que essas ligações forem reatribuídas. Inativos também bloqueiam (P-DEL-01 do E2.01). | Nova (D10) | ✅ E2.01: `delete_member` recusa e diz o que falta | RPC de exclusão |
+| DEL-09 | Administradores podem restaurar um registro excluído. Ao cadastrar alguém com o e-mail, o celular ou o CPF de um membro excluído, o sistema oferece restaurar o cadastro existente em vez de criar outro. | Nova | ✅ E2.01: listas de excluídos, `restore_*` e aviso no cadastro (RN-15 a RN-18) | RPC + UI |
 
 Pontos de atenção para o `architect`:
 - **Histórico.** Participantes e snapshots de relatórios podem apontar para membros excluídos. É preciso definir como mostrar o nome dessas pessoas sem expor o cadastro (por exemplo, uma função que devolve só o nome).
-- **Exclusão via RPC, não via `UPDATE`.** Com o RLS escondendo os excluídos, um `UPDATE ... RETURNING` feito pelo front deixa de funcionar. Por isso a exclusão (e a reativação) devem ser RPCs.
-- **E-mail único no Auth.** O e-mail é único no Supabase Auth mesmo quando o membro foi excluído. Por isso a DEL-09 reativa o cadastro em vez de criar um novo.
+- **Exclusão via RPC, não via `UPDATE`.** Com o RLS escondendo os excluídos, um `UPDATE ... RETURNING` feito pelo front deixa de funcionar. Por isso a exclusão (e a restauração) devem ser RPCs.
+- **E-mail único no Auth.** O e-mail é único no Supabase Auth mesmo quando o membro foi excluído. Por isso a DEL-09 restaura o cadastro em vez de criar um novo.
 - **LGPD.** Exclusão lógica não apaga dados. Pedidos de eliminação feitos pelo titular são atendidos por anonimização, num processo à parte.
 
 ### 3.9 O que não será replicado
@@ -613,7 +613,7 @@ O Supabase Auth não aceita importar hashes MD5. As senhas atuais só podem ser 
 
 - **Quem recebe conta:** todo membro migrado **não excluído** que tenha e-mail ou celular.
   - O status ativo/inativo não importa, porque o legado também não bloqueia login de inativo.
-  - Membros excluídos não recebem conta. Se um deles for reativado (DEL-09), a conta é criada nesse momento.
+  - Membros excluídos não recebem conta. Se um deles for restaurado (DEL-09), a conta é criada nesse momento (E4.08).
 - **E-mail da conta:**
   - o e-mail real, normalizado, quando for válido e único;
   - senão, um e-mail fictício **determinístico** (para a carga poder ser refeita): `m<legacy_id>@<domínio da D7>`;

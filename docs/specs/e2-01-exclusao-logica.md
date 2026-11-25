@@ -1,11 +1,7 @@
 # E2.01: Exclusão lógica
 
-> Status: em implementação. Negócio, Experiência (UX), Solução técnica e Tarefas escritos em 2026-11-23 (DA-1 a DA-10 para revisão).
-> - PR 1 (banco) em produção (2026-11-24, mci-connect#19): tarefas 1 a 5 concluídas. A conferência em produção (14 blocos, só leitura) bateu em 2026-11-24.
-> - PRs 2 a 4 em produção (2026-11-24, mci-connect#20, #21 e #22): tarefas 6 a 16 concluídas.
-> - PR 5 em produção (2026-11-24, mci-connect#23): tarefas 17 a 20 concluídas.
-> - PR 6 (tarefas 21 a 23, encerramento da sessão) implementado e revisado em 2026-11-25 (mci-connect#28); aguarda merge e promote. Tarefa 24 (revisão final dos 6 PRs): ver "Revisão final" no fim da Solução técnica.
-> - **E1.04 (2026-11-25):** PRs 1, 1b e 2 em produção; o PR 3 remove a `get-user-email` (DT-14 encerrada). O PR 6 daqui fica só com o encerramento da sessão (T21 e T23 ajustadas).
+> Status: **concluído e aceito pelo PO em 2026-11-25.** Os 6 PRs estão em produção (mci-connect#19 a #23 em 2026-11-24; PR 6, #28, merge `c6b9d5e`, promovido em 2026-11-25), e a revisão final (tarefa 24) saiu APROVADO, com o backlog atribuído ao E2.03, E2.04, E2.06 e E2.11.
+> Regras no `docs/migracao.md`: DEL-01 a DEL-03, DEL-05 a DEL-09, MEM-11 e CEL-08 em ✅; a DEL-04 fica 🟡 até os índices únicos do E2.04 (Fora de escopo).
 > Slug: `e2-01-exclusao-logica` · Paridade com o legado: sim (DEL-01 a DEL-07, MEM-11, CEL-08), com regras novas (DEL-08, pela D10, e DEL-09).
 
 ## Negócio
