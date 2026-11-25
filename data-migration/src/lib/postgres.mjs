@@ -45,7 +45,7 @@ export async function describeLegacy(client) {
 
 /**
  * Confere que nenhum papel da API (nem PUBLIC) tem privilégio no schema
- * legacy ou nas tabelas dele. Devolve a lista de problemas (vazia = ok).
+ * legacy, nas tabelas, nas colunas ou nas sequências dele. Devolve a lista de problemas (vazia = ok).
  */
 export async function legacyPrivilegeProblems(client, roles) {
   const { rows } = await client.query(
@@ -61,10 +61,30 @@ export async function legacyPrivilegeProblems(client, roles) {
       WHERE n.nspname = $1::text AND c.relkind IN ('r', 'p', 'v', 'm')
         AND has_table_privilege(r.rolname, c.oid, p.priv)
      UNION ALL
+     SELECT format('%s tem %s em alguma coluna de %s.%s', r.rolname, p.priv, $1::text, c.relname)
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN r
+       CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')) p(priv)
+      WHERE n.nspname = $1::text AND c.relkind IN ('r', 'p', 'v', 'm')
+        AND has_any_column_privilege(r.rolname, c.oid, p.priv)
+        AND NOT has_table_privilege(r.rolname, c.oid, p.priv)
+     UNION ALL
+     SELECT format('%s tem %s na sequência %s.%s', r.rolname, p.priv, $1::text, c.relname)
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN r
+       CROSS JOIN (VALUES ('USAGE'), ('SELECT'), ('UPDATE')) p(priv)
+      WHERE n.nspname = $1::text AND c.relkind = 'S'
+        AND has_sequence_privilege(r.rolname, c.oid, p.priv)
+     UNION ALL
      SELECT format('PUBLIC tem privilégio em %s.%s', $1::text, c.relname)
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
-            aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
-      WHERE n.nspname = $1::text AND a.grantee = 0
+            aclexplode(coalesce(c.relacl, acldefault(CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END::"char", c.relowner))) a
+      WHERE n.nspname = $1::text AND c.relkind IN ('r', 'p', 'v', 'm', 'S') AND a.grantee = 0
+     UNION ALL
+     SELECT format('PUBLIC tem privilégio em coluna de %s.%s', $1::text, c.relname)
+       FROM pg_attribute at JOIN pg_class c ON c.oid = at.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace,
+            aclexplode(at.attacl) a
+      WHERE n.nspname = $1::text AND at.attacl IS NOT NULL AND a.grantee = 0
      UNION ALL
      SELECT format('PUBLIC tem privilégio no schema %s', $1::text)
        FROM pg_namespace n, aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a

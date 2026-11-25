@@ -85,7 +85,7 @@ test('tipos: mapeamento', () => {
 });
 
 test('valores: datas zero, caractere nulo e booleanos', () => {
-  const stats = { zeroDates: 0, nulCharsRemoved: 0 };
+  const stats = { zeroDates: 0, nulCharsRemoved: 0, nonBinaryBooleans: 0 };
   assert.equal(convertValue('timestamp', '0000-00-00 00:00:00.000000', stats), null);
   assert.equal(convertValue('timestamp', '2024-00-10 00:00:00', stats), null);
   assert.equal(convertValue('timestamp', '2024-05-01 10:11:12.345678', stats), '2024-05-01 10:11:12.345678');
@@ -95,6 +95,8 @@ test('valores: datas zero, caractere nulo e booleanos', () => {
   assert.equal(convertValue('bool', 0, stats), false);
   assert.equal(convertValue('bool', 1, stats), true);
   assert.equal(convertValue('bool', Buffer.from([1]), stats), true);
+  assert.equal(convertValue('bool', 2, stats), true);
+  assert.equal(stats.nonBinaryBooleans, 1);
   assert.equal(convertValue('numeric', '1.500000000000000000000000000000', stats), '1.500000000000000000000000000000');
   assert.equal(convertValue('int', null, stats), null);
 });

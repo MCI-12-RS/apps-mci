@@ -1,5 +1,6 @@
 -- Massa FICTÍCIA para os testes locais do saneamento (nenhum dado real).
--- Cada caso está comentado em test/expected-sanitation.json.
+-- O resultado esperado está em test/expected-sanitation.json. O membro 2 tem
+-- ChildrenMembersComputed = 2 (tinyint(1) fora de 0 e 1) de propósito.
 SET SESSION FOREIGN_KEY_CHECKS = 0;
 SET SESSION sql_mode = '';
 INSERT INTO `Addresses` (`Id`,`Street`,`Number`,`Neighborhood`,`City`,`State`,`PostalCode`,`Notes`,`CreationDate`,`IsDeleted`) VALUES
@@ -7,7 +8,7 @@ INSERT INTO `Addresses` (`Id`,`Street`,`Number`,`Neighborhood`,`City`,`State`,`P
  (2,'Rua Teste','200','Bairro Teste','Cidade Ficticia','RS','90000000',CONCAT('antes',CHAR(0),'depois'),NULL,0);
 INSERT INTO `Members` (`Id`,`Name`,`Gender`,`Email`,`MobileNumber`,`CPF`,`BirthDate`,`LeadershipId`,`SpouseId`,`HasNoLeadership`,`Idle`,`Baptized`,`BaptismDate`,`HomeAddressId`,`Password`,`Role`,`ChildrenMembersComputed`,`CreationDate`,`IsDeleted`,`Notes`) VALUES
  (1,'Bruno Ficticio1',0,'pastor.a@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',NULL,2,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppSuperAdmin',0,'2024-05-01 10:11:12.345678',0,'Observação com acentuação ✓ e emoji 🙂'),
- (2,'Carla Ficticio2',1,'m2@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',NULL,1,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
+ (2,'Carla Ficticio2',1,'m2@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',NULL,1,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',2,'2024-05-01 10:11:12.345678',0,NULL),
  (3,'Diego Ficticio3',0,'m3@exemplo.org','51999990003',NULL,'1990-01-01 00:00:00.000000',1,4,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
  (4,'Elisa Ficticio4',1,'m4@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',2,3,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
  (5,'Fabio Ficticio5',1,'dup@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
@@ -49,7 +50,8 @@ INSERT INTO `Members` (`Id`,`Name`,`Gender`,`Email`,`MobileNumber`,`CPF`,`BirthD
  (41,'Bruno Ficticio41',1,'m41@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',7777,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
  (42,'Carla Ficticio42',0,'m42@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,1,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',0,NULL),
  (43,'Diego Ficticio43',1,'m43@exemplo.org',NULL,'000','1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL),
- (44,'Elisa Ficticio44',0,'dup@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL);
+ (44,'Elisa Ficticio44',0,'dup@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',3,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL),
+ (45,'Iris Ficticio45',0,'m45@exemplo.org',NULL,NULL,'1990-01-01 00:00:00.000000',45,NULL,0,0,1,'2010-05-05 00:00:00.000000',1,'0123456789abcdef0123456789abcdef','AppUser',0,'2024-05-01 10:11:12.345678',1,NULL);
 
 INSERT INTO `Cells` (`Id`,`LeadId`,`TimothyId`,`HostId`,`WeekDay`,`Time`,`PlaceId`,`CellType`,`ReportMandatory`,`CreationDate`,`IsDeleted`) VALUES
  (1, 3, 5, 6, 3, '20:00', 1, 0, 0, '2024-02-01 08:00:00.000000', 0),

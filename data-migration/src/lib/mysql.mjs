@@ -21,6 +21,9 @@ export class LegacyReader {
   constructor(options) {
     this.conn = mysql.createConnection(options);
     this.p = this.conn.promise();
+    // Erros fatais da conexão chegam pelas consultas; sem este ouvinte, um
+    // erro de rede depois do destroy() derrubaria o processo sem a mensagem.
+    this.conn.on('error', () => {});
   }
 
   async query(sql, params = []) {
@@ -42,7 +45,17 @@ export class LegacyReader {
     return info;
   }
 
-  async end() {
+  /**
+   * Encerra a sessão. Depois de uma falha no meio de um stream, a conexão
+   * pode estar pausada com um resultado pela metade: um ROLLBACK ficaria na
+   * fila para sempre. Nesse caso a conexão é derrubada (a transação era só de
+   * leitura; o servidor a descarta).
+   */
+  async end({ failed = false } = {}) {
+    if (failed) {
+      this.conn.destroy();
+      return;
+    }
     try {
       await this.query('ROLLBACK');
     } finally {

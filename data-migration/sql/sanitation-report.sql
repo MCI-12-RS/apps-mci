@@ -15,15 +15,17 @@
 -- Saída: dois comandos.
 --   1. Contagens por tabela (ativos, inativos, excluídos).
 --   2. Uma linha por verificação: ord, code, category, entity, title,
---      treatment, n (itens) e items (jsonb: [{id, info}]).
+--      treatment, n (itens) e items (jsonb: [{id, info, deleted}]); deleted
+--      diz se o próprio registro listado (membro, célula ou relatório) está
+--      excluído no legado.
 -- Nenhuma coluna de saída tem nome, e-mail, CPF ou telefone: só Ids do
 -- legado e textos fixos.
 --
 -- Categorias:
---   legado         corrigir no legado, pela liderança (E4.05)
---   transformacao  tratado automaticamente na transformação (E4.06)
---   decidir        sem regra no plano: precisa de decisão antes do E4.06
---   info           só informativo
+--   legacy_fix  corrigir no legado, pela liderança (E4.05)
+--   transform   tratado automaticamente na transformação (E4.06)
+--   decide      sem regra no plano: precisa de decisão antes do E4.06
+--   info        só informativo
 -- =============================================================================
 
 -- 1. Contagens --------------------------------------------------------------
@@ -66,28 +68,28 @@ cfg AS (
 defs (ord, code, category, entity, title, treatment) AS (
   VALUES
   -- Membros: identificadores (E2.04, RN-04 a RN-09)
-  (101, 'member_email_duplicate', 'legado', 'Members',
+  (101, 'member_email_duplicate', 'legacy_fix', 'Members',
    'E-mail repetido entre membros não excluídos (sem diferenciar maiúsculas e espaços)',
    'Corrigir no legado (E4.05). Sem isso o índice único members_email_key barra a carga. O info diz com quem o e-mail se repete.'),
-  (102, 'member_mobile_duplicate', 'legado', 'Members',
+  (102, 'member_mobile_duplicate', 'legacy_fix', 'Members',
    'Celular repetido entre membros não excluídos (9º dígito conta como igual, RN-06 e RN-09)',
    'Corrigir no legado (E4.05). Sem isso o índice único members_mobile_key barra a carga.'),
-  (103, 'member_cpf_duplicate', 'legado', 'Members',
+  (103, 'member_cpf_duplicate', 'legacy_fix', 'Members',
    'CPF (válido) repetido entre membros não excluídos',
    'Corrigir no legado (E4.05). Sem isso o índice único members_cpf_key barra a carga.'),
-  (104, 'member_cpf_invalid', 'transformacao', 'Members',
+  (104, 'member_cpf_invalid', 'transform', 'Members',
    'CPF inválido: fora dos 11 dígitos, dígitos verificadores errados ou todos iguais (RN-07)',
    'Importado como nulo (o CHECK members_cpf_check vale também para excluídos).'),
-  (105, 'member_email_invalid', 'transformacao', 'Members',
+  (105, 'member_email_invalid', 'transform', 'Members',
    'E-mail fora do formato (RN-04)',
    'Importado como nulo; a conta usa o e-mail técnico (6.2).'),
-  (106, 'member_email_placeholder', 'transformacao', 'Members',
+  (106, 'member_email_placeholder', 'transform', 'Members',
    'E-mail num domínio fictício (RN-05)',
    'Importado como nulo; a conta usa o e-mail técnico (6.2).'),
   (107, 'member_mobile_invalid', 'info', 'Members',
    'Celular fora do formato (RN-06)',
    'Migra como está, só com dígitos, e não serve de login. O info marca quem não tem outro identificador.'),
-  (108, 'member_mobile_invalid_only_identifier', 'legado', 'Members',
+  (108, 'member_mobile_invalid_only_identifier', 'legacy_fix', 'Members',
    'Celular fora do formato e sem e-mail nem CPF válidos (destaque da 5.4)',
    'Corrigir o celular no legado (E4.05); senão a pessoa migra sem conta de acesso.'),
   (109, 'member_without_identifier', 'info', 'Members',
@@ -97,13 +99,13 @@ defs (ord, code, category, entity, title, treatment) AS (
    'Membro não excluído sem senha no legado',
    'Migra com conta, sem credencial legada; precisa de redefinição (6.4).'),
   -- Membros: nome, sexo, datas
-  (120, 'member_name_empty', 'legado', 'Members',
+  (120, 'member_name_empty', 'legacy_fix', 'Members',
    'Nome vazio (members.name é obrigatório, também para excluídos)',
    'Corrigir no legado (E4.05). Para os excluídos (info "excluído"), a transformação precisa de um nome substituto: decidir.'),
   (121, 'member_name_single_word', 'info', 'Members',
    'Nome com uma palavra só (RN-02)',
    'Migra como está, com os espaços ajustados.'),
-  (122, 'member_gender_invalid', 'legado', 'Members',
+  (122, 'member_gender_invalid', 'legacy_fix', 'Members',
    'Sexo fora de 0 (M) e 1 (F) (members.gender é obrigatório, também para excluídos)',
    'Corrigir no legado (E4.05). Para os excluídos, decidir na transformação.'),
   (123, 'member_birth_future', 'info', 'Members',
@@ -112,86 +114,89 @@ defs (ord, code, category, entity, title, treatment) AS (
   (124, 'member_birth_too_old', 'info', 'Members',
    'Nascimento de 100 anos atrás ou mais',
    'Migra como está.'),
-  (125, 'member_baptism_date_without_baptism', 'transformacao', 'Members',
+  (125, 'member_baptism_date_without_baptism', 'transform', 'Members',
    'Data de batismo preenchida sem "batizado"',
    'A data fica nula (CHECK members_baptism_check).'),
-  (126, 'member_address_missing', 'transformacao', 'Members',
+  (126, 'member_address_missing', 'transform', 'Members',
    'Endereço (HomeAddressId) que não existe em Addresses',
    'Migra sem endereço.'),
   -- Membros: liderança (D9, D10, E2.06)
-  (140, 'pastor_config_invalid', 'decidir', 'Members',
+  (140, 'pastor_config_invalid', 'decide', 'Members',
    'Pastor da D9 configurado (LEGACY_PASTOR_IDS) que não existe, está excluído, tem líder ou está marcado "não tem liderança"',
    'Conferir os Ids em LEGACY_PASTOR_IDS.'),
-  (141, 'member_no_leader_not_marked', 'legado', 'Members',
+  (141, 'member_no_leader_not_marked', 'legacy_fix', 'Members',
    'Sem líder e sem "não tem liderança", fora os pastores da D9',
    'A liderança indica o líder no legado (E4.05). Quem não for corrigido migra sem liderança. O info mostra quantos estão abaixo (ajuda a achar os pastores, se a D9 não estiver configurada).'),
-  (142, 'member_no_leadership_with_disciples', 'legado', 'Members',
+  (142, 'member_no_leadership_with_disciples', 'legacy_fix', 'Members',
    'Sem liderança e com discípulos (P-HIE-02; no_leadership_with_disciples)',
    'A liderança indica o líder no legado (E4.05). Quem não for corrigido migra sem liderança, e a descendência conta o nível a partir dele.'),
-  (143, 'member_no_leadership_with_leader', 'transformacao', 'Members',
+  (143, 'member_no_leadership_with_leader', 'transform', 'Members',
    '"Não tem liderança" marcado, mas com líder preenchido',
    'O líder é descartado.'),
-  (144, 'member_leader_missing', 'legado', 'Members',
+  (144, 'member_leader_missing', 'legacy_fix', 'Members',
    'Membro não excluído com líder que não existe',
    'Corrigir no legado (E4.05); senão migra sem liderança.'),
-  (145, 'member_leader_deleted', 'legado', 'Members',
+  (145, 'member_leader_deleted', 'legacy_fix', 'Members',
    'Membro não excluído com líder excluído (D10)',
    'Reatribuir o líder no legado (E4.05). O info diz o Id do líder excluído.'),
-  (146, 'member_leadership_cycle', 'legado', 'Members',
+  (147, 'member_leader_self', 'decide', 'Members',
+   'Líder apontando para a própria pessoa (o CHECK members_leader_not_self_check vale também para excluídos)',
+   'Não excluídos: corrigir no legado (E4.05). Excluídos (info "excluído"): não dá para corrigir na tela do legado; sugestão: descartar o líder na transformação, como no cônjuge.'),
+  (146, 'member_leadership_cycle', 'legacy_fix', 'Members',
    'Ciclo na hierarquia (a cadeia de líderes volta para a própria pessoa)',
    'Corrigir no legado (E4.05).'),
   -- Membros: cônjuge
-  (160, 'member_spouse_self', 'transformacao', 'Members',
+  (160, 'member_spouse_self', 'transform', 'Members',
    'Cônjuge apontando para a própria pessoa',
    'O vínculo é desfeito.'),
-  (161, 'member_spouse_missing', 'transformacao', 'Members',
+  (161, 'member_spouse_missing', 'transform', 'Members',
    'Cônjuge que não existe',
    'O vínculo é desfeito (mesma regra do cônjuge excluído; confirmar).'),
-  (162, 'member_spouse_deleted', 'transformacao', 'Members',
+  (162, 'member_spouse_deleted', 'transform', 'Members',
    'Membro não excluído com cônjuge excluído (DEL-05)',
    'O vínculo é desfeito.'),
-  (163, 'member_spouse_not_reciprocal', 'legado', 'Members',
+  (163, 'member_spouse_not_reciprocal', 'legacy_fix', 'Members',
    'Cônjuge não recíproco entre membros não excluídos',
    'Corrigir no legado (E4.05). O info diz o cônjuge apontado e para quem ele aponta.'),
   -- Células
-  (201, 'cell_time_invalid', 'legado', 'Cells',
+  (201, 'cell_time_invalid', 'legacy_fix', 'Cells',
    'Horário fora do formato HH:mm',
    'Corrigir no legado (E4.05). Para as excluídas (info "excluída"), o horário fica nulo na transformação.'),
-  (202, 'cell_weekday_invalid', 'legado', 'Cells',
+  (202, 'cell_weekday_invalid', 'legacy_fix', 'Cells',
    'Dia da semana fora de 0 (domingo) a 6 (sábado)',
    'Corrigir no legado (E4.05).'),
-  (203, 'cell_type_invalid', 'legado', 'Cells',
+  (203, 'cell_type_invalid', 'legacy_fix', 'Cells',
    'Tipo fora de 0 (Evangelística), 1 (Discipulado) e 2 (Macrocélula)',
    'Corrigir no legado (E4.05).'),
-  (204, 'cell_person_missing', 'legado', 'Cells',
+  (204, 'cell_person_missing', 'legacy_fix', 'Cells',
    'Célula não excluída com líder, timóteo ou anfitrião que não existe (D4: os três são obrigatórios)',
    'Corrigir no legado (E4.05).'),
-  (205, 'cell_person_deleted', 'legado', 'Cells',
+  (205, 'cell_person_deleted', 'legacy_fix', 'Cells',
    'Célula não excluída com líder, timóteo ou anfitrião excluído (D10)',
    'Reatribuir no legado (E4.05).'),
-  (206, 'cell_deleted_person_missing', 'transformacao', 'Cells',
+  (206, 'cell_deleted_person_missing', 'transform', 'Cells',
    'Célula excluída com líder, timóteo ou anfitrião que não existe',
    'Migra excluída, com a referência nula.'),
   (207, 'cell_leader_inactive', 'info', 'Cells',
    'Célula não excluída liderada por membro inativo',
    'Migra como está; a célula não conta nos totais de ninguém (D2).'),
-  (208, 'cell_place_missing', 'transformacao', 'Cells',
+  (208, 'cell_place_missing', 'transform', 'Cells',
    'Endereço (PlaceId) que não existe em Addresses',
    'Migra sem endereço.'),
   -- Relatórios
-  (301, 'report_duplicate_week', 'transformacao', 'Reports',
+  (301, 'report_duplicate_week', 'transform', 'Reports',
    'Mais de um relatório não excluído da mesma célula na mesma semana (domingo a sábado)',
    'Fica o mais recente (maior data; no empate, maior Id); os outros migram como excluídos (índice cell_reports_cell_week_key). Listar para a liderança.'),
-  (302, 'report_cell_missing', 'decidir', 'Reports',
+  (302, 'report_cell_missing', 'decide', 'Reports',
    'Relatório de célula que não existe',
    'Sem regra no plano: cell_id é obrigatório no novo. Decidir (não migrar e listar no relatório de carga?).'),
-  (303, 'report_date_missing', 'decidir', 'Reports',
+  (303, 'report_date_missing', 'decide', 'Reports',
    'Relatório sem data (nula, ou data zero do MySQL convertida em nulo na cópia)',
    'Sem regra no plano: date e time são obrigatórios no novo. Decidir.'),
-  (304, 'report_snapshot_person_missing', 'decidir', 'Reports',
+  (304, 'report_snapshot_person_missing', 'decide', 'Reports',
    'Relatório com líder, timóteo ou anfitrião (snapshot) que não existe',
    'Decidir no E4.02/E4.06: snapshot nulo?'),
-  (305, 'report_cell_type_invalid', 'decidir', 'Reports',
+  (305, 'report_cell_type_invalid', 'decide', 'Reports',
    'Tipo da célula no relatório fora de 0, 1 e 2',
    'Decidir no E4.06: snapshot do tipo nulo?'),
   (306, 'report_future_date', 'info', 'Reports',
@@ -210,10 +215,10 @@ defs (ord, code, category, entity, title, treatment) AS (
    'Relatório não excluído de célula excluída',
    'Migra como está, com a referência mantida (5.4).'),
   -- Participantes
-  (401, 'participant_member_missing', 'transformacao', 'ReportMembers',
+  (401, 'participant_member_missing', 'transform', 'ReportMembers',
    'Participante que não existe em Members (Id = relatório; info = membro)',
    'Não migra; entra no relatório de carga (5.5).'),
-  (402, 'participant_report_missing', 'transformacao', 'ReportMembers',
+  (402, 'participant_report_missing', 'transform', 'ReportMembers',
    'Participante de relatório que não existe (Id = relatório; info = membro)',
    'Não migra; entra no relatório de carga (5.5).'),
   (403, 'participant_member_deleted', 'info', 'ReportMembers',
@@ -407,6 +412,8 @@ hits (code, id, info) AS (
   SELECT 'member_leader_deleted', id, 'líder excluído: ' || eff_leader FROM ml
    WHERE NOT del AND l_del
   UNION ALL
+  SELECT 'member_leader_self', id, CASE WHEN del THEN 'excluído' END FROM me WHERE eff_leader = id
+  UNION ALL
   SELECT 'member_leadership_cycle', c.id, CASE WHEN me.del THEN 'excluído' END
     FROM cycle_walk c JOIN me ON me.id = c.id
   -- Cônjuge
@@ -509,9 +516,17 @@ hits (code, id, info) AS (
 )
 SELECT d.ord, d.code, d.category, d.entity, d.title, d.treatment,
        count(h.code) AS n,
-       coalesce(jsonb_agg(jsonb_build_object('id', h.id, 'info', nullif(h.info, '')) ORDER BY h.id, h.info)
+       coalesce(jsonb_agg(jsonb_build_object('id', h.id, 'info', nullif(h.info, ''), 'deleted', coalesce(x.del, false))
+                          ORDER BY h.id, h.info)
                 FILTER (WHERE h.code IS NOT NULL), '[]'::jsonb) AS items
   FROM defs d
   LEFT JOIN hits h ON h.code = d.code
+  LEFT JOIN LATERAL (
+    SELECT CASE d.entity
+             WHEN 'Members' THEN (SELECT me.del FROM me WHERE me.id = h.id)
+             WHEN 'Cells' THEN (SELECT c.del FROM cells c WHERE c.id = h.id)
+             ELSE (SELECT r.del FROM reports r WHERE r.id = h.id)
+           END AS del
+  ) x ON true
  GROUP BY d.ord, d.code, d.category, d.entity, d.title, d.treatment
  ORDER BY d.ord;

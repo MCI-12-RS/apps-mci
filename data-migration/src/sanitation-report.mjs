@@ -25,9 +25,9 @@ Uso: node src/sanitation-report.mjs [--config <arquivo>] [--dry-run] [--pastor-i
 const SQL_PATH = resolve(MIGRATION_ROOT, 'sql', 'sanitation-report.sql');
 
 const CATEGORIES = [
-  ['legado', 'Corrigir no legado (E4.05)'],
-  ['decidir', 'Precisa de decisão antes do E4.06'],
-  ['transformacao', 'Tratado na transformação (E4.06)'],
+  ['legacy_fix', 'Corrigir no legado (E4.05)'],
+  ['decide', 'Precisa de decisão antes do E4.06'],
+  ['transform', 'Tratado na transformação (E4.06)'],
   ['info', 'Informativo'],
 ];
 const categoryLabel = new Map(CATEGORIES);
@@ -60,9 +60,9 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('pt-BR', {
 
 const mdEscape = (s) => String(s ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
 
-function legacyLink(baseUrl, entity, id, info) {
+function legacyLink(baseUrl, entity, item) {
+  const { id, deleted } = item;
   if (!baseUrl || id == null) return String(id ?? '—');
-  const deleted = /exclu[íi]d[oa]/.test(info ?? '');
   const path = entity === 'Members' ? 'members' : entity === 'Cells' ? 'cells' : null;
   if (!path || deleted) return String(id);
   return `[${id}](${baseUrl.replace(/\/+$/, '')}/${path}/${id})`;
@@ -122,9 +122,9 @@ function renderMarkdown({ generatedAt, run, pastorIds, counts, checks, legacyUrl
     const table = [];
     if (hasInfo) {
       table.push('| Id do legado | Observação |', '|---:|---|');
-      for (const i of items) table.push(`| ${legacyLink(legacyUrl, r.entity, i.id, i.info)} | ${mdEscape(i.info ?? '')} |`);
+      for (const i of items) table.push(`| ${legacyLink(legacyUrl, r.entity, i)} | ${mdEscape(i.info ?? '')} |`);
     } else {
-      table.push(`Ids do legado: ${items.map((i) => legacyLink(legacyUrl, r.entity, i.id, i.info)).join(', ')}`);
+      table.push(`Ids do legado: ${items.map((i) => legacyLink(legacyUrl, r.entity, i)).join(', ')}`);
     }
     if (items.length > OPEN_LIST_LIMIT) {
       out.push(`<details><summary>Ver os ${formatInt(items.length)} itens</summary>`, '', ...table, '', '</details>');

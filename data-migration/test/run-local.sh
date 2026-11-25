@@ -47,6 +47,7 @@ SUPABASE_DB="postgres"
 SUPABASE_USER="postgres"
 SUPABASE_PASS="postgres"
 LEGACY_PASTOR_IDS="${PASTORS}"
+LEGACY_APP_URL="https://legado.invalid"
 CFG
 
 step "MySQL de teste (${MYSQL_IMAGE})"
@@ -76,7 +77,9 @@ $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --dry-run >/dev/null
 $A no-legacy
 
 step "Cópia 1"
-$N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" | tail -n 7
+$N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" >"$WORK/copy1.log" 2>&1
+grep -vE '^AVISO: o certificado' "$WORK/copy1.log" | tail -n 8
+check "tinyint(1) fora de 0 e 1 avisado e contado" grep -q 'Members: 1 valores tinyint(1)' "$WORK/copy1.log"
 FP1="$($A fingerprint)"
 $A grants
 $A checksum-detects-change
@@ -100,12 +103,24 @@ check "duas execuções registradas, com contagens e checksums iguais" test "$RU
 step "Falha no meio da cópia desfaz tudo"
 my() { docker exec -i "$CONTAINER" mysql -uroot -prootpw g12app -e "$1" 2>/dev/null; }
 my "ALTER TABLE Reports ADD COLUMN ExtraTime time NULL; UPDATE Reports SET ExtraTime = '30:00:00' WHERE Id = 1;"
-if $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" >"$WORK/fail.log" 2>&1; then
-  echo "FALHA: a cópia deveria ter falhado"; exit 1
-fi
-grep -E '^(AVISO: Coluna|ERRO)' "$WORK/fail.log"
+# 5 mil relatórios fictícios a mais, para o stream ficar pausado quando a falha acontece.
+my "SET SESSION cte_max_recursion_depth = 10000;
+    INSERT INTO Reports (Id, CellId, Date, NumMembers, Contribution, WeekCellSkipped, LeadershipId, HostId, TimothyId, IsDeleted)
+    WITH RECURSIVE s (n) AS (SELECT 1000 UNION ALL SELECT n + 1 FROM s WHERE n < 5999)
+    SELECT n, 1, '2020-01-01 20:00:00', 0, 0, 0, 3, 6, 5, 1 FROM s;"
+# --batch-size 1: a falha acontece com o stream do MySQL ainda pela metade
+# (o script não pode ficar parado esperando o legado).
+TIMEOUT=""
+if command -v timeout >/dev/null; then TIMEOUT="timeout 60"; elif command -v gtimeout >/dev/null; then TIMEOUT="gtimeout 60"; fi
+set +e
+$TIMEOUT $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" --batch-size 1 >"$WORK/fail.log" 2>&1
+STATUS=$?
+set -e
+check "a cópia falhou sem travar (status $STATUS)" test "$STATUS" -ne 0 -a "$STATUS" -ne 124
+grep -E '^(AVISO: Coluna|ERRO)' "$WORK/fail.log" || true
+check "o erro foi impresso" grep -q '^ERRO: \[22008\]' "$WORK/fail.log"
 check "o destino ficou como estava" test "$($A fingerprint)" = "$FP2"
-my "ALTER TABLE Reports DROP COLUMN ExtraTime;"
+my "ALTER TABLE Reports DROP COLUMN ExtraTime; DELETE FROM Reports WHERE Id >= 1000;"
 
 step "Saneamento"
 $A sanitation "$PASTORS"
@@ -115,6 +130,8 @@ for pii in Ficticio exemplo.org 52998224725 99999-0002; do
   if grep -q "$pii" "$REPORT"; then echo "FALHA: relatório contém dado pessoal ($pii)"; exit 1; fi
 done
 echo "ok: relatório sem dados pessoais da massa"
+check "link para o membro ativo com líder excluído" grep -q '\[27\](https://legado.invalid/members/27) | líder excluído: 28' "$REPORT"
+check "sem link para o membro excluído" grep -q '^| 45 | excluído |' "$REPORT"
 
 step "Limpeza final"
 $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes | tail -n 1

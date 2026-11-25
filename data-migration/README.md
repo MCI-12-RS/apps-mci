@@ -15,7 +15,7 @@ Os próximos passos (E4.06 em diante: transformação e carga, contas, reconcili
 
 - **Node 22** e npm. Instale as dependências uma vez, dentro desta pasta: `npm ci`.
 - **Rede:** a máquina precisa alcançar o MySQL do legado (no DigitalOcean, o IP dela precisa estar em *Trusted sources* do banco) e o Supabase pelo **Session pooler** (`aws-…pooler.supabase.com`, porta 5432). A conexão direta `db.<ref>.supabase.co` só tem IPv6.
-- O schema `legacy` **não** pode estar entre os schemas expostos pela API (Supabase → *Settings → API → Exposed schemas*; o padrão é só `public` e `graphql_public`). Mesmo exposto, ele não seria lido: a cópia tira todos os privilégios de `anon`, `authenticated` e `service_role` e confere isso antes de gravar.
+- O schema `legacy` **não** pode estar entre os schemas expostos pela API (Supabase → *Settings → API → Exposed schemas*; o padrão é só `public` e `graphql_public`). Mesmo exposto, ele não seria lido: a cópia tira todos os privilégios de `anon`, `authenticated` e `service_role` e confere isso (schema, tabelas, colunas e sequências) antes de gravar.
 - `psql` só é necessário para o teste local.
 
 ## Configuração
@@ -63,7 +63,7 @@ Ajuda de cada script: `node src/<script>.mjs --help`.
 - **Tipos fiéis.** `datetime(6)` → `timestamp(6) without time zone`, sem conversão de fuso (o legado grava horário de Brasília); `decimal(65,30)` → `numeric(65,30)`; `tinyint(1)` → `boolean`; `int` → `integer`; `longtext` → `text`. As colunas ficam todas aceitando nulo (é uma cópia, não o modelo).
 - **Conferência.** No fim de cada tabela, a contagem (origem no mesmo snapshot × linhas lidas × destino) e um checksum calculado dos dois lados (md5 de cada linha em forma canônica, somado) precisam bater; se não baterem, a cópia inteira é desfeita.
 - **Registro.** Cada cópia gravada acrescenta uma linha em `legacy._copy_runs`: início e fim, host, porta e banco de origem (sem usuário nem senha), versão do MySQL, última migration EF (`__EFMigrationsHistory`), commit desta ferramenta e, por tabela, linhas, checksum e ajustes.
-- **Ajustes inevitáveis**, contados em `_copy_runs.tables`: data zero do MySQL (`0000-00-00`) vira nulo (`zero_dates_nulled`; o relatório de saneamento lista os relatórios sem data); o caractere nulo (`\0`), que o Postgres não aceita em texto, é removido (`nul_chars_removed`). O checksum já considera os dois ajustes.
+- **Ajustes inevitáveis**, contados em `_copy_runs.tables`: data zero do MySQL (`0000-00-00`) vira nulo (`zero_dates_nulled`; o relatório de saneamento lista os relatórios sem data); o caractere nulo (`\0`), que o Postgres não aceita em texto, é removido (`nul_chars_removed`); um `tinyint(1)` diferente de 0 e 1 vira verdadeiro, com aviso (`non_binary_booleans`). O checksum já considera os três ajustes.
 - **Coluna a mais no legado** é copiada também, com aviso. Coluna esperada que faltar (lista tirada do `AppDbContextModelSnapshot.cs`) para a cópia antes de gravar.
 - **Idempotente:** rodar de novo recria as tabelas com o conteúdo atual do legado; `_copy_runs` guarda o histórico.
 - Nenhum comando com parâmetros pode levar 10 s ou mais (`statement_timeout` de 9 s nos `INSERT`): o `auto_explain` do Supabase registra no log os parâmetros dos comandos lentos, e os parâmetros aqui são dados de membros. Com lotes de 500 linhas, cada `INSERT` leva milissegundos; se estourar, diminua `--batch-size`.

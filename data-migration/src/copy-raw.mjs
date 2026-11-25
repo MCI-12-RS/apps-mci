@@ -66,6 +66,7 @@ async function main() {
   const startedAt = new Date();
   const reader = new LegacyReader(my.options);
   let client;
+  let failed = false;
   try {
     const info = await reader.begin({ requireSsl: Boolean(my.options.ssl) });
     const schemaVersion = await reader.schemaVersion();
@@ -135,6 +136,7 @@ async function main() {
     )`);
     await client.query(`ALTER TABLE ${S}.${qPg(RUNS_TABLE)} ENABLE ROW LEVEL SECURITY`);
     await client.query(`REVOKE ALL ON ${S}.${qPg(RUNS_TABLE)} FROM ${revokeFrom}`);
+    await client.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA ${S} FROM ${revokeFrom}`);
 
     const summary = {};
     for (const t of tables) {
@@ -144,7 +146,7 @@ async function main() {
       await client.query(`ALTER TABLE ${target} ENABLE ROW LEVEL SECURITY`);
       await client.query(`REVOKE ALL ON ${target} FROM ${revokeFrom}`);
 
-      const stats = { zeroDates: 0, nulCharsRemoved: 0 };
+      const stats = { zeroDates: 0, nulCharsRemoved: 0, nonBinaryBooleans: 0 };
       const insertSql = `INSERT INTO ${target} SELECT * FROM jsonb_populate_recordset(NULL::${target}, $1::jsonb)`;
       const order = t.primaryKeySource.map(qMy).join(', ');
       const select = `SELECT ${t.columns.map((c) => qMy(c.sourceName)).join(', ')} FROM ${qMy(t.sourceName)} ORDER BY ${order}`;
@@ -178,14 +180,11 @@ async function main() {
       if (streamed !== t.sourceRows || destRows !== t.sourceRows) {
         throw new Error(`Contagem divergente em ${t.name}: origem ${t.sourceRows}, lidas ${streamed}, destino ${destRows}.`);
       }
-      const checksumOk = destChecksum === t.sourceChecksum;
-      if (!checksumOk && stats.zeroDates === 0 && stats.nulCharsRemoved === 0) {
+      if (destChecksum !== t.sourceChecksum) {
         throw new Error(`Checksum divergente em ${t.name}: o conteúdo copiado não bate com a origem.`);
       }
-      if (!checksumOk) {
-        throw new Error(
-          `Checksum divergente em ${t.name} (${stats.zeroDates} datas zero viraram nulo, ${stats.nulCharsRemoved} textos com caractere nulo).`,
-        );
+      if (stats.nonBinaryBooleans) {
+        warn(`${t.name}: ${stats.nonBinaryBooleans} valores tinyint(1) diferentes de 0 e 1 foram gravados como verdadeiro.`);
       }
       summary[t.name] = {
         source_table: t.sourceName,
@@ -194,6 +193,7 @@ async function main() {
         checksum_excluded_columns: checksumExcluded(t),
         zero_dates_nulled: stats.zeroDates,
         nul_chars_removed: stats.nulCharsRemoved,
+        non_binary_booleans: stats.nonBinaryBooleans,
         columns: t.columns.length,
       };
       log(`  ${LEGACY_SCHEMA}.${t.name}: ${formatInt(destRows)} linhas, checksum conferido`);
@@ -217,10 +217,11 @@ async function main() {
     log('');
     log(`Cópia #${run.id} gravada em ${LEGACY_SCHEMA} (${((finishedAt - startedAt) / 1000).toFixed(1)} s).`);
   } catch (err) {
+    failed = true;
     if (client) await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
-    await reader.end().catch(() => {});
+    await reader.end({ failed }).catch(() => {});
     if (client) await client.end().catch(() => {});
   }
 }

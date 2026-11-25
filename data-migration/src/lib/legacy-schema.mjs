@@ -116,9 +116,12 @@ const ZERO_DATE = /^0000-|^\d{4}-00-|^\d{4}-\d{2}-00/;
 export function convertValue(kind, value, stats) {
   if (value === null || value === undefined) return null;
   switch (kind) {
-    case 'bool':
+    case 'bool': {
       if (Buffer.isBuffer(value)) return value.some((b) => b !== 0);
-      return Number(value) !== 0;
+      const n = Number(value);
+      if (n !== 0 && n !== 1) stats.nonBinaryBooleans += 1;
+      return n !== 0;
+    }
     case 'int':
     case 'numeric':
     case 'float':
@@ -166,7 +169,8 @@ export function mysqlChecksumExpr(column) {
   const c = qMy(column.sourceName);
   switch (column.kind) {
     case 'bool':
-      return `CAST(CAST(${c} AS UNSIGNED) AS CHAR)`;
+      // Mesma regra do convertValue: diferente de zero é verdadeiro.
+      return `IF(${c} IS NULL, NULL, IF(${c} <> 0, '1', '0'))`;
     case 'int':
     case 'numeric':
       return `CAST(${c} AS CHAR)`;
