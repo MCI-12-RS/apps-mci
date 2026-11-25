@@ -55,7 +55,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | 🔄 1 de 16 | E1.01 concluído |
+| 2. Paridade | 🔄 3 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
@@ -147,7 +147,9 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
     - PR 4 (mci-connect#22): consulta do relatório de célula excluída.
   - PR 5 em produção (2026-11-24, mci-connect#23): aviso no cadastro de membro novo com o e-mail, o celular ou o CPF de um excluído (RN-18), com "Restaurar" para o administrador e "Cadastrar mesmo assim"; o e-mail de login de um excluído nunca entra. Sem migration; `create-user-admin` republicada.
   - PR 6 em produção (2026-11-25, mci-connect#28, merge `c6b9d5e`): encerramento da sessão de quem foi excluído (RN-14). Revisão final dos 6 PRs (tarefa 24): APROVADO, com o backlog atribuído ao E2.03, E2.04, E2.06 e E2.11.
-- [ ] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02, AUT-03, AUT-04, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md) (desenho pronto; entra depois do E2.01 em produção; inclui as raízes da árvore pelo escopo, DA-6)
+- [x] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02 a AUT-05, AUT-07, CEL-04, DSH-01, MIN-02 e "quem lança" da REL-11, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md). A REL-11 fica 🟡 até a RPC do E2.11, e a AUT-06 é do E2.03. Aceite do PO (2026-11-25)
+  - PRs em produção (2026-11-25): mci-connect#29 (banco: escopo, leitura, escrita e funções semeadas; conferência sem parada), #30 (acesso, menu e rotas), #31 (tela de Funções), #32 (Membros), #33 (Células, Relatórios, Dashboard e Ministérios) e #34 (fecha a leitura e a escrita diretas de `roles` e `role_permissions` e mascara a `role_id`; squash `b50308d`), com smoke de produção só leitura.
+  - Revisão final dos 6 PRs (tarefa 20): APROVADO, com o backlog técnico no spec. Testes do último PR: pgTAP 23 arquivos e 2.688 testes, Vitest 1.259, Playwright sem regressão (só as falhas de ambiente conhecidas).
 - [ ] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
 - [ ] **E2.04** Validações de membro · MEM-01 a MEM-09 · depende de D5 (e HIE-01, antecipada do E2.06). Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md) (desenho pronto; o PR 2 depende do E1.04 inteiro em produção)
 - [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
@@ -160,7 +162,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13. Spec: [`specs/e2-12-listagem-relatorios.md`](specs/e2-12-listagem-relatorios.md) (desenho pronto; entra depois do E2.10 e do E2.11)
 - [ ] **E2.13** Exportação dos relatórios para Excel · REL-14
 - [ ] **E2.14** Dashboard, incluindo a correção do mapa de dias da semana · DSH-01 a DSH-06. A dupla contagem no ranking G12 já foi corrigida (2026-11-22, mci-connect#13). Spec: [`specs/e2-14-dashboard.md`](specs/e2-14-dashboard.md) (desenho pronto; os links de cada grupo entram quando a lista correspondente estiver em produção)
-- [ ] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02. Entra no PR 1 do E2.02: a `ministry_tree_nodes` passa a começar no topo do escopo (DA-6 e DT-24 de [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md)). Fecha no aceite do E2.02, se a DA-6 for mantida.
+- [x] **E2.15** Árvore de ministérios a partir do escopo do usuário · MIN-02. Feito no PR 1 do E2.02 (mci-connect#29): a `ministry_tree_nodes` começa no topo do escopo (DA-6 e DT-24 de [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md)), e o estado vazio fica só para quem não vê ninguém. Aceite do PO junto com o E2.02 (2026-11-25)
 - [ ] **E2.16** Aceite geral da paridade: matriz do `CLAUDE.md` toda em ✅ · _product-owner_
 
 ### Fase 3: Contas e senhas (seção 6)
@@ -229,7 +231,7 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`). ✅ Feito no E1.03 (`assign_role`) e no E1.08 (`view_sensitive_data`, com a trava por coluna).
   - ~~Trocar o domínio dos e-mails fictícios e configurar SMTP próprio no Auth~~: não será feito (E1.06 e E1.07, 2026-11-25). O provedor de e-mail do Auth está desligado (E1.04), e nenhum e-mail é enviado.
 - **Volume de dados.** Listagens, contagens e dashboard precisam paginar e contar no servidor. O PostgREST corta respostas em 1000 linhas, e com os dados reais as telas atuais vão truncar sem avisar. ✅ Feito no E1.08, exceto a Auditoria (`Events.tsx` carrega os 500 eventos mais recentes).
-- **Perfis e escopo** configurados conforme a seção 6.5.
+- **Perfis e escopo** configurados conforme a seção 6.5. ✅ Feito no E2.02.
 - **Exclusão lógica** (seção 3.8) implementada antes de existir histórico real. Hoje, excluir uma célula apaga todos os relatórios dela, e excluir um membro apaga as participações dele.
 
 ## 3. Funcionalidades e regras a replicar
@@ -246,12 +248,12 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | AUT-01 | Login com e-mail ou celular e senha. | `App/Services/AuthService.cs` | ✅ (aceita também CPF) | Função de login (6.3) |
-| AUT-02 | Três perfis: **básico** (vê o escopo, edita o próprio cadastro, lança relatórios), **administrador** (mais o CRUD de membros, células e relatórios no escopo) e **administrador geral** (tudo, sem escopo). | `Domain/Model/Constants.cs`, `[Authorize(Roles)]` nos controllers, `UI/components/NavMenu` | 🟡 os perfis equivalentes ainda não existem | `role_permissions` + RLS (6.5) |
-| AUT-03 | **Escopo de visibilidade e escrita.** O usuário vê e altera as subárvores de si mesmo, do cônjuge, do seu G12 e do cônjuge do seu G12, além dessas próprias pessoas. Uma célula ou relatório está no escopo se o líder, o timóteo ou o anfitrião estiver. | `Domain/Extensions/QueryingExtensions.cs` (`ApplyMinistryFilter`) | 🟡 Já inclui o cônjuge do G12 e a subárvore dele. Ainda faltam: o cônjuge do próprio usuário; o anfitrião nos relatórios; escopo nas escritas (`edit_member`, `edit_cell_report`, `submit_any_visible_report` etc. valem para a igreja toda); e os pastores. Além disso, o SELECT expõe a linha inteira dos líderes de membros visíveis. | RLS (`is_in_same_ministry` e políticas de escrita) |
-| AUT-04 | O administrador geral vê e altera tudo. | `UserExtensions.IsSuperAdmin` | ✅ `view_all_church` | RLS |
-| AUT-05 | O perfil básico edita só o próprio cadastro e não altera líder, "não tem liderança", batismo, inativo nem perfil. | `UI/pages/Members/details.js` (`canEdit` e campos desabilitados) | 🟡 Só na UI: o bloco ministerial some sem `edit_member`. No banco, `edit_own_data` ainda libera todas as colunas. | Trigger em `members` |
-| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | 🟡 A função `change-member-password` existe, mas não checa o escopo nem o perfil do alvo. O próprio membro não troca a senha sem uma permissão especial. | Edge Function com a Admin API (6.4) |
-| AUT-07 | Só o administrador geral altera o perfil de alguém, e ninguém altera o próprio perfil. | `DomainToDTOMappingProfile.cs` (`Role`), `UI/pages/Members/details.js` | 🟡 Só na UI (`assign_role`). Quem tem `assign_role` troca o próprio perfil, e `create-user-admin` aceita qualquer `role_id`. | Trigger em `members` |
+| AUT-02 | Três perfis: **básico** (vê o escopo, edita o próprio cadastro, lança relatórios), **administrador** (mais o CRUD de membros, células e relatórios no escopo) e **administrador geral** (tudo, sem escopo). | `Domain/Model/Constants.cs`, `[Authorize(Roles)]` nos controllers, `UI/components/NavMenu` | ✅ E2.02 (2026-11-25): funções semeadas Administrador, Líder e Membro (RN-16 do E2.02), com as escritas no escopo | `role_permissions` + RLS (6.5) |
+| AUT-03 | **Escopo de visibilidade e escrita.** O usuário vê e altera as subárvores de si mesmo, do cônjuge, do seu G12 e do cônjuge do seu G12, além dessas próprias pessoas. Uma célula ou relatório está no escopo se o líder, o timóteo ou o anfitrião estiver. | `Domain/Extensions/QueryingExtensions.cs` (`ApplyMinistryFilter`) | ✅ E2.02 (2026-11-25): o escopo do legado na leitura e na escrita, no banco, inclusive o próprio cônjuge, o anfitrião e os pastores (RN-01 a RN-09 do E2.02). Até o E2.11 gravar o retrato (REL-09), o relatório entra no escopo pelo líder, timóteo e anfitrião atuais da célula. | RLS (`is_in_same_ministry` e políticas de escrita) |
+| AUT-04 | O administrador geral vê e altera tudo. | `UserExtensions.IsSuperAdmin` | ✅ `view_all_church`; a função Administrador tem sempre todas as permissões (RN-17 do E2.02, 2026-11-25) | RLS |
+| AUT-05 | O perfil básico edita só o próprio cadastro e não altera líder, "não tem liderança", batismo, inativo nem perfil. | `UI/pages/Members/details.js` (`canEdit` e campos desabilitados) | ✅ no banco desde o E1.03 (regra 5); conferido pela RN-11 do E2.02 (2026-11-25) | Trigger em `members` |
+| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | 🟡 A função `change-member-password` existe, mas não checa o escopo nem o perfil do alvo (o E2.03 aplica a RN-09 e a RN-18 do E2.02 ao alvo). O próprio membro não troca a senha sem uma permissão especial. | Edge Function com a Admin API (6.4) |
+| AUT-07 | Só o administrador geral altera o perfil de alguém, e ninguém altera o próprio perfil. | `DomainToDTOMappingProfile.cs` (`Role`), `UI/pages/Members/details.js` | ✅ E2.02 (2026-11-25): no banco, inclusive na `create-user-admin`. Atribui quem tem "Atribuir Função aos Membros" ou "Gerenciar Funções" e cobre a função atual e a nova; nas funções semeadas, só a Administrador; ninguém altera a própria (RN-18 do E2.02). | Trigger em `members` |
 
 ### 3.2 Membros (MEM)
 
@@ -289,7 +291,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (D4: os três obrigatórios) | NOT NULL |
 | CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | 🟡 têm valor padrão, mas aceitam nulo | NOT NULL + CHECK |
 | CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | 🟡 texto livre | CHECK ou enum |
-| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | 🟡 Vale para a igreja toda. A UI exige `edit_cell`, mas o RLS ainda deixa líder e timóteo editarem a própria célula. | RLS |
+| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | ✅ E2.02 (2026-11-25): só com as permissões de célula e no escopo; ser líder ou timóteo não dá direito de editar (RN-12 do E2.02) | RLS |
 | CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ❌ | Função SQL |
 | CEL-06 | Filtros: líder, G12, logradouro, bairro, cidade, tipo, dia da semana, situação do relatório e período de cadastro. | `Domain/Querying/Filters/CellFilter.cs`; `UI/pages/Cells/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | CEL-07 | O detalhe da célula mostra os 3 últimos relatórios e dá acesso à lista completa. | `CellController.GetLastReportsByCellId`; `UI/pages/Cells/details.js` | ❌ | UI |
@@ -315,7 +317,7 @@ Definição da situação do relatório (CEL-05):
 | REL-08 | Visitantes são nomes livres, e só os nomes preenchidos contam. | `ReportService.cs` | ✅ | RPC |
 | REL-09 | O relatório guarda um snapshot de líder, anfitrião, timóteo e tipo da célula no momento do lançamento. | `Domain/Model/Report.cs` | ❌ | Colunas + RPC |
 | REL-10 | Relatório e participantes são gravados juntos (tudo ou nada). | Transação do EF | ❌ chamadas separadas | RPC |
-| REL-11 | Quem lança (D3): líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo. No legado, qualquer usuário com a célula no escopo. Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 Há permissões próprias (`submit_*`, `edit_cell_report`, `delete_cell_report`), mas sem escopo. `submit_any_visible_report` não confere se a célula está visível. | RLS / RPC |
+| REL-11 | Quem lança (D3): líder, timóteo e anfitrião da célula, mais quem gerencia células no escopo. No legado, qualquer usuário com a célula no escopo. Editar e excluir: administradores. | `API/Controllers/ReportController.cs`, `ReportApp.cs` | 🟡 Quem lança, edita e exclui já vale no banco, com o escopo (RN-13 e RN-14 do E2.02, 2026-11-25). Falta o lançamento numa RPC (E2.11). | RLS / RPC |
 | REL-12 | Oferta em reais, maior ou igual a zero. | `Report.Contribution` | 🟡 Só no zod; não há CHECK no banco. | CHECK |
 | REL-13 | Listagem com filtros (líder, G12, período) e atalhos para esta semana, a passada e a retrasada. | `UI/pages/Report/index.js`, `UI/components/NavMenu` | ❌ | RPC + UI |
 | REL-14 | **Exportação para Excel**, uma linha por célula no período, ordenada por G12. Colunas: Célula #, G12, Líder, Endereço, Bairro, Situação, Data/Hora, Oferta, Nº de participantes, Nº de visitantes e Observações. Situação: "Relatório não entregue.", "Não houve célula." ou "Célula realizada.". | `App/Services/ExportService.cs`, `ColumnFormatter.cs` | ❌ | Edge Function ou geração no cliente |
@@ -325,7 +327,7 @@ Definição da situação do relatório (CEL-05):
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| DSH-01 | Todos os números respeitam o escopo do usuário. | `App/Services/DashboardService.cs` (repositórios com escopo) | 🟡 depende do RLS (AUT-03) | RLS / RPC |
+| DSH-01 | Todos os números respeitam o escopo do usuário. | `App/Services/DashboardService.cs` (repositórios com escopo) | ✅ E2.02 (2026-11-25): as RPCs do dashboard leem das views com o escopo novo | RLS / RPC |
 | DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células. O cálculo de pendentes, que ignorava células de segunda a sexta, foi corrigido no PR 3 do E1.08 (mci-connect#15, em produção) | RPC (`dashboard_summary`, E1.08) |
 | DSH-03 | **Geral**: membros ativos, células evangelísticas, células discipuladoras, inativos, não batizados, sem liderança e sem vínculo celular. | `DashboardService.cs` | 🟡 | RPC |
 | DSH-04 | Gráfico da semana: células realizadas × canceladas × sem relatório. | `UI/pages/Home` | 🟡 | UI |
@@ -337,7 +339,7 @@ Definição da situação do relatório (CEL-05):
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | MIN-01 | Árvore de casais com o total de discípulos e de células, carregada sob demanda. | `App/Services/MinistryService.cs` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
-| MIN-02 | A raiz é o nível mais alto visível no escopo do usuário: quem tem escopo de ministério começa pelo próprio ministério. | `MemberRepository.GetChildrenWithSpouseAsync` | ❌ começa sempre nos pastores | RPC |
+| MIN-02 | A raiz é o nível mais alto visível no escopo do usuário: quem tem escopo de ministério começa pelo próprio ministério. | `MemberRepository.GetChildrenWithSpouseAsync` | ✅ E2.02 PR 1 (2026-11-25, DA-6): com "Visualizar Toda a Igreja", começa nos pastores; sem ela, no casal G12 de quem consulta ou, sem G12, no próprio casal | RPC (`ministry_tree_nodes`) |
 | MIN-03 | Só membros ativos aparecem na árvore. | `GetChildrenWithSpouseAsync` | ✅ | `ministry_tree_nodes` (E1.08, PR 4) |
 
 ### 3.8 Exclusão lógica (DEL)
@@ -674,10 +676,10 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 | Legado | Novo (role) | Permissões |
 |---|---|---|
 | `AppSuperAdmin` | **Administrador** (`is_system`) | Todas, incluindo `view_all_church` |
-| `AppAdmin` | **Líder** (ajustar a role semeada) | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell` e `edit_own_data`, além da redefinição assistida. Remover `view_members`, que hoje libera a igreja inteira. As escritas valem só dentro do escopo (AUT-03). |
-| `AppUser` (e sem perfil) | **Membro** | `view_dashboard`, `view_own_ministry` e `edit_own_data`, além do lançamento de relatório conforme a D3 |
+| `AppAdmin` | **Líder** | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `edit_own_data`, `submit_own_cell_report`, `edit_cell_report` e `delete_cell_report`, sem `view_members` nem `view_roles` (E2.02). A redefinição assistida entra no E2.03. As escritas valem só dentro do escopo (AUT-03). |
+| `AppUser` (e sem perfil) | **Membro** (padrão) | `view_dashboard`, `view_own_ministry`, `edit_own_data` e `submit_own_cell_report` (D3) |
 
-- **Pastores** precisam de `view_all_church`. A função de escopo do novo não atribui ministério a quem tem `g12_level = 0`.
+- **Pastores** (RN-05 do E2.02): com `view_own_ministry`, o pastor vê a árvore inteira (ele, o cônjuge e a descendência dos dois); `view_all_church` só acrescenta quem está sem liderança. Ser pastor não dá permissão: ela vem da função.
 - **Lista para revisão.** Antes do cutover, a liderança confere quem vai ter os perfis Administrador e Líder.
 
 ### 6.6 Superusuário do legado

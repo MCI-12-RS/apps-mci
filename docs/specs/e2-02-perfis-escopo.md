@@ -1,6 +1,6 @@
 # E2.02: Perfis e escopo de visibilidade e escrita
 
-> Status: **PR 1 (banco, tarefas 1 a 5) em produção em 2026-11-25** (mci-connect#29, merge `ecbbee4`, "Deploy: banco"; conferência da tarefa 1 sem parada). **PR 2 (acesso, menu e rotas, tarefas 6 a 8) em produção em 2026-11-25** (mci-connect#30, squash `c70e66b`, promote). **PR 3 (tela de Funções, tarefas 9 a 11) em produção em 2026-11-25** (mci-connect#31, squash `b4e148d`, promote); o risco 7 está fechado. **PR 4 (Membros, tarefas 12 a 14) em produção em 2026-11-25 (mci-connect#32, squash `26c5b4d`, promote). **PR 5 (Células, Relatórios, Dashboard e Ministérios, tarefas 15 a 17) em produção em 2026-11-25 (mci-connect#33, squash `35d6782`, promote). **PR 6 (fechar funções, tarefas 18 e 19) em produção em 2026-11-25** (mci-connect#34, squash `b50308d`, "Deploy: banco"; smoke de produção só leitura ok: `roles`/`role_permissions` só SELECT, `role_id` de outros nula na view, 42501 na leitura direta, simulação como Líder). **Revisão final do passo (tarefa 20) em 2026-11-25: APROVADO**, com o backlog listado em [Revisão final](#revisão-final-do-passo-tarefa-20). Desenho: Negócio escrito em 2026-11-23 pelo `product-owner`, sem perguntas em aberto. Experiência (UX) escrita em 2026-11-23 pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-13 foram resolvidas pelo PO no mesmo dia. Solução técnica e Tarefas escritas em 2026-11-23 pelo `architect`, com as respostas às AQ-1 a AQ-11. Ficam para revisão do usuário no PR os pontos "definidos pelo spec" (P-PER-01 a P-PER-29) e os "definidos pelo architect" (DA-1 a DA-12). A seção Testes cobre os PRs 1 a 6.
+> Status: **concluído e aceito pelo PO em 2026-11-25**, junto com o E2.15 (MIN-02, pela DA-6 e a DT-24). PRs mci-connect#29 a #34 em produção em 2026-11-25 (o #29 e o #34 por "Deploy: banco"), com smoke de produção só leitura; revisão final (tarefa 20) APROVADO, com o backlog em [Revisão final](#revisão-final-do-passo-tarefa-20). Os P-PER-01 a P-PER-29 e as DA-1 a DA-12 ficam como aceitos; a P-PER-15 foi superada pela DA-6. Resultados por PR em [Testes](#testes).
 > Slug: `e2-02-perfis-escopo` · Paridade com o legado: sim (AUT-02, AUT-03, AUT-04, AUT-05, AUT-07, CEL-04 e a parte "quem lança" da REL-11), com regras novas (D3, funções semeadas, função padrão, exclusão de funções e privacidade das consultas de permissão).
 
 ## Negócio
@@ -101,7 +101,7 @@ Pontos que as fontes não respondem. O PO adotou a opção mais conservadora e c
 - **P-PER-12, administradores.** O sistema garante pelo menos um administrador. "Pelo menos dois" (6.6) é regra de operação do E3.04, e o sistema não bloqueia ter só um (RN-21).
 - **P-PER-13, permissões redundantes.** "Visualizar Membros (legado)" e "Visualizar Dashboard do seu ministério" saem da tela de Funções, trocadas por "Visualizar Toda a Igreja" e "Visualizar Dashboard", com o mesmo efeito de hoje. Os rótulos mudam (RN-22).
 - **P-PER-14, privacidade das consultas.** O conserto das funções do RLS que aceitam o id de qualquer pessoa ("Problemas conhecidos") entra neste passo, que já reescreve o escopo (RN-23).
-- **P-PER-15, publicação junto com o E2.15.** Com o escopo novo, quem vê só o ministério deixa de ver os pastores, e a árvore de Ministérios, que hoje começa nos pastores, fica vazia para essas pessoas. Por isso, o E2.02 só vai para produção junto com o E2.15 (MIN-02) ou depois dele (ver [Impactos](#impactos-em-outros-passos)).
+- **P-PER-15, publicação junto com o E2.15.** Com o escopo novo, quem vê só o ministério deixa de ver os pastores, e a árvore de Ministérios, que hoje começa nos pastores, fica vazia para essas pessoas. Por isso, o E2.02 só vai para produção junto com o E2.15 (MIN-02) ou depois dele (ver [Impactos](#impactos-em-outros-passos)). **Superada pela DA-6 (aceite de 2026-11-25):** a árvore começa no topo do escopo desde o PR 1, e o E2.15 fechou junto com este passo.
 - **P-PER-16, sem cadastro e sem função.** Uma conta sem cadastro de membro não vê nem altera nada. Um membro sem função vê só o que a P-PER-02 libera e não altera nada (RN-07).
 - **Vindos do desenho de UX (2026-11-23, PO-UX-1 a PO-UX-13 em "Experiência (UX)"):**
   - **P-PER-17, dicas das permissões** (PO-UX-1): a tela de Funções explica as permissões menos óbvias com as dicas da UX, e uma nota geral diz que, fora a Auditoria, as permissões valem só para o que a pessoa vê (RN-22).
@@ -568,7 +568,7 @@ Cada item indica o passo que cuida dele.
 - **Autoria nas colunas** (MEM-12): E2.05.
 - **Ciclos e recálculo do nível e do caminho de liderança** (HIE-01 a HIE-03): E2.06. O escopo não depende do nível guardado (RN-01).
 - **Lançamento de relatório numa RPC**, com as regras de data, os participantes automáticos e o registro de líder, timóteo e anfitrião (REL-01 a REL-10): E2.11. Este spec define quem lança e em que escopo (RN-13), e a RN-04 passa a usar o registro do relatório quando o E2.11 o criar.
-- **Árvore de Ministérios a partir do escopo** (MIN-02): E2.15. Ver P-PER-15.
+- **Árvore de Ministérios a partir do escopo** (MIN-02): E2.15, que entrou neste passo pela DA-6 (ver P-PER-15).
 - **Filtros** (E2.07, E2.10, E2.12), **situação do relatório** (E2.09), **exportação** (E2.13) e **cards novos do Dashboard** (E2.14): seguem o escopo deste spec, sem regra nova.
 - **Líder já preenchido para todos** (MEM-15): E2.07. Este spec só antecipa a MEM-15 para quem vê só o ministério (RN-10, P-PER-22).
 - **Dados sensíveis:** a regra é a do E1.08 (D-1), e a trava de colunas é o PR 5 do E1.08. Este spec não dá "Ver Dados Sensíveis" à Líder (P-PER-08).
@@ -594,7 +594,7 @@ Pontos de negócio que outros passos precisam respeitar. O `architect` decide co
 - **E2.07:** estende a todos o líder já preenchido com quem cadastra (MEM-15), que este spec antecipa para quem vê só o ministério.
 - **E2.11:** a RPC de lançamento aplica a RN-13 e grava o líder, o timóteo e o anfitrião que a RN-04 usa. Na edição, os participantes são gravados pela diferença (AQ-7 da UX): só os que entram passam pela RN-09 (b); os que saem passam pela fronteira da RN-09 ("retirar não é escolher", e o excluído não sai).
 - **E2.13:** a exportação respeita o escopo, como no legado.
-- **E2.15:** o E2.02 vai para produção junto com o E2.15, ou depois dele (P-PER-15). Até lá, a árvore de Ministérios de quem vê só o ministério fica vazia. No legado, o link de Ministérios estava fora do menu, então isso não perde paridade, mas é uma regressão para quem usa a função Líder hoje.
+- **E2.15:** superado pela DA-6, que pôs a raiz da árvore no PR 1; o E2.15 fechou no aceite deste passo. Texto original: o E2.02 vai para produção junto com o E2.15, ou depois dele (P-PER-15). Até lá, a árvore de Ministérios de quem vê só o ministério fica vazia. No legado, o link de Ministérios estava fora do menu, então isso não perde paridade, mas é uma regressão para quem usa a função Líder hoje.
 - **E3.04, E4.06 e E4.08:** usam a correspondência da RN-16. A lista do E3.04 também define a função dos pastores. Com o escopo novo, os pastores veem a árvore inteira com a função Líder, e "Visualizar Toda a Igreja" só acrescenta quem está sem liderança.
 - **Aceite (PO):**
   - no `docs/migracao.md`:
@@ -610,7 +610,7 @@ Nenhuma. Os pontos que as fontes não respondiam viraram padrões, listados em [
 - **P-PER-08:** a Líder não recebe "Ver Dados Sensíveis". Ela vê e edita os discípulos, mas não vê nem corrige o celular, o e-mail e o endereço deles, até a função ganhar a permissão na tela de Funções (D-1).
 - **P-PER-05:** a Líder não marca ninguém como pastor ou sem liderança.
 - **P-PER-07:** líder, timóteo e anfitrião lançam relatório se a função deles tiver "Enviar Relatório das Próprias Células". As duas funções semeadas têm.
-- **P-PER-15:** o E2.02 só vai para produção junto com o E2.15, ou depois dele.
+- **P-PER-15:** o E2.02 só vai para produção junto com o E2.15, ou depois dele. Superada pela DA-6.
 - **P-PER-21:** só quem atribui funções vê a função de outra pessoa. Os líderes deixam de ver a função dos discípulos.
 - **P-PER-24:** quem edita um relatório pode retirar um participante que não vê, e só quem vê essa pessoa consegue incluí-la de novo. O participante excluído continua sem poder ser retirado (E2.01).
 
@@ -626,7 +626,7 @@ _Seção do `ux-designer`. Escrita em 2026-11-23 a partir da seção Negócio (R
 | Células (T7) | "Novo relatório" também para o anfitrião e para quem tem "Editar Célula"; dica de alcance nos seletores de pessoas | pessoas da célula e Líder |
 | Relatórios (T8) | "Novo relatório" só para quem pode enviar de alguma célula; o seletor traz só essas células e já vem preenchido quando há uma só; participantes do ministério | quem envia relatório |
 | Dashboard (T9) | título e selo pela permissão de visibilidade; orientação para quem não tem acesso; atalho "Novo relatório" | todos |
-| Ministérios (T10) | estado vazio com o caminho para Membros, até o E2.15 | quem vê só o ministério |
+| Ministérios (T10) | a árvore começa no topo do escopo (DA-6); estado vazio só para quem não vê ninguém | quem vê só o ministério |
 | Todas (T11, T12) | recusas por escopo na linguagem do usuário; acesso relido sem sair e entrar; tela sem acesso | todos |
 
 ### Decisões de experiência
@@ -684,7 +684,7 @@ Contagem no celular, a partir do Dashboard (a tela que abre depois do login) ou 
 | F11 | O acesso muda durante o uso (Caio recebe a função Líder) | volta para a aba ou toca num item do menu → menu e botões atualizados, com "Seu acesso foi atualizado." | 0 toque a mais |
 | F12 | O membro corrige os próprios dados (Caio) | ☰ → "Editar meus dados" → altera → "Salvar" | 3 toques, igual a hoje |
 | F13 | Quem não tem função entra (Hugo) | login → Dashboard sem acesso, com a orientação → ☰ → "Ver meus dados" | 2 toques para consultar |
-| F14 | O líder abre Ministérios antes do E2.15 | ☰ → Ministérios → estado vazio → "Ver membros do seu ministério" | 3 toques |
+| F14 | O líder abre Ministérios | ☰ → Ministérios → árvore a partir do seu casal G12 (DA-6) | 2 toques |
 
 ### Telas
 As convenções dos wireframes são as de Escolas e do E2.01: 360 px ≈ 38 colunas; `[Botão]` é botão; `[x]` é checkbox; `[▾]` é seleção; `⋯` é o menu de ações; `(i)` é aviso; `⚠` é erro. A margem lateral é a do `AppLayout` (`p-4`).
@@ -1182,24 +1182,24 @@ Hugo (sem função)                        Conta X (sem cadastro)
 - **Números e ranking "Células por G12":** sem mudança visual. Os números seguem o escopo (DSH-01), e quem vê só o ministério costuma ver um só casal no ranking.
 - Componentes: os de hoje, mais o `Dialog` do formulário de relatório.
 
-#### T10. Ministérios até o E2.15 (P-PER-15)
-Quem vê só o ministério e não é pastor (Pedro, Caio):
+#### T10. Ministérios (DA-6, aceite de 2026-11-25)
+A árvore começa no topo do escopo (DA-6, MIN-02): com "Visualizar Toda a Igreja", nos pastores; sem ela, no casal G12 de quem consulta ou, sem G12, no próprio casal. Pedro e Caio veem a árvore a partir de Pedro e Paula; Samuel e Magda, a partir deles mesmos.
+
+O estado vazio fica só para quem não vê ninguém na árvore:
 ```
 ┌──────────────────────────────────────┐
 │ Ministérios                          │
 │ ┌──────────────────────────────────┐ │
-│ │ Nenhum pastor visível para você. │ │
-│ │ Por enquanto, a árvore começa    │ │
-│ │ pelos pastores. As pessoas do seu│ │
-│ │ ministério aparecem em Membros.  │ │
+│ │ Ninguém visível para você na     │ │
+│ │ árvore.                          │ │
+│ │ As pessoas do seu ministério     │ │  com acesso a Membros
+│ │ aparecem em Membros.             │ │
 │ │ [Ver membros do seu ministério ] │ │  outline, h-11; leva a /members
 │ └──────────────────────────────────┘ │
 └──────────────────────────────────────┘
 ```
-- O texto é o do E1.08, que já está na tela. Este passo só acrescenta o botão, para a pessoa não ficar sem saída. Pela P-PER-15, esse estado só existe se o E2.02 for para produção antes do E2.15.
-- Os pastores (Samuel e Magda, com a função Líder) veem a árvore a partir deles mesmos, sem mudança.
-- Uma função com "Visualizar Toda a Igreja" e sem "Visualizar Seu Ministério" passa a ver o item no menu e a árvore inteira.
-- No E2.15, a árvore começa pelo topo do escopo, e o estado vazio fica só para quem não vê ninguém.
+- Sem acesso a Membros, a segunda linha é "Fale com um administrador." e não há botão.
+- Textos aprovados na revisão de UI do PR 5 e confirmados pelo PO no aceite.
 
 #### T11. Recusas por escopo e por função
 Os seletores e os botões já escondem o que a pessoa não pode fazer. As recusas abaixo só aparecem em corrida (o acesso ou a árvore mudaram entre abrir a tela e salvar) ou pela API. Em todas, o formulário continua aberto, com o que foi digitado.
@@ -1275,7 +1275,7 @@ Nenhum componente novo do shadcn é necessário: `collapsible`, `alert`, `alert-
 ### Estados
 | Estado | Funções (T2 a T4) | Membros e cadastro (T5, T6) | Células e Relatórios (T7, T8) | Menu, Dashboard e Ministérios (T1, T9, T10, T12) |
 |---|---|---|---|---|
-| Carregando | `Skeleton` de 3 cards (celular) ou 3 linhas (desktop), no lugar do "Carregando..." de hoje. A contagem de membros tem um `Skeleton` próprio | Como hoje (E1.08). O seletor de função mostra "Carregando…" | O botão "Novo relatório" tem o espaço reservado (`Skeleton h-11`). O seletor de célula preenche a única opção só depois da primeira página | Menu: 4 `Skeleton` no lugar dos itens. Dashboard: como hoje; o atalho tem o espaço reservado |
+| Carregando | `Skeleton` de 3 cards (celular) ou 3 linhas (desktop), no lugar do "Carregando..." de hoje. A contagem de membros tem um `Skeleton` próprio | Como hoje (E1.08). O seletor de função mostra "Carregando…". Enquanto as funções carregam, o botão "Criar membro" fica desabilitado e mostra "Carregando…" (PO, aceite de 2026-11-25; backlog 5) | O botão "Novo relatório" tem o espaço reservado (`Skeleton h-11`). O seletor de célula preenche a única opção só depois da primeira página | Menu: 4 `Skeleton` no lugar dos itens. Dashboard: como hoje; o atalho tem o espaço reservado |
 | Vazio | Função sem permissões: o texto da T2. A lista nunca fica vazia (Administrador, Líder e Membro existem sempre) | Busca dos seletores: "Nenhum membro do seu ministério encontrado." (só ministério) | Seletor de célula sem opções: "Você não pode enviar o relatório de nenhuma célula." | Ministérios: o estado da T10 |
 | Erro ao carregar | `Alert` "Não foi possível carregar as funções." com "Tentar de novo" (hoje a tela fica em branco) | Como hoje | Como hoje | Acesso nunca lido: o `Alert` da T12 com "Tentar de novo" |
 | Sem permissão | A rota sem "Visualizar Funções" e sem "Gerenciar Funções" mostra o estado da T12. Sem "Gerenciar Funções", não há ações | "Novo membro" bloqueado pela RN-19 (T5). Campos e opções somem ou viram texto (P12) | Sem direito de enviar: o botão não aparece. Sem "Editar Célula": sem "Editar" | Dashboard: a mensagem da T9. Rotas: o estado da T12 |
@@ -1308,7 +1308,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar termos. As mensagens de 
 | Relatório: participantes † | Aparecem só as pessoas do seu ministério. · Alguns participantes não são do seu ministério: se você retirá-los, não poderá incluí-los de novo. |
 | RN-09 (c) † | Com esta alteração, você deixaria de ver este cadastro. As alterações não foram salvas. · Com esta alteração, você deixaria de ver esta célula. Mantenha pelo menos uma pessoa do seu ministério como líder, timóteo ou anfitrião. As alterações não foram salvas. |
 | Dashboard | Visão geral da igreja · Visão do seu ministério · Meu Ministério · Você não tem acesso ao dashboard. · Sua conta ainda não tem uma função. Fale com um administrador. † · Seu acesso ainda não está ligado a um cadastro de membro. Fale com um administrador. † · Novo relatório (atalho) |
-| Ministérios | os textos do E1.08 · Ver membros do seu ministério † |
+| Ministérios | Ninguém visível para você na árvore. † · As pessoas do seu ministério aparecem em Membros. † · Ver membros do seu ministério † · Fale com um administrador. |
 | Recusas | as da tabela da T11 |
 
 ### Acessibilidade
@@ -1358,7 +1358,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar termos. As mensagens de 
 | UX-25 | Em Relatórios, o botão "Novo relatório" aparece para Caio, Carla e Pedro e não aparece para Fábio, Hugo e Gabriel (só com "Visualizar Relatórios do Seu Ministério"). Uma função com "Editar Próprio Cadastro" e "Visualizar Seu Ministério", sem permissão de enviar, também não vê o botão. | teste de componente |
 | UX-26 | O seletor de célula de Caio oferece só C1 e C2. O formulário de Carla abre com C1 já escolhida e com a data e o horário sugeridos. O de Gabriel, com "Enviar Relatório de Qualquer Célula Visível", oferece C1 e C2, e não C3. | teste E2E |
 | UX-27 | Quando Pedro edita R2, Diego e Hugo aparecem como participantes, com o aviso da T8. Depois de mudar só o tema e salvar, os dois continuam no relatório, e o seletor nunca os oferece. | teste E2E (critério da RN-09) |
-| UX-28 | Em Ministérios, Pedro vê o estado vazio com "Ver membros do seu ministério", que leva a `/members`. Samuel vê a árvore a partir dele e de Magda. | teste E2E |
+| UX-28 | Em Ministérios, Pedro e Caio veem a árvore a partir de Pedro e Paula, e Samuel a partir dele e de Magda (DA-6). Quem não vê ninguém vê "Ninguém visível para você na árvore." e, com acesso a Membros, "Ver membros do seu ministério", que leva a `/members`; sem esse acesso, "Fale com um administrador.". | teste E2E + teste de componente (vazio) |
 | UX-29 | Nenhum estado deste spec depende só de cor. O badge "Padrão" tem ícone e texto, com os tokens do P6, e "Meu Ministério" é texto. O contraste é de 4,5:1 para texto e de 3:1 para ícones, nos temas claro e escuro. | inspeção (axe, nos dois temas) |
 | UX-30 | Nenhuma tela deste spec mostra mensagem técnica: nada de identificador de permissão, "row-level security", "42501" nem nome interno de função do banco. A recusa 42501 vira "Você não tem permissão para esta ação.". | teste de componente |
 | UX-31 | Em 320 px e com zoom de 200%, os rótulos longos ("Enviar Relatório de Qualquer Célula Visível", "Visualizar Relatórios de Toda a Igreja"), a frase do Administrador e os nomes no menu quebram linha, sem corte, e nenhum botão estoura a largura. | inspeção + teste E2E (viewport) |
@@ -2404,7 +2404,7 @@ Backlog (responsável, prioridade):
 2. `frontend-developer`, média: formulário de relatório no `ResponsiveDialogContent` (P1) em Células, Relatórios e Dashboard. Junto do E2.11, que reescreve o `CellReportForm`.
 3. `frontend-developer`, média: a gravação do `MemberForm` (826 linhas) para um hook, em PR de refatoração separado, antes do próximo passo que mexer no formulário (E2.03).
 4. `frontend-developer`, baixa: `button-name` no seletor de UF do `CellForm`. Correção avulsa.
-5. `product-owner` → `frontend-developer`, baixa: texto que explique "Criar membro" desabilitado enquanto as funções carregam.
+5. `product-owner` → `frontend-developer`, baixa: texto que explique "Criar membro" desabilitado enquanto as funções carregam. **Decidido pelo PO no aceite (2026-11-25):** o próprio botão mostra "Carregando…" enquanto estiver desabilitado por isso, sem texto extra (Estados, coluna Membros).
 6. `calculateCellDate`: E2.11.
 7. `backend-developer`, baixa (anterior ao E2.02): `events` tem INSERT, UPDATE, DELETE e TRUNCATE para `anon` e `authenticated` (sem política, o RLS barra o DML, e o PostgREST não expõe TRUNCATE), e `anon` tem SELECT, REFERENCES e TRIGGER nas tabelas de células e relatórios (sem política para `anon`). Revogar por defesa em profundidade.
 8. `backend-developer`, baixa (anterior ao E2.02): o INSERT direto em `members` por quem tem "Criar Membro" aceita qualquer `auth_user_id` que não seja o próprio. Como o cadastro público está desligado, só uma conta de acesso sem cadastro poderia ser vinculada, com uma função que quem cadastra cobre. Restringir o vínculo à `create-user-admin`.

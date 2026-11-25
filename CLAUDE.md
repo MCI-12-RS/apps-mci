@@ -425,7 +425,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Feature ou regra do legado | No novo | Status |
 |---|---|---|
 | Login por e-mail ou celular | e-mail, CPF ou celular, pela função `sign-in` (limite de tentativas e Auditoria no servidor, E1.04) | ✅ |
-| Papéis e escopo por ministério | roles/permissões configuráveis + `view_own_ministry` | 🟡 já inclui o cônjuge do G12. Faltam o cônjuge do próprio usuário, o anfitrião nos relatórios, o escopo nas escritas e os pastores; as roles semeadas não usam escopo |
+| Papéis e escopo por ministério | funções configuráveis e três semeadas (Administrador, Líder e Membro); escopo do legado (si, cônjuge, G12 e cônjuge do G12, com as descendências; pastores; célula e relatório pelo líder, timóteo ou anfitrião) na leitura e na escrita, no banco (E2.02, aceito em 2026-11-25) | ✅ (até o E2.11 gravar o snapshot, o relatório entra no escopo pelas pessoas atuais da célula; a troca de senha é a linha de baixo, E2.03) |
 | CRUD de membros | sim | 🟡 a auditoria (`events`) não registra o autor de cadastros feitos pela Edge Function |
 | Troca de senha de outro membro | `change-member-password` | 🟡 não checa escopo nem o perfil do alvo |
 | Exclusão lógica de membros, células e relatórios | banco e telas (E2.01, aceito em 2026-11-25): exclusão por RPC, listas de excluídos, restauração, consulta do relatório de célula excluída, aviso no cadastro com dados de excluído e encerramento da sessão do excluído | ✅ (a unicidade de e-mail, celular e CPF entre não excluídos, DEL-04, fecha com os índices do E2.04) |
@@ -435,17 +435,17 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Recalcular o nível dos descendentes quando o líder muda | não propaga | ❌ |
 | Totais de discípulos e de células | trigger | ✅ (conta só ativos) |
 | Filtros de membros: liderança, bairro, cidade, situação, possui liderança, batizado, nível, vínculo celular, data de cadastro | só busca por texto | ❌ |
-| CRUD de células | sim, com `is_active` a mais | ✅ |
+| CRUD de células | sim, com `is_active` a mais; só com as permissões de célula e no escopo (E2.02) | ✅ |
 | Filtros de células: G12, endereço, tipo, dia, situação do relatório, data de cadastro | só busca por texto | ❌ |
 | Situação do relatório por célula (em dia, pendente, atrasado de 1 a 4+ semanas) | não existe | ❌ |
-| Lançamento de relatório | sim | 🟡 |
+| Lançamento de relatório | sim; quem lança, edita e exclui, com escopo, no banco (D3, E2.02) | 🟡 falta a RPC atômica (E2.11) |
 | Regras do relatório: semana atual, sem data futura, um por semana, depois do horário da célula, justificativa quando não houve | triggers de semana atual e índice único da semana | 🟡 aceita data futura dentro da semana, ignora o horário da célula e bloqueia a edição de relatórios antigos |
 | Líder, timóteo e anfitrião como participantes automáticos | não existe | ❌ |
 | Snapshot de líder, anfitrião, timóteo e tipo no relatório | não existe | ❌ |
 | Relatórios por período e atalhos para a semana atual, passada e retrasada | só busca por texto | ❌ |
 | Exportação dos relatórios para Excel | não existe | ❌ |
-| Dashboard semanal com cards clicáveis (novos membros e células da semana, visitantes, pendentes) | números calculados no banco (E1.08) | 🟡 faltam novos membros e novas células da semana e o drill-down (E2.14) |
-| Árvore de ministérios (casais) | sim, calculada no banco (E1.08) | ✅ |
+| Dashboard semanal com cards clicáveis (novos membros e células da semana, visitantes, pendentes) | números calculados no banco (E1.08), no escopo de cada um (E2.02) | 🟡 faltam novos membros e novas células da semana e o drill-down (E2.14) |
+| Árvore de ministérios (casais) | sim, calculada no banco (E1.08); começa no topo do escopo (MIN-02, E2.15 no E2.02) | ✅ |
 | Changelog (`/last-changes`) | não existe | baixa prioridade |
 
 Ao fechar um item, atualize esta tabela. As regras detalhadas de cada item estão na seção 3 de `docs/migracao.md`.
