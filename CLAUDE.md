@@ -59,6 +59,24 @@ npm run test:e2e   # Playwright (e2e/)
 - Depois de mudar o schema, regenere os tipos com a CLI do Homebrew (2.84.2), não com `npx supabase` (3.3.0, outro formato): `supabase gen types typescript --project-id <ref> > src/integrations/supabase/types.ts`, ou `--db-url <banco local> --schema public` antes de a migration ir para produção. Mantenha o bloco `__InternalSupabase`.
 - As Edge Functions ficam em `supabase/functions/*` (Deno).
 
+#### Pistas locais (dois PRs em paralelo)
+Duas pastas e duas stacks locais independentes, para que um passo de banco rode ao lado de um passo de front sem que um apague o banco do outro.
+
+| Pista | Pasta | Stack (`project_id`) | API / DB | Vite | Ambiente do E2E |
+|---|---|---|---|---|---|
+| A | `mci-connect/` (o submódulo) | `mci-e104-be` | 57321 / 57322 | 8080 | `.worktrees/env/lane-a.env` |
+| B | `.worktrees/mci-connect-b/` (worktree do submódulo) | `mci-b` | 58321 / 58322 | 8180 | `.worktrees/env/lane-b.env` |
+
+- `.worktrees/` fica fora do git (`.git/info/exclude` da raiz). Os arquivos `.env` das pistas têm só chaves locais.
+- Na pista B, o `supabase/config.toml` tem `project_id` e portas próprios e está marcado com `git update-index --skip-worktree`, para nunca ir para um commit. Se uma branch mudar esse arquivo, tire a marca, resolva e marque de novo.
+- A stack da pista A roda a partir de uma cópia do `supabase/` com `project_id = "mci-e104-be"`. A da pista B roda dentro do próprio worktree: `supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,logflare,vector,supavisor`.
+- Para rodar o E2E: `source .worktrees/env/lane-<a|b>.env` e depois `npx playwright test … --workers=1`. A `E2E_PORT` escolhe a porta do Vite (mci-connect#38). Depois de um `db reset`, recrie o administrador do E2E com `.worktrees/env/seed-admin.sh .worktrees/env/lane-<a|b>.env`.
+- Na pista B, crie a branch a partir da `origin/main` (`git switch -c <branch> origin/main`). Não faça checkout da `main`, que pode estar em uso na pista A.
+- **Conflitos entre pistas:** as duas só se encontram na `main`.
+  - Migrations: a que for mergeada depois precisa ter o timestamp maior. Se não tiver, renomeie antes do merge; isso só vale para migration que ainda não foi aplicada em produção.
+  - `types.ts`: rebase na `main` e regere os tipos antes do merge.
+  - Nunca rode dois passos que mexem nas mesmas views, funções ou telas ao mesmo tempo. Por exemplo, os passos que recriam a `cells_view` não rodam em paralelo.
+
 ### Legado (`g12app-net/`)
 ```bash
 dotnet build G12App.sln
@@ -98,10 +116,15 @@ Para `product-owner`, `ux-designer`, `code-reviewer` e `qa`, a restrição está
 1. Sessão principal → `product-owner`: cria ou atualiza `docs/specs/<slug>.md` (modelo em `docs/specs/_template.md`), seção Negócio. As perguntas em aberto vão para o usuário; RN "a confirmar" não segue adiante.
 2. Sessão principal → `ux-designer`, quando a feature tem tela nova ou muda uma tela: escreve a seção Experiência (UX) do spec (fluxos, wireframes do celular ao desktop, estados, textos e critérios `UX-`). Dúvidas de negócio voltam para a sessão principal, que leva ao PO ou ao usuário.
 3. Sessão principal → `architect`: revisa as RNs. Se houver dúvida de negócio, devolve para a sessão principal, que leva ao PO ou ao usuário. Se não houver, escreve "Solução técnica" e "Tarefas".
-4. Sessão principal → `architect`, **uma execução por PR**: coordena a implementação daquele PR.
+4. Sessão principal → `architect`, **uma execução por PR**: coordena a implementação daquele PR. O prompt diz em qual [pista local](#pistas-locais-dois-prs-em-paralelo) trabalhar.
+   - **PRs de front seguidos do mesmo passo vão juntos num PR só.** Isso vale quando não há PR de banco entre eles e a Implantação não manda publicar um antes do outro. PRs de banco e PRs com momento próprio de publicação continuam separados.
    1. Aciona o `backend-developer` (primeiro, se houver schema ou RPC) e o `frontend-developer`. Tarefas independentes rodam em paralelo.
    2. Cada desenvolvedor, ao terminar, aciona o `code-reviewer`, corrige os próprios achados e repete até o veredito APROVADO (no máximo 3 rodadas). Da 2ª rodada em diante, o reviewer confere só as correções. Achados de outro papel voltam no relatório do desenvolvedor.
-   3. Aciona o `qa`. O `ux-designer` revisa a UI **uma vez por passo**, em paralelo com o QA, só no PR que traz tela nova ou padrão novo de UI. Bugs e achados voltam ao desenvolvedor responsável, para uma nova rodada.
+   3. Aciona o `qa`. **Quanto testar:**
+      - **suíte inteira do Playwright, pgTAP inteiro, concorrência e volume:** só nos PRs com migration e no último PR do passo;
+      - **nos outros PRs:** Vitest, tsc, build, lint e, do Playwright, só as specs afetadas pelo diff, mais o smoke de login (`e2e/login.spec.ts`).
+
+      O `ux-designer` revisa a UI **uma vez por passo**, em paralelo com o QA, só no PR que traz tela nova ou padrão novo de UI. Não há revisão de UI nos outros PRs. Bugs e achados voltam ao desenvolvedor responsável, para uma nova rodada.
    4. Devolve um relatório consolidado. A revisão final completa é **uma por passo**, no último PR, sobre o diff acumulado. Num PR intermediário com migration, o `architect` confere só as migrations.
 5. Sessão principal → `product-owner`: dá o aceite e atualiza três coisas:
    - a matriz de paridade deste arquivo;
