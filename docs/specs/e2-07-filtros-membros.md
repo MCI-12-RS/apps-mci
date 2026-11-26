@@ -2036,8 +2036,33 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois do banco do E2.05 e do PR 1
 8. **Tarefa 10:** no cadastro novo, o líder aparece no primeiro render, sem passar por vazio; na edição, nada muda.
 9. **Tarefas 8 e 11:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
+> **Andamento (2026-11-26):** PR 1 (tarefas 2 a 4) na branch `feat/E2.07-pr1-banco`, migrations `20261128100000_e207_01_cell_link` e `20261128100100_e207_02_member_list`. Feito pelo `architect` sozinho (sessão sem a ferramenta `Agent`): sem `code-reviewer` nem QA independentes. A tarefa 1 (conferência em produção) fica com o usuário, antes do "Deploy: banco": o SQL está no relatório do PR; os nomes foram confirmados nas migrations do repositório (alias `hr`, e não `h`; nenhum índice de `created_at` antes; `sp_instant` como ajudante de data).
+> Diferenças do desenho, revisar no PR:
+> - `cell_links_or_none` é `plpgsql` e sem `SET search_path` (corpo só com `pg_catalog` e o tipo qualificado, como a DT-14 do E2.09): em `sql`, não inlinável, custava cerca de 2,5 µs por linha e deixava o Dashboard +55 ms acima de antes; assim fica +18 ms (Administrador, volume de referência).
+> - `sp_day_start` usa `sp_instant` (o fuso num lugar só, E2.09).
+> - As duas RPCs começam com `PERFORM viewer_member_id()`: o portão do E2.03 vale mesmo quando nenhuma linha seria lida (o `e203_06_gate` exige recusa, nunca vazio).
+> - O normalizador prende as datas entre os anos 1 e 9999 (fora disso o `timestamp` estoura), sem mudar o resultado.
+> - A pós-condição da migration 1 compara dono, opções e privilégios com os capturados antes do `DROP`; a segunda execução não faz `DROP` (a `members_list` depende do tipo da view).
+> - `cell_links_or_none` e `sp_day_start` entraram na lista fechada do `e203_06_gate` (funções puras: o próprio argumento e o relógio). Falta registrar isso no spec do E2.03 ("Fora do portão"), na tarefa 13.
+> - O `e206_01_structure_grants` passou a aceitar `members_list` e `member_filter_sql` na lista das funções que citam `g12_level` (leem a `members_view`).
+
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`._ PR 1 (banco), escrito e rodado pelo `architect` (sem QA independente). Arquivos em `mci-connect/supabase/tests/`: `database/e207_01_structure_grants` (EG, 47), `database/e207_02_list` (LI, 117), `volume/e207_volume.psql` (VOL) e `concurrency/e207_migrations.sh` (MIG). LI usa a massa do Negócio (19 pessoas, 5 células), isola a base dentro da transação e roda os cenários que gravam num bloco desfeito (`pg_temp.scn`); as datas são relativas a `sp_today()`.
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01, RN-03 | LI: total sem filtros; Diego e Samuel (nível); Hugo (no máximo ele); Sara excluída fora da lista e do total; paridade com a `members_view` (páginas de 4 em 4 e total) para Rita, Samuel, Pedro, André, Diego, Ester e Hugo | ✅ |
+| RN-02 | LI: os três critérios de combinação; VOL: a combinação em 10 ms (página) e 6 ms (total) | ✅ (banco) |
+| RN-04, RN-05, DA-2 | LI: os seis critérios de Rita; 12 ids com repetido e nulo valem os 10 primeiros; Pedro com Tiago (não visível), Sara (excluída) e um id inexistente, sozinhos e com André; Liderança vazia ou só nulos = sem filtro; EG/LI: a resposta é o tipo da view, sem coluna de cadeia | ✅ |
+| RN-06 | LI: acentos, maiúsculas e espaços; `%`, `_`, `\`, aspas simples e duplas; sem bairro; Pedro acha Caio pelo bairro; cidade; EG: 100 caracteres, só espaços, tabulação | ✅ |
+| RN-07, RN-08, RN-09 | LI: todos os critérios; DA-8 (as três situações, os seis níveis); Jonas em 144 logo depois da troca de líder | ✅ |
+| RN-10 | LI: a tabela da massa (C4 inativa, C5 excluída); as cinco opções (DA-8); casal Pedro e Paula; hoje − 30 entra e hoje − 31 não; "Não houve célula", relatório excluído, célula excluída, inativo, relatório que Pedro não vê; reativar C4; C3 inativa e Magda; EG: `cell_links_or_none`. A virada da meia-noite é coberta pelo limite relativo a `sp_today()` | ✅ |
+| RN-11, RN-17 | LI: cada card = o total da lista com o equivalente, para Rita, Pedro, Diego, Ester e Samuel; os números do critério (19, 18, 1, 1 e 5; Pedro 3; Diego 0); com relatórios, igual; "Novos membros" de 22/11 a 28/11 | ✅ |
+| RN-12, DA-4 | LI: 23:30 de Brasília em 21/11, 00:10 de 22/11, sem data, só "a partir de", só "até", os dois dias, invertidas, futura; EG: `sp_day_start` | ✅ |
+| RN-13 | LI: Pedro não acha Caio por CPF nem e-mail, nem filtrando a resposta por CPF, e-mail, celular, rua ou CEP; acha o próprio CPF; Rita acha | ✅ |
+| RN-15, DA-5 | LI: a ordem da massa; com Situação: Ativo, a mesma ordem; 60 homônimos de 25 em 25 (79 linhas, cada um uma vez, desempate pelo id, mesma ordem relativa com filtro) | ✅ |
+| DA-1, risco 1 | EG: busca (5 padrões), bairro (100), níveis, `_limit`, `_offset`; 22P02 para enum e uuid inválidos; texto malicioso não entra no WHERE; LI: textos maliciosos sem erro e sem efeito | ✅ |
+| Estrutura | EG: enums; `members_view` (colunas no fim, sem as quatro, opções, dono, privilégios, mesmo WHERE); RPCs *definer* com `search_path` e EXECUTE só para `authenticated`; internas sem EXECUTE; nenhuma função cita as colunas que saíram; índice parcial | ✅ |
+| Migrations | MIG: reexecução sem mudar nada; a partir da `members_view` do E2.05; a guarda sem o E2.06; o `DROP` com dependente; o privilégio diferente. `supabase db reset` limpo | ✅ |
+| Volume | VOL (20 mil membros, 1.500 células, 100 mil relatórios, 1 milhão de participantes), Administrador: sem filtros 57/5 ms (página/total); só "Sem vínculo" 129/97; só "Participante" 114/98; Liderança com o pastor 61/9 e com um G12 de 2 mil 21/8; combinação 10/6. G12 (2 mil): sem filtros 26/10. `dashboard_summary`: 182 → 201 ms (Administrador), 102 → 107 ms (G12). Planos: etapa 2 por `members_pkey`; sem filtro de vínculo, sem os `EXISTS`; com ele, tabelas *hash*; Liderança por semi-join com `member_hierarchy` | ✅ |
+| Testes adaptados | `e108_pr3_dashboard_rpcs` (André e Ana saem de "sem vínculo": célula ativa abaixo; 4 → 2), `e201_04_cells_reports`, `e203_01`, `e203_03`, `e205_01` (as duas colunas novas no fim), `e203_06_gate` (lista fechada), `e206_01` (lista das funções que citam `g12_level`) | ✅ |
