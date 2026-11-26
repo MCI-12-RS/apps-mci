@@ -1825,6 +1825,8 @@ Sem *deadlock* novo: quem inativa não pede nenhuma trava que o lançamento segu
 ```
 Edição: `.update(patch).eq('id', id).select('id, updated_at')`, com o PATCH só do que mudou (E2.05) e "0 linhas" tratado como no E2.01.
 
+**Complemento da DT-09 (implementação, 2026-11-26, revisão do PR 3–5):** em 3a e no 23505 de 3b, a célula achada é lida na `cells_view` (`CELL_STORED_SELECT`) e comparada com o que está sendo enviado. Igual: "Célula criada.", sem gravar. Diferente (a pessoa corrigiu o formulário depois da queda): um PATCH só do que mudou, sem tocar em `is_active`, e o resultado é o desse PATCH. Um 23505 sem a célula visível continua valendo como criada.
+
 **Tabela de casos:** `supabase/tests/fixtures/cell-rules-cases.json` (DT-17), com:
 - `weekdays` (a ordem de `cell_weekdays()`), `weekday_options` (rótulo e valor, de segunda a domingo), `types` e `default_type`;
 - `meeting_time`: uma linha por caso, com `input`, `typing` (o que o campo mostra enquanto digita), `blur` (ao sair do campo), `ui_valid` e `db` (o valor gravado, o código da regra, o SQLSTATE do tipo ou `null` quando o caso é só da tela). Tem pelo menos as linhas da tabela da T3, mais "00:00", "23:59", "23:59:59.999" e o vazio.
