@@ -484,7 +484,7 @@ Legenda: ✅ feito · 🟡 parcial · ❌ falta
 | Recalcular o nível dos descendentes quando o líder muda | a troca de líder, da marca de pastor ou de "sem liderança" recalcula a descendência inteira na mesma operação, com trava da árvore contra gravações simultâneas (E2.06) | ✅ |
 | Totais de discípulos e de células | na mesma operação, para todos os de cima em qualquer profundidade; células divididas pelo sexo do líder (E2.06) | ✅ (conta só ativos, D2; a contagem passa pelo inativo) |
 | Filtros de membros: liderança, bairro, cidade, situação, possui liderança, batizado, nível, vínculo celular, data de cadastro | só busca por texto | ❌ |
-| CRUD de células | sim, com `is_active` a mais; só com as permissões de célula e no escopo (E2.02) | ✅ |
+| CRUD de células | sim; só com as permissões de célula e no escopo (E2.02). Regras do legado no banco, para todo caminho de gravação (E2.08, aceito em 2026-11-26): líder, timóteo e anfitrião obrigatórios (D4), dia e horário obrigatórios e sem padrão, tipo só Evangelística, Discipulado ou Macrocélula. A mais que o legado: situação ativa ou inativa (a célula nova sempre ativa; a inativa fica fora dos totais e não recebe relatório novo, mas mantém os que tem) e o endereço do anfitrião com a máscara de dados sensíveis. Formulário com os erros no campo, CEP e endereço a partir do anfitrião | ✅ |
 | Filtros de células: G12, endereço, tipo, dia, situação do relatório, data de cadastro | só busca por texto | ❌ |
 | Situação do relatório por célula (em dia, pendente, atrasado de 1 a 4+ semanas) | não existe | ❌ |
 | Lançamento de relatório | sim; quem lança, edita e exclui, com escopo, no banco (D3, E2.02) | 🟡 falta a RPC atômica (E2.11) |

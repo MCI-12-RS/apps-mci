@@ -55,7 +55,7 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | 🔄 5 de 16 | E1.01 concluído |
+| 2. Paridade | 🔄 6 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
 | 4. Ferramentas de migração | 🔄 1 de 9 | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
@@ -152,7 +152,8 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - Revisão final dos 6 PRs (tarefa 20): APROVADO, com o backlog técnico no spec. Testes do último PR: pgTAP 23 arquivos e 2.688 testes, Vitest 1.259, Playwright sem regressão (só as falhas de ambiente conhecidas).
 - [ ] 🔄 **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
   - PR 1 em produção (2026-11-25, mci-connect#41 e #42, "Deploy: banco" do `6c4f67b`): cofre de senhas, política, redefinição assistida e trocas no banco e nas funções; `change-own-password` publicada e `change-member-password` apagada. Conferências 1 a 8 sem parada (as 5 contas tinham a senha `123456`). Passo A com contas e cadastros temporários, todos os itens ok, dados apagados no fim. Decisão do usuário: o registro de "Sem permissão" da `reset_member_password` fica sem limite, em "Problemas conhecidos".
-  - Próximos: PRs 2 e 3 (telas, num PR só) e o PR 4 (portão).
+  - PRs 2 e 3 em produção (2026-11-26, mci-connect#44, promote do `b35c5ed`, junto com o front do E2.08): as telas de senha, num PR só.
+  - PR 4 (portão, mci-connect#46) aprovado; publicação marcada para 2026-11-26 às 9h, fora das noites de célula.
 - [x] **E2.04** Validações de membro · MEM-01 a MEM-09, complemento da MEM-10, HIE-01 (antecipada do E2.06) e fechamento da DEL-04 · depende de D5. Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md). Aceite do PO (2026-11-25)
   - PRs em produção (2026-11-25): mci-connect#35 (funções de regra e índices únicos de e-mail, celular e CPF entre não excluídos; squash `2f6eebf`), #36 (regras no banco, `create-user-admin` com conta de e-mail técnico, vazio vira nulo; conferência pós-deploy com os 9 itens ok; squash `83e5d49`) e #37 (formulário de membro da UX; squash `d680904`).
   - Revisão final dos 3 PRs (tarefa 12): APROVADO, com o backlog técnico no spec. Testes: pgTAP 33 arquivos e 3.388 asserções e concorrência (PRs 1 e 2); Vitest 1.699 e Playwright 296 ok no PR 3, só com as falhas de ambiente conhecidas.
@@ -162,7 +163,10 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - PRs em produção (2026-11-25): mci-connect#39 (banco: `private.member_hierarchy`, nível, cadeia, G12 e totais por triggers na mesma transação, colunas calculadas fora de `members`; conferências de antes e de depois sem parada, drift 0; squash `af327ef`) e #40 (PRs 2 a 4 do spec num só: Membros e Células com nível e totais, Ministérios com os totais do casal e a referência do cônjuge, gravação que recalcula; squash `1553f09`, promote).
   - Revisão final (T15): APROVADO, com o backlog técnico no spec (linha órfã para o E4.07, contraste do `LevelBadge` no passo dos tokens de tema, 40P01/57014 na `create-user-admin`). Testes: pgTAP 3.709 asserções, concorrência 288 PASS, volume dentro das metas (troca de líder de um G12 com 2 mil abaixo em 24,5 ms), Vitest 1.828 e Playwright 333 ok, só com as falhas de ambiente conhecidas.
 - [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15. Spec: [`specs/e2-07-filtros-membros.md`](specs/e2-07-filtros-membros.md) (desenho pronto; o PR 1 exige o banco do E2.05 e o PR 1 do E2.06 em produção)
-- [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md) (desenho pronto; o PR 1 espera o E2.01 inteiro e o PR 1 do E2.02 em produção)
+- [x] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md). A CEL-04 já vinha pronta do E2.02. Aceite do PO (2026-11-26)
+  - PRs em produção (2026-11-26): mci-connect#43 (banco: a célula inativa não recebe relatório novo, nem pela API; "Deploy: banco" do `0126c28`), #45 (banco: as três pessoas, dia, horário e tipo obrigatórios e dentro das listas, a célula nova sempre ativa, com o ajuste mínimo do front; conferência em produção sem nenhuma linha fora das regras; "Deploy: banco" e promote do `30bd8f0`) e #47 (PRs 3 a 5 do spec num só: CEP comum aos formulários de membro e de célula, lista de Células com a situação e o "Novo relatório" só na ativa, formulário de célula da UX; promote do `b35c5ed`).
+  - Revisão final do passo (tarefa 17): APROVADA, com as revisões independentes de código e de UI; a nova tentativa do cadastro compara a célula achada e grava só a diferença (complemento da DT-09). Testes: pgTAP 4.320 asserções no PR 2 e 4.373 com o PR 4 do E2.03 rebaseado, concorrência e volume dentro das metas, Vitest 1.940 e Playwright inteiro sem regressão, só com a falha de massa local conhecida (`excluidos-membros.spec.ts:612`).
+  - Ficam para o usuário as perguntas Q-1 a Q-6 do spec, que não bloqueiam.
 - [ ] **E2.09** Situação do relatório por célula · CEL-05. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md) (desenho pronto)
 - [ ] **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07. Spec: [`specs/e2-10-listagem-celulas.md`](specs/e2-10-listagem-celulas.md) (desenho pronto; depende também do E2.07)
 - [ ] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3. Inclui: trocar o trigger de semana única por índice único, validar a semana atual só no lançamento e corrigir a data sugerida no formulário. Spec: [`specs/e2-11-lancamento-relatorio.md`](specs/e2-11-lancamento-relatorio.md) (desenho pronto; o retrato vira `snapshot_*`)
@@ -295,10 +299,10 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (D4: os três obrigatórios) | NOT NULL |
-| CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | 🟡 têm valor padrão, mas aceitam nulo | NOT NULL + CHECK |
-| CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | 🟡 texto livre | CHECK ou enum |
-| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | ✅ E2.02 (2026-11-25): só com as permissões de célula e no escopo; ser líder ou timóteo não dá direito de editar (RN-12 do E2.02) | RLS |
+| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ✅ E2.08 (2026-11-26): os três obrigatórios em toda gravação, inclusive na Macrocélula e pela *service role*; a mesma pessoa pode ocupar mais de um papel; pessoa excluída recusada (RN-02 a RN-04 do E2.08) | `NOT NULL` + trigger com código e campo |
+| CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | ✅ E2.08 (2026-11-26): sem padrão; dia só de Domingo a Sábado, horário de 00:00 a 23:59 sem segundos (RN-05 e RN-06 do E2.08) | `NOT NULL` + `CHECK` sobre `cell_weekdays()` e o horário + trigger com código e campo |
+| CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | ✅ E2.08 (2026-11-26): só os três valores; sem tipo, a célula nova fica Evangelística (RN-07 do E2.08) | `CHECK` sobre `cell_types()` + trigger com código e campo |
+| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | ✅ E2.02 (2026-11-25): só com as permissões de célula e no escopo; ser líder ou timóteo não dá direito de editar (RN-12 do E2.02). Conferida no E2.08 (RN-12), sem mudança | RLS |
 | CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ❌ | Função SQL |
 | CEL-06 | Filtros: líder, G12, logradouro, bairro, cidade, tipo, dia da semana, situação do relatório e período de cadastro. | `Domain/Querying/Filters/CellFilter.cs`; `UI/pages/Cells/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | CEL-07 | O detalhe da célula mostra os 3 últimos relatórios e dá acesso à lista completa. | `CellController.GetLastReportsByCellId`; `UI/pages/Cells/details.js` | ❌ | UI |
@@ -438,6 +442,7 @@ Estas migrations são feitas pelo `backend-developer` (passos E2.01, E2.05, E3.0
 - Toda coluna nova em `members` (`legacy_id`, `deleted_at`, `deleted_by`, `created_by`, `updated_by`…) precisa de `GRANT SELECT (coluna) ON public.members TO authenticated` na própria migration, por causa da trava por coluna do E1.08 PR 5.
 - Tabela `private.legacy_credentials` (6.3).
 - CHECKs de domínio (`gender`, `meeting_day`, `type`) e os índices únicos (MEM-03, MEM-05, REL-03), criados **antes** da carga para barrar dados ruins.
+- Células (E2.08, já em produção): `NOT NULL` em `leader_id`, `timothy_id`, `host_id`, `meeting_day` e `meeting_time`, e os `CHECK`s `cells_meeting_day_check`, `cells_type_check` e `cells_meeting_time_check`. Valem também para as células excluídas. A pessoa excluída num papel não é barrada em `replica`: é conferida na reconciliação (5.6).
 
 Na carga vamos usar `session_replication_role = replica`. Isso desliga triggers e FKs, mas os CHECKs e os índices únicos continuam valendo.
 
@@ -465,7 +470,10 @@ Rode depois da cópia bruta para o schema `legacy`. O que precisar de decisão h
 | Referência para registro excluído | Cônjuge excluído: o vínculo é desfeito (DEL-05). Membro ativo com líder excluído: listar para reatribuição (D10). Célula ou relatório excluído: migra com `deleted_at`, e a referência é mantida. |
 | Cônjuge não recíproco | Corrigir no legado |
 | Ciclo na hierarquia | Corrigir no legado |
-| Horário de célula fora do formato `HH:mm` | Corrigir no legado |
+| Horário de célula fora do formato `HH:mm`, inclusive em célula excluída | Corrigir no legado |
+| Célula não excluída com líder, timóteo ou anfitrião excluído (RN-13 do E2.08) | Listar (E4.04) e corrigir no legado (E4.05), escolhendo outra pessoa. A carga não termina enquanto houver |
+| Dia da célula fora de `0` a `6` ou tipo fora de `0` a `2` | Corrigir no legado (não deve existir: os dois são enumerações) |
+| Pessoa inativa num papel de célula, ou a mesma pessoa em mais de um papel | Migra como está (RN-03 e RN-04 do E2.08) |
 | Mais de um relatório da mesma célula na mesma semana | Fica o mais recente; os outros migram como excluídos. Listar para a liderança. Sem isso, o índice único da REL-03 (`cell_reports_cell_week_key`, E2.01) barra a carga, porque ele vale mesmo com `session_replication_role = replica`. |
 
 Exemplos em Postgres sobre o schema `legacy`. Eles assumem que a cópia preservou os nomes originais das tabelas e colunas (no pgloader, opção `quote identifiers`):
@@ -550,7 +558,8 @@ Regras para `has_leadership`, `leader_id` e `is_pastor`:
 | `Id` | `legacy_id` | — |
 | `LeadId` / `HostId` / `TimothyId` | `leader_id` / `host_id` / `timothy_id` | Via `legacy_id` |
 | `WeekDay` | `meeting_day` | `0` Domingo, `1` Segunda, `2` Terça, `3` Quarta, `4` Quinta, `5` Sexta, `6` Sábado |
-| `Time` | `meeting_time` | `'HH:mm'::time` |
+| `Time` | `meeting_time` | `'HH:mm'::time`, sem segundos |
+| — | `is_active` | Sempre `true`, inclusive nas excluídas: o legado não tem célula inativa (RN-11 do E2.08) |
 | `CellType` | `type` | `0` Evangelística, `1` Discipulado, `2` Macrocélula |
 | `PlaceId` → `Addresses` | Endereço inline | Mesma regra do endereço dos membros |
 | `IsDeleted` | `deleted_at` | Mesma regra dos membros |
@@ -591,6 +600,7 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - Nível (RN-13 do E2.06): `12 ^ g12_level = MinistryLevel` para quem tem líder no novo; "sem liderança" no novo = 9999999 no legado; quem está a mais de 6 níveis do topo é comparado com 12^6. A diferença esperada, listada, são os membros sem líder e sem "não tem liderança" que não são os pastores da D9 e não foram corrigidos no E4.05.
   - `private.member_hierarchy_problems()` lista o que sobrou para a liderança (`no_top`, `cell_leader_deleted`, `no_leadership_with_disciples`).
 - **Regras de membro.** `private.member_rule_violations()` (E2.04) não devolve nenhuma linha: nenhum cadastro viola as regras do tipo (a) da RN-01 do E2.04 (RN-18).
+- **Regras de célula.** `private.cell_rule_violations()` (E2.08) não devolve nenhuma linha: nenhuma célula não excluída fica sem uma das três pessoas, com pessoa excluída, ou com dia, horário ou tipo fora das listas (RN-13 do E2.08).
 - **Totais** (RN-13 do E2.06). Os totais de discípulos e de células batem com os recalculados a partir do líder de cada membro no legado, sem inativos (D2) e sem excluídos. Os totais guardados no legado não servem de base, porque ele os atualiza por evento e só até 5 ancestrais.
   - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o recálculo deixa os carregados sem linha em `private.member_hierarchy` ("Sem liderança" e totais zero), e o ranking G12 mostra 0 células.
   - A soma de `total_cells` do ranking G12 (`dashboard_g12_ranking`) bate com as células ativas sob os G12.
