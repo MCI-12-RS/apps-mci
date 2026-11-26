@@ -1,6 +1,7 @@
 # E2.10: Listagem de células com filtros e detalhe com os últimos relatórios
 
 > Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos.
+> **Herdado da revisão de UI do E2.09 (2026-11-26, mci-connect#49), para tratar aqui:** na tabela de Células (1280 px), a coluna G12 fica estreita e quebra o nome em 3 linhas, e as linhas de Timóteo/Anfitrião (itálico, tamanho menor) também; no tema escuro, os badges `muted` da situação ("Ainda não ocorreu", "Conta a partir da próxima semana") se distinguem pouco de "Pendente" e "Enviado" (o axe passa).
 > - Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar".
 > - Experiência (UX) escrita no mesmo dia pelo `ux-designer`. As pendências PO-UX-1 a PO-UX-12 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-LCE-22 a P-LCE-33.
 > - A situação do relatório segue os valores e os rótulos do E2.09 (`docs/specs/e2-09-situacao-relatorio.md`, com Negócio e UX prontos, ainda sem commit).
