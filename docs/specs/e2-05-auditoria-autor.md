@@ -744,7 +744,7 @@ Celular (360 px). A busca, os filtros e a lista ficam dentro do `Card` da lista,
 │ 1.234 eventos                        │  role="status"
 │──────────────────────────────────────│
 │ Alterou o membro Igor Nunes          │  card = botão; descrição em font-medium
-│ Líder, Celular/WhatsApp              │  segunda linha (UXD-6)
+│ Celular/WhatsApp, Líder              │  segunda linha (UXD-6)
 │ Bruno Lima · 23/11/2026 às 21:50     │
 │ [Alteração] Membro                   │
 │──────────────────────────────────────│
@@ -812,7 +812,7 @@ Computador (≥ 1024 px):
   - Entre 768 e 1023 px, a coluna Entidade some (`hidden lg:table-cell`), e a entidade aparece ao lado do badge da ação.
   - "OK" em `outline` (E1.04) e "Erro" no P6.
 - **Segunda linha dos eventos de registro (UXD-6) †:**
-  - alteração de membro, célula ou relatório: os campos mudados, pelo rótulo da tabela [Rótulos dos campos na Auditoria](#rótulos-dos-campos-na-auditoria), separados por vírgula, até 3, e "e mais {N}" (ex.: "Líder, Celular/WhatsApp"; "Nome, Líder, Cônjuge e mais 2");
+  - alteração de membro, célula ou relatório: os campos mudados, pelo rótulo da tabela [Rótulos dos campos na Auditoria](#rótulos-dos-campos-na-auditoria), separados por vírgula, até 3, e "e mais {N}" na ordem da tabela de rótulos (ex.: "Celular/WhatsApp, Líder"; "Nome, Líder, Cônjuge e mais 2");
   - função criada ou excluída: "{N} permissões" ou "1 permissão";
   - função alterada: os campos mudados ("Nome", "Descrição"), "{N} permissões incluídas" e "{N} permissões retiradas" (no singular, "1 permissão incluída"), separados por " · ";
   - envio de relatório: "{N} participantes" ou "1 participante"; na alteração do relatório, depois dos campos, "{N} participantes incluídos" e "{N} participantes retirados" (no singular, "1 participante incluído"), separados por " · " (P-AUD-24, ajuste do PO);
@@ -869,7 +869,7 @@ Celular, com Ana no histórico de Igor, depois de uma exclusão e de uma restaur
 │ 4 eventos                            │
 │──────────────────────────────────────│
 │ Alterou o membro Igor Nunes          │
-│ Líder, Celular/WhatsApp              │
+│ Celular/WhatsApp, Líder              │
 │ Bruno Lima · 23/11/2026 às 21:50     │
 │ [Alteração]                          │  sem a entidade (só no relatório)
 │──────────────────────────────────────│
@@ -1100,7 +1100,7 @@ Numeração própria deste spec. Continuam valendo os critérios da Auditoria do
 | UX-16 | Abaixo de 768 px, a Auditoria não tem rolagem horizontal, em 360 e em 320 px. Cada evento é um card-botão de pelo menos 44 px, com a descrição primeiro, a segunda linha, o autor e a data, o badge da ação e a entidade, e o badge "Erro" só nos que falharam. O card abre o painel, e fechar o painel devolve o foco ao card. | teste E2E (viewport e medida) + teste de componente |
 | UX-17 | A partir de 1024 px, a tabela tem as 6 colunas, sem rolagem horizontal, e a descrição de cada linha é um `button` que abre o painel pelo teclado (Tab e Enter). | teste E2E |
 | UX-18 | Na linha, no painel e no filtro, a ação de alteração aparece como "Alteração", e "Atualização" não está no DOM; a restauração, como "Restauração"; a entidade "Função" existe, e "Participante" não aparece no filtro. As opções de Ação e de Entidade seguem a ordem da T7. | teste de componente |
-| UX-19 | Na alteração de Igor (líder de Bruno Lima para Pedro Alves, e o celular), o card mostra "Líder, Celular/WhatsApp", e o painel mostra "Líder: Bruno Lima → Pedro Alves" e "Celular/WhatsApp", sem valor. A oferta aparece como "Oferta: R$ 50,00 → R$ 80,00". No DOM da Auditoria, nos eventos novos e nos de antes deste passo, não há nome técnico (`leader_id`, `mobile_whatsapp`), JSON, texto com cara de UUID nem data `aaaa-mm-dd`. | teste de componente + teste E2E (critério da RN-20) |
+| UX-19 | Na alteração de Igor (líder de Bruno Lima para Pedro Alves, e o celular), o card mostra "Celular/WhatsApp, Líder" (a ordem da tabela de rótulos), e o painel mostra "Líder: Bruno Lima → Pedro Alves" e "Celular/WhatsApp", sem valor. A oferta aparece como "Oferta: R$ 50,00 → R$ 80,00". No DOM da Auditoria, nos eventos novos e nos de antes deste passo, não há nome técnico (`leader_id`, `mobile_whatsapp`), JSON, texto com cara de UUID nem data `aaaa-mm-dd`. | teste de componente + teste E2E (critério da RN-20) |
 | UX-20 | Funções: a criação lista as permissões pelo rótulo do E2.02; a alteração mostra "Permissões incluídas" e "Permissões retiradas" e, quando o nome muda, "Nome: … → …"; a troca da padrão mostra a descrição do Negócio; a exclusão lista as permissões que a função tinha. Nenhum identificador de permissão (como `view_audit_log`) aparece. | teste de componente (critério da RN-15) |
 | UX-21 | O autor aparece como "Sistema" nos eventos sem pessoa e como "—" no login sem sessão (E1.04). No card, o evento sem autor mostra só a data. | teste de componente |
 | UX-22 | "Ver histórico" em Igor abre "Histórico de Igor Nunes", só com os eventos dele, inclusive os de antes da exclusão e da restauração, com "Ver toda a Auditoria" no topo. O histórico de um relatório mostra os participantes dentro do envio e de cada alteração, além dos eventos de participante de antes deste passo. Entidade e Status não aparecem, e Ação tem só Criação, Alteração, Exclusão e Restauração. O link direto e o recarregar mostram o mesmo. | teste E2E (critério da RN-19) |
