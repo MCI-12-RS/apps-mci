@@ -1,6 +1,6 @@
 # E2.09: Situação do relatório por célula
 
-> Status: desenho pronto. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-7 foram resolvidas pelo PO no mesmo dia (P-SIT-12 a P-SIT-18). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, só como desenho, sem nada implementado. Ficam para o usuário revisar no PR os padrões P-SIT-01 a P-SIT-18, as decisões DA-1 a DA-8 do `architect` e as perguntas Q-1 a Q-6, que não bloqueiam (a T6 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). O PR de banco precisa só do PR 1 do E2.01 em produção. Falta a seção Testes.
+> Status: desenho pronto. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-7 foram resolvidas pelo PO no mesmo dia (P-SIT-12 a P-SIT-18). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`. **PR 1 (banco, tarefas 2 a 4) implementado em 2026-11-26** na branch `feat/E2.09-pr1-situacao-relatorio` do `mci-connect`, empilhada sobre o PR 2 do E2.08 (#45): o `architect` implementou e testou sem a ferramenta `Agent`, então ainda não houve revisão independente nem QA independente. Os PRs 2 e 3 (front) não começaram. Ficam para o usuário revisar no PR os padrões P-SIT-01 a P-SIT-18, as decisões DA-1 a DA-8 do `architect` e as perguntas Q-1 a Q-6, que não bloqueiam (a T6 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). O PR de banco precisa só do PR 1 do E2.01 em produção. Falta a seção Testes.
 > Slug: `e2-09-situacao-relatorio` · Paridade com o legado: sim (CEL-05 e o card de pendentes da DSH-02). Tem regras novas: o prazo exato de 1 hora, as semanas que contam (célula nova, reativada ou restaurada), a célula sem nenhum relatório, a situação na lista de Células e o detalhe de "Não houve célula".
 > **Coordenação (2026-11-24, E2.10):** o critério "nenhuma leitura da `cells_view` fora da lista pedindo `report_status`" passa a ser "fora da lista e do detalhe da célula" (E2.10). Recomendação: a `sp_day_start` do E2.07 passa a usar a `sp_instant` (DT-08), para o fuso ficar num lugar só. A lista de Células troca cartão por tabela em 1280 px (P74), o que o E2.10 adota (DA-5 de lá).
 
@@ -1374,6 +1374,7 @@ Todas com `REVOKE ALL … FROM PUBLIC` antes dos `GRANT`. **Os papéis da API co
 | pgTAP do E2.02 ao E2.08 que listam as colunas da `cells_view` ou leem `cells_pending` | — | O mesmo ajuste, se já existirem quando este PR for feito | — |
 | `e2e/dashboard.spec.ts`, `src/pages/Dashboard.test.tsx` | E1.08 | O título do card (PR 2) | RN-08 |
 | `CellReportDeletionFlow.test.tsx` | E2.01 | As chaves desatualizadas passam a ser as de `refreshAfterReportWrite` (PR 2) | AQ-3 |
+| `e208_01_inactive_cell`, `e201_01_structure_grants` (pgTAP) e `e208_migrations.sh` | E2.01, E2.08 | A lista de colunas da `cells_view` ganha as duas; o script pula a reexecução da migration 1 do E2.08 quando a view já tem `report_status` (o `CREATE OR REPLACE VIEW` dela não tira colunas, por desenho) | Colunas novas |
 
 Nenhuma política de RLS muda.
 
@@ -1526,6 +1527,7 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 | DT-11 | Front: `src/lib/cells/report-status.ts` só traduz; `ReportStatus` e `ReportStatusLegend` em `src/components/cells/`; `useMinWidth(1280)`; `CELL_LIST_SELECT` só na lista. | AQ-5, AQ-6; SRP |
 | DT-12 | `refreshAfterReportWrite`: `removeQueries` das inativas e `invalidateQueries` das ativas, para `cells`, `dashboard`, `cell_reports` e `members`, em toda gravação de relatório. | AQ-3; mesmo mecanismo do E2.06 |
 | DT-13 | Três PRs: banco (compatível com o front em produção), Dashboard e atualização, e lista. | Cada PR vai ao ar sozinho ([Implantação](#implantação)) |
+| DT-14 | (2026-11-26, na implementação) As funções puras (`sp_local`, `sp_instant`, `report_deadline`, `report_week_counts`, `report_situation_rule`) ficam **sem** `SET search_path`: são *invoker*, `IMMUTABLE` e só citam objetos com o schema. A *definer* (`private.cell_report_situation`) e a RPC mantêm o `search_path` vazio. O advisor do Supabase vai acusar `function_search_path_mutable` nessas cinco: esperado. | Com o `SET`, cada chamada troca o `search_path` e impede o *inline*: a regra de 1.350 células levava 145 ms, e o filtro `pending` com total passava da meta (331 ms). Sem ele, 10 ms e 244 ms ([Testes](#testes)). |
 
 ### Riscos (concorrência, escala, segurança)
 1. **Volume.** O filtro do E2.10 calcula todas as células visíveis duas vezes (página e total). Metas e plano B em [Desempenho](#desempenho).
@@ -1601,6 +1603,8 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 
 ### Conferência em produção (tarefa 1)
 
+> **Resultado em 2026-11-26 (sessão principal, só leitura):** só a linha `info` "1 ativa: conta desde o cadastro" (2 células). Nenhuma `a`, `auto` ou `infra`. *Exposed schemas*: `public, graphql_public`. A publicação pode seguir.
+>
 > **Resultado em 2026-11-24 (sessão principal, só leitura, com o E2.01 PR 2 em produção):** só `info` (2 células ativas, contando desde o cadastro). Nenhuma linha `a`, `auto` ou `infra`. O `private` não está nos *Exposed schemas* (conferido em 2026-11-23: `public,graphql_public`).
 Só leitura. O usuário roda no SQL Editor de produção (papel `postgres`), antes do "Deploy: banco".
 - A saída traz o tipo, o problema, o tratamento e a contagem de células. Só os tipos `a` e `auto` trazem os ids. Não traz nome de pessoa nem endereço.
@@ -1789,7 +1793,23 @@ Três PRs no `mci-connect`. **O de banco precisa só do PR 1 do E2.01 em produç
 4. **Tarefas 6 e 10:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`. PR 1 escrito e rodado pelo `architect` em 2026-11-26 (sem a ferramenta `Agent`: falta a revisão e o QA independentes), na pista B, sobre o PR 2 do E2.08._
 
-| RN | Testes | Resultado |
+| RN | Testes (PR 1, banco) | Resultado |
 |---|---|---|
+| RN-01 | `e209_02` (inativa e DA-5 por tabela); `e209_03` (C7 sem situação, C8 fora para todos, inativar tira do card, líder inativo, sem liderança e pastor) | passa |
+| RN-02 | `e209_02` (C1 20:59:59/21:00, C9, C3 e C4 na virada de dia e de semana, mudança de dia e horário, risco 13), nas sessões UTC, Brasília e Tóquio; `e209_03` (02:59:59 e 03:00 UTC de domingo); `e108_pr3` (linha do tempo com uma hora a mais) | passa |
+| RN-03 | `e209_03` (relatório da semana tira do card; excluído volta; restaurado sai). O caso "relatório que Pedro não vê" não ocorre desde o E2.02 (quem vê a célula vê os relatórios dela) | passa |
+| RN-04, RN-05 | `e209_02` (os valores da massa na quinta e na terça; 1, 2, 3 e "4 ou mais"; zero no Enviado; C6; 18/11 excluído); `e209_03` (Rita na quinta, Pedro na terça, Caio igual a Pedro) | passa |
+| RN-06 | `e209_01` (trigger, `created_at` pela API, backfill, invariante); `e209_02` (C10, cadastro às 20:30/21:00/21:01, C7 e C8, inativar e reativar, DA-1) | passa |
+| RN-07 | `e209_02` (sem dia, sem horário na quarta e no sábado). Pela tabela não ocorre desde o E2.08 | passa |
+| RN-08 | `e209_03` (card 3/2, 4/3 e 5/4; segunda 20:59/21:00; C10; 42501; paridade com a função em 9 momentos e 5 personas); `e108_pr3`, `e201_04` | passa |
+| RN-09 | `e209_03` (escopo de Pedro, Caio e Hugo sem dashboard; leitura sem USAGE em `private`) | passa |
+| RN-10 | `e209_01` (backfill dos quatro estados e excluída antes do cadastro); `e209_02` ("desde sempre" e 10/03/2023) | passa |
+
+- **pgTAP:** suíte inteira, 48 arquivos e 4.449 testes, depois de `db reset` (os três novos: 44, 19 e 62). A tabela de casos da regra tem 64 linhas.
+- **Migrations:** `e209_migrations.sh`: as duas rodam de novo sem mudar nada; a célula sem linha ganha a linha; a guarda para só com o id. `e208_migrations.sh` ajustado (pula a migration 1 do E2.08 depois deste passo).
+- **Concorrência** (`e209_concurrency.sh`, 5 cenários, todos com o invariante): inativar × reativar nas duas ordens (a segunda espera e vale a última); `delete_cell` × inativar nas duas ordens; `restore_cell` × reativar: sob o RLS, a reativação não enxerga a célula ainda excluída, não espera e volta 0 linhas (no app, "não encontrada", DT-19 do E2.01); depois da restauração, reativar abre o período. Regressão: `e208_concurrency`, `e201_concurrency` e `e206_concurrency` passam.
+- **Volume** (`e209_volume.psql`; 20 mil membros, 1.500 células, 80.750 relatórios, 640 mil participações; mediana de 5): página + total sem filtro 147 ms (G12 131); com `report_status = pending` 244 ms (G12 199); com `report_missing_weeks = 1` 277 ms; `dashboard_summary` 195 ms; pendentes 133 ms contra 21 ms do cálculo antigo (+112, meta 150); inativar +0,08 ms; o plano por id e o `count(*)` não chamam a função. Antes da DT-14, o filtro `pending` dava 331 ms.
+- **Playwright** (suíte inteira, `--workers=1`, depois de `db reset`): 339 passam, 8 pulados, 2 falham sem relação com este PR. O UX-19 de `excluidos-membros.spec.ts` precisa de mais de 10 células com "a" para abrir a página 2 de `/cells`, e o banco recriado tem 0 células (dependência de massa do teste; falha também na repetição). O axe da tela inteira de `sign-in.spec.ts` (tema claro) é intermitente: passou na repetição, com `login.spec.ts` e `dashboard.spec.ts`.
+- **Front:** Vitest 130 arquivos e 1.869 testes; `tsc` e build verdes; lint com os mesmos 11 problemas de antes (3 erros em `src/components/ui/*` e `tailwind.config`), nenhum nos arquivos deste PR.
