@@ -1,6 +1,6 @@
 # E2.05: Auditoria (quem cadastrou e quem alterou)
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos, sem perguntas em aberto. Negócio e UX escritos em 2026-11-23 (as pendências PO-UX-1 a PO-UX-8 foram resolvidas pelo PO no mesmo dia: P-AUD-20 a P-AUD-27). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-24. A implementação começa depois do E2.01, do E2.02, do E1.04, do E2.03 e do E2.04 inteiros em produção. Ficam para o usuário revisar no PR os padrões P-AUD-01 a P-AUD-27 e os pontos DA-1 a DA-12, definidos pelo `architect`. Falta só a seção Testes.
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos, sem perguntas em aberto. Negócio e UX escritos em 2026-11-23 (as pendências PO-UX-1 a PO-UX-8 foram resolvidas pelo PO no mesmo dia: P-AUD-20 a P-AUD-27). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-24. **PR 1 (banco, tarefas 2 a 7) implementado em 2026-11-26** na branch `feat/E2.05-pr1-autoria`, sobre o E2.03 PR 4 e o E2.09 PR 1 (ver Testes); a tarefa 1 (conferência em produção) fica com o usuário, e as decisões DT-23 a DT-25 entraram na implementação. Ficam para o usuário revisar no PR os padrões P-AUD-01 a P-AUD-27, os pontos DA-1 a DA-12 e as DT-23 a DT-25.
 > Slug: `e2-05-auditoria-autor` · Paridade com o legado: sim (MEM-12), com regras novas: autoria visível no registro, Funções na Auditoria, e uma Auditoria completa, legível e com prazo de guarda.
 
 ## Negócio
@@ -1896,7 +1896,7 @@ Os casos que importam:
 ### Formato dos erros
 - **Falha da Auditoria (AQ-8, DT-18):** sem código próprio. O erro sobe como vier (por exemplo, o `CHECK` forçado nos testes), a gravação inteira volta atrás, e a tela trata como erro desconhecido, com a mensagem de conexão.
   - Capturar o erro exigiria um sub-bloco por evento, uma subtransação por linha, e cada participante de um envio abriria a sua.
-  - Na `create-user-admin`, o erro desconhecido do banco já é `500 server_error` na tabela de respostas do E2.04. A falha acontece no ensaio, antes de criar a conta. A tarefa 7 confere.
+  - Na `create-user-admin`, a falha acontece no ensaio, antes de criar a conta. _(PR 1: a tabela de respostas do E2.04 dá `400` "Não foi possível salvar o cadastro." para erro desconhecido do banco no ensaio, e não `500`; a Edge Function não muda. O PR 2 trata essa resposta como a mensagem de conexão da T5.)_
 - **`save_cell_report`:** as mesmas recusas da gravação nas tabelas (42501 e `app_error` do E2.01, do E2.02 e das regras de semana), mais `not_found_or_deleted`.
 - **`events_view` e `audit_record_label`:** 42501 sem "Visualizar Auditoria".
 - **DA-1:** 42501.
@@ -2016,6 +2016,9 @@ Segue o padrão dos passos anteriores: os componentes cuidam da tela, o acesso a
 | DT-20 | A autoria dos registros que já existem vem dos eventos convertidos, com a DA-3 para os participantes. | RN-12 |
 | DT-21 | Sem índice nos `*_by`. | Membros nunca são apagados fisicamente (FK sem custo) e nenhuma consulta filtra por autor. É a mesma escolha do `deleted_by` (E2.01). |
 | DT-22 | Quatro PRs: (1) banco; (2) gravação nos formulários; (3) autoria na tela; (4) Auditoria nova. | Cada PR vai ao ar sozinho; a janela entre o 1 e o 2 é de minutos ([Implantação](#implantação)). |
+| DT-23 | _(PR 1)_ Gravação sem trigger (`replica`: massas de teste, manutenção): `created_by_kind` tem o padrão `system`, e o `deleted_authorship_check` aceita o tipo nulo num excluído (lido como o `deleted_by`, ou "autor não registrado"); sem exclusão, nada da exclusão. Os outros três `CHECK`s ficam como no desenho. | Dezenas de massas de pgTAP e as cargas gravam em `replica` sem as colunas novas. Pela API, o carimbo sempre define o tipo; a carga do E4.06 usa a `legacy_authorship`. A T6 (PR 3) trata o tipo nulo como acima. |
+| DT-24 | _(PR 1)_ "Um evento por gravação" é por transação **e comando do cliente**: a fusão (DT-08) e a DA-12 só enxergam os eventos com `occurred_at >= statement_timestamp()`. | Uma chamada da API é um comando (cascatas, RPCs de vários passos e participantes por linha caem num evento, como no desenho). Um script com vários comandos numa transação (migration, SQL Editor, pgTAP) grava um evento por comando, em vez de fundir tudo no primeiro cadastro da transação. |
+| DT-25 | _(PR 1)_ `events_view` é *security definer* e sem `security_barrier`; o portão é a `audit_assert_access()` (a mesma permissão da política de `events`), um One-Time Filter que roda antes de qualquer linha. | Com `security_invoker`, o RLS entra como qual de barreira, e `ilike` e `=` de enum (não *leakproof*) não usam índice: a busca levava cerca de 1 s com 300 mil eventos. Com o índice `pg_trgm` em `search_text` (risco 4), 6 ms. O *advisor* acusa `security_definer_view`, como nas outras quatro. |
 
 ### Riscos (concorrência, escala, segurança)
 1. **Um defeito na Auditoria bloqueia gravações** (RN-14). É o preço do tudo ou nada.
@@ -2126,6 +2129,8 @@ Cada cenário termina num estado válido, sem *deadlock* novo.
 ## Tarefas
 _Seção do `architect`._
 
+> **Andamento (2026-11-26):** PR 1 com as tarefas 2 a 7 feitas na branch `feat/E2.05-pr1-autoria` (tarefa 7 escrita e rodada pelo `architect`, sem QA independente); a tarefa 1 (conferência em produção, só leitura) fica com o usuário, com o SQL do relatório do PR. Os testes nomeados `scripts/gen-audit-fields-sql.*` e `supabase/tests/database/e205_*` ficaram em `supabase/tests/fixtures/generate-audit-fields.mjs` (o padrão dos outros geradores) e em cinco arquivos `e205_01` a `e205_05`.
+
 Quatro PRs no `mci-connect`. **Tudo começa depois do E2.01, do E2.02, do E1.04, do E2.03 e do E2.04 inteiros em produção.**
 - No PR 1, o banco vai primeiro, e os tipos são regenerados antes do front.
 - Cada desenvolvedor aciona o `code-reviewer` ao terminar a sua tarefa; esse passo não aparece na tabela.
@@ -2184,7 +2189,25 @@ Quatro PRs no `mci-connect`. **Tudo começa depois do E2.01, do E2.02, do E1.04,
 7. **Tarefas 9, 12 e 15:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`. PR 1 escrito e rodado pelo `architect` em 2026-11-26, na pista A, sobre a base local `base/e205` (E2.09 PR 1 + E2.03 PR 4), **sem a ferramenta `Agent`: falta a revisão e o QA independentes.**_
 
-| RN | Testes | Resultado |
+| RN | Testes (PR 1, banco) | Resultado |
 |---|---|---|
+| RN-01 a RN-03, DA-1 | `e205_03` (Sistema sem sessão e pela chave secreta; cadastro e alteração forjados ignorados; o cadastro não muda depois de 3 alterações; DA-1 com sessão sem cadastro, excluída, anônima); E2E `autoria-banco` (`create-user-admin` com o autor certo; PATCH forjado pelo PostgREST) | passa |
+| RN-04, DA-12 | `e205_03` (sem mudança; o celular escrito de outro jeito; só o celular, sem valor; nome e celular num evento; recálculo e conta não carimbam; o ensaio não deixa evento; envio com 8 participantes só com o cadastro; incluir um depois carimba; `changed`) | passa |
+| RN-05, RN-06, DA-5, DA-7 | `e205_03` (definir, trocar e desfazer o cônjuge: 2, 3 e 2 eventos; exclusão de Rita carimba Hugo com o evento do E2.01; `deleted_at = updated_at = occurred_at`; excluir de novo não muda; restauração; a função excluída limpa a do excluído) | passa |
+| RN-07, RN-08, RN-10, RN-11 | `e205_04` (autoria nas três views para quem vê, nada para quem não vê; nome atual, de fora do escopo e de excluído; sem id do autor; `legacy_authorship` em 8 casos; "AdminUser" → "Administrador"; carga em `replica` sem evento; "Excluídos" com o legado) | passa |
+| RN-12, RN-13, DA-2, DA-3 | `e205_05` (conversão de uma massa antiga, metadata.v1, participantes como alteração do relatório, um formato desconhecido contado; autoria por evento; DA-3; de novo sem mudar nada; a correspondência último evento × autoria vazia, também depois de gravações novas; a autoria fica sem os eventos); `e205_migrations.sh upgrade` e pela CLI | passa |
+| RN-14 | `e205_03` (CHECK em `events`: PATCH, cadastro, célula, `save_cell_report`, `save_role`, `delete_role`, `delete_member` e `restore_member` voltam inteiros; de volta, grava uma vez); E2E `autoria-banco` (`create-user-admin` recusa no ensaio sem conta nem cadastro: 400 "Não foi possível salvar o cadastro.", e não 500; nova tentativa grava uma vez) | passa |
+| RN-15, DA-10 | `e205_03` (criar, renomear com descrição e permissões, salvar sem mudança, só a troca da padrão, excluir: um evento cada) | passa |
+| RN-16, RN-17 | `e205_01` (privilégios de `events` e `_log_event`, inclusive o Administrador e a chave secreta; o job); `e205_05` (prazos 89/92 dias, 360/368, 2 anos ± 1 e 2 dias, por categoria) | passa |
+| RN-18, RN-19 | `e205_04` (42501 sem a permissão, também na contagem e sem linha; período das 23:59 de sábado; "otavio"; "Sistema"; ordem estável; histórico; `audit_record_label` com excluído e inexistente) | passa |
+| RN-20 | `e205_03` e `e205_05` (`changes` dos novos e dos convertidos; vocabulário novo; nenhuma data `aaaa-mm-dd`) | passa |
+| DT-06 | `e205_02` (gerado de `fixtures/audit-fields.json`: lista, classificação das seis tabelas, `UPDATE OF`); `audit-fields-sync.test.ts` (JSON × SQL gerado × migration) | passa |
+
+- **pgTAP:** suíte inteira depois de `db reset`: 54 arquivos e 4.685 testes (os novos: 47, 22, 79, 35 e 31). Só o `e203_02` falhou na suíte, pelo teto de 5 s do login com a máquina carregada, e passa sozinho. Ajustados para o desenho: as colunas novas no fim das views, o vocabulário novo nos eventos, a data da exclusão pelo relógio do carimbo, as massas que datam a exclusão em `replica` e a lista fechada do portão (`legacy_author_label`).
+- **Migrations:** `e205_migrations.sh` (as seis rodam de novo sem mudar nada; o upgrade sobre a massa gravada pelos triggers antigos converte e preenche, também por `supabase migration up`). `e203_migrations` e `e209_migrations` pulam a reexecução das migrations que recriam a `members_view` e a `cells_view` depois do E2.05 (como o E2.08 fez depois do E2.09). `e202_migrations` já falhava antes (`g12_level`, E2.06).
+- **Concorrência** (`e205_concurrency.sh`, 26 verificações): duas alterações do mesmo membro (vale a última, com o momento maior); participantes × `save_cell_report`; participantes × `delete_cell_report`; `restore_cell_report` × participantes (a segunda espera a trava e o WITH CHECK, com a foto do começo do comando, recusa com 42501; a nova tentativa grava); cônjuge × alteração do cônjuge; duas trocas da padrão; `audit_purge` × gravações. Sem *deadlock*. Regressão: `e201` a `e209_concurrency` passam (a limpeza em `replica` também zera `deleted_by_kind`, DT-23).
+- **Volume** (`e205_volume.psql`; 20 mil membros, 1.500 células, 100 mil relatórios, 800 mil participações, 300 mil eventos): migration 5 em 37 s (meta 60); Auditoria página + total 41 ms, página 400 46 ms, busca 6 ms (1,0 s sem o `pg_trgm` e com `security_invoker`, DT-25), últimos 30 dias 175 ms, ação e entidade 3 ms, histórico 0,4 ms; PATCH de membro +0,65 ms; troca de líder +0,35 ms; `save_cell_report` com 30 participantes 54 ms; `audit_purge` de 100 mil em 3,9 s.
+- **Front:** Vitest 149 arquivos e 2.126 testes; `tsc` e build verdes; lint com os mesmos 11 problemas de antes (3 erros em `src/components/ui/*` e `tailwind.config`).
+- **Playwright:** PLAYWRIGHT_RESULT
