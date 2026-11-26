@@ -1,0 +1,21 @@
+{
+  "name": "mci-data-migration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ferramentas de migração de dados do legado (g12app-net, MySQL) para o Supabase do mci-connect.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "copy": "node src/copy-raw.mjs",
+    "report": "node src/sanitation-report.mjs",
+    "clean": "node src/clean-legacy.mjs",
+    "test:unit": "node --test test/unit/*.test.mjs",
+    "test:local": "bash test/run-local.sh"
+  },
+  "dependencies": {
+    "mysql2": "3.12.0",
+    "pg": "8.13.1"
+  }
+}

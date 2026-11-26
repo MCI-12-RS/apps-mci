@@ -1,6 +1,6 @@
 # E2.08: Cadastro de células
 
-> Status: desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-CEL-14 a P-CEL-23). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-9 e os pontos "definidos pelo architect" DA-1 a DA-12. Ficam para o usuário revisar no PR os padrões P-CEL-01 a P-CEL-23, as DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam (a T9 da UX mostra a tela em cada resposta, e a Solução técnica dá o custo de cada uma). A conferência em produção (tarefa 1) roda antes do PR 2. Falta Testes (QA, na implementação).
+> Status: **concluído e aceito pelo `product-owner` em 2026-11-26.** Em produção desde 2026-11-26: mci-connect#43 (PR 1, banco: célula inativa sem relatório novo; "Deploy: banco" do `0126c28`), #45 (PR 2, banco: regras do cadastro e ajuste mínimo do front; "Deploy: banco" e promote do `30bd8f0`, conferência em produção sem nenhuma linha) e #47 (PRs 3 a 5, front: CEP comum, lista e formulário de célula; promote do `b35c5ed`). Revisão final do passo (tarefa 17) APROVADA, com as revisões independentes de código e de UI; complemento da DT-09 na [Solução técnica](#contratos-rpc-edge-functions-colunas-novas); resultados em [Testes](#testes). Ficam para o usuário revisar os padrões P-CEL-01 a P-CEL-23, as decisões DA-1 a DA-12 e as perguntas Q-1 a Q-6, que não bloqueiam; o UX-29 (leitor de tela de verdade) ficou 🟡.
 > Slug: `e2-08-cadastro-celulas` · Paridade com o legado: sim (CEL-01 a CEL-04, com a D4). Tem regras novas: a situação ativa ou inativa da célula (o legado não tem), a célula nova sempre ativa, a célula inativa sem relatório novo e o endereço do anfitrião com a máscara do E1.08.
 
 ## Negócio
@@ -1825,6 +1825,8 @@ Sem *deadlock* novo: quem inativa não pede nenhuma trava que o lançamento segu
 ```
 Edição: `.update(patch).eq('id', id).select('id, updated_at')`, com o PATCH só do que mudou (E2.05) e "0 linhas" tratado como no E2.01.
 
+**Complemento da DT-09 (implementação, 2026-11-26, revisão do PR 3–5):** em 3a e no 23505 de 3b, a célula achada é lida na `cells_view` (`CELL_STORED_SELECT`) e comparada com o que está sendo enviado. Igual: "Célula criada.", sem gravar. Diferente (a pessoa corrigiu o formulário depois da queda): um PATCH só do que mudou, sem tocar em `is_active`, e o resultado é o desse PATCH. Um 23505 sem a célula visível continua valendo como criada.
+
 **Tabela de casos:** `supabase/tests/fixtures/cell-rules-cases.json` (DT-17), com:
 - `weekdays` (a ordem de `cell_weekdays()`), `weekday_options` (rótulo e valor, de segunda a domingo), `types` e `default_type`;
 - `meeting_time`: uma linha por caso, com `input`, `typing` (o que o campo mostra enquanto digita), `blur` (ao sair do campo), `ui_valid` e `db` (o valor gravado, o código da regra, o SQLSTATE do tipo ou `null` quando o caso é só da tela). Tem pelo menos as linhas da tabela da T3, mais "00:00", "23:59", "23:59:59.999" e o vazio.
@@ -2076,6 +2078,8 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 
 ### Conferência em produção (tarefa 1)
 
+> **Resultado em 2026-11-25 (sessão principal, só leitura, depois do E2.03 PR 1 em produção, migrations até `20261126100300`): nenhuma linha.** Sem `a`, `auto`, `info` nem `infra`; as 2 células têm líder, timóteo e anfitrião. O PR 2 pode seguir.
+>
 > **Resultado em 2026-11-24 (sessão principal, só leitura, com o E2.01 PR 2 em produção).** Só dados de teste:
 > - `a` · RN-02 sem timóteo: 2 células. Bloqueia o PR 2; decidir a correção antes dele.
 > - `infra` · E2.02 PR 1 ainda não está em produção (esperado; o PR 1 do E2.08 espera por ele).
@@ -2302,7 +2306,61 @@ Cinco PRs no `mci-connect`. **Os de banco começam depois do E2.01 inteiro e do 
 6. **Tarefas 11 e 15:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e208_01_inactive_cell` (IC, 89 testes), a paridade do E2.02 em `database/e202_01_scope` (PS), `concurrency/e208_concurrency.sh` (CC), `concurrency/e208_migrations.sh` (MG) e `volume/e208_volume.psql` (VOL).
+
+**PR 1 (2026-11-25, pista local A, `supabase_db_mci-e104-be` zerado com todas as migrations):**
+- pgTAP inteiro: 43 arquivos, 4182 testes, PASS (4093 de antes + 89 do IC). Sem o trigger novo, 16 testes do IC falham (conferido).
+- CC: os cinco cenários, com as duas ordens na troca de célula e no tema (7 pares, 26 verificações), PASS em duas execuções. Esperas medidas: o segundo espera cerca de 2 s nos cenários 1 a 4 e menos de 0,1 s no 5.
+- MG: a migration roda de novo sem erro e sem mudar a `cells_view` nem os triggers de `cell_reports`.
+- VOL (20 mil membros, 1.500 células, 150 inativas, 100 mil relatórios, 800 mil participações): lançamento com o trigger 12,10 ms e sem ele 12,09 ms (diferença 0,01 ms, meta 1 ms; o `ac_` levou 0,23 ms no `EXPLAIN` frio); PATCH de célula 2,5 ms (meta 20); página da `cells_view` com contagem 13,7 ms (Administrador) e 55,6 ms (G12) (meta 300).
+- `types.ts` regenerado: igual ao da `main` (a view mantém as colunas e os tipos; a função de trigger não aparece na API). `tsc` sem erro.
+- Playwright (suíte inteira, `--workers=1`): 339 passaram, 8 pulados, 2 falharam, nenhum ligado a este PR (o PR não muda o front):
+  - `sign-in.spec.ts:416` (axe, tema claro, contraste 4,29:1 numa transição): passou na nova rodada isolada (instável);
+  - `excluidos-membros.spec.ts:612` (UX-19, "página 2" da busca "a"): depende de haver mais de 10 resultados na massa local; falhou em `/cells` na suíte e em `/members` isolado. A `cells_view` mantém as mesmas linhas; só muda `can_submit_report`.
+  - Smoke de login (`login.spec.ts`): passou. Vitest 1848/1848, `tsc` e `build` verdes; o `lint` tem 3 erros que já existem na `main` (`ui/command.tsx`, `ui/textarea.tsx`, `tailwind.config.ts`).
+- Revisão: o `code-reviewer`, o `qa` e os desenvolvedores não foram acionados como agentes (a ferramenta de acionar agentes não estava disponível nesta execução). O `architect` implementou e revisou o PR 1, que só tem banco e testes.
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01 | IC (Carla, Pedro, Rita, *service role* e `postgres` recebem `cell_inactive`; em `replica` a carga passa) | ✅ |
+| RN-11 (c) | IC (código, mensagem, `cell_id` sem `field`; nada gravado; troca de C2 para C1 inativa recusada para Pedro, *service role* e `postgres`; `cells_view.can_submit_report` falso para 5 pessoas; `my_access().can_submit_some_report` de Carla some e volta; reativada, aceita); PS e IC (a coluna = `is_active AND can_submit_report(id)`, 17 pessoas, antes e depois da reativação); CC 1, 3a, 4; VOL | ✅ (banco) |
+| RN-11 (d), DA-5, DA-6 | IC (tema, mesma célula reenviada, incluir e retirar participantes, Carla grava os participantes do relatório lançado antes da inativação, excluir, restaurar); CC 2, 3b, 5a, 5b | ✅ |
+| RN-14, DA-7 | IC (ordem dos triggers `BEFORE`; Hugo 42501, Diego `not_found_or_deleted` no INSERT e na troca, Fábio `report_submit_not_allowed`; nenhum recebe `cell_inactive`) | ✅ |
+| DT-06, DT-07 | IC (trigger `BEFORE INSERT OR UPDATE OF cell_id`, *definer* com `search_path`, sem EXECUTE para `anon` e `authenticated`; `cells_view` com as mesmas colunas, *security definer*, dona `postgres`, só SELECT para `authenticated`); CC; MG | ✅ |
+
+**PR 2 (2026-11-25, pista local A, banco zerado com todas as migrations até `20261126130000`):** arquivos novos `database/e208_02_cell_rules` (CR, 95 testes), `database/e208_02_cases` (CS, 43, gerado de `fixtures/cell-rules-cases.json` por `fixtures/generate-cell-rules-cases.mjs`, no lugar do `scripts/gen-cell-cases-sql.*` da tarefa 4, como no E2.04) e o MG estendido à migration 2.
+- pgTAP inteiro: 45 arquivos, 4320 testes, PASS. Sem os dois triggers novos, 38 testes do CR falham (conferido). As massas do E1.08, do E2.01, do E2.02 e do E2.06 passaram a ter as três pessoas (quem faltava repete o líder, RN-03, sem mudar o escopo), dia e horário válidos, e as células inativas são inativadas depois do cadastro. No E1.08 PR 3, as células de dia desconhecido e de dia nulo viraram células com relatório numa semana seguinte, e a "sem horário" virou quinta 23:59 (as pendentes de W continuam 9).
+- `e203_02_policy` falhou uma vez por tempo (`sign_in_attempt: tempo-limite excedido`, o teto de 5 s por comando com a máquina carregada pela pista B); passou nas duas rodadas seguintes. Não tem relação com células.
+- MG: as migrations 1 e 2 rodam de novo sem mudar nada; a guarda para com `timothy_required: <id>`, sem nome, sem listar a célula com segundos (corrigida antes) e sem gravar nada.
+- CC: o E2.08 (26 verificações), o E2.01 adaptado (71) e o E2.06 (252) passam.
+- VOL: lançamento 12,30 ms com o trigger do PR 1 e 12,22 ms sem ele; PATCH de célula (horário e rua, dispara os dois triggers novos) 4,07 ms (meta 20; no `EXPLAIN` frio, `a0_` 0,20 ms e `ad_` 0,41 ms); página da `cells_view` 16,8 ms (Administrador) e 66,6 ms (G12).
+- Vitest 1869/1869 (novos: `cell-rules-cases-sync`, `cell-types`, `write`, e 4 do `CellForm`: sem Sábado e 19:00, sem "Célula Ativa" no cadastro, nada enviado sem as cinco colunas, PATCH com a situação). `tsc` e `build` verdes; `lint` com os 3 erros que já existem na `main`.
+- Playwright (suíte inteira, `--workers=1`): 337 passaram, 8 pulados, 4 falharam. Adaptados e verdes na nova rodada: `exclusao-membros.spec.ts:432` (a massa tirava o timóteo) e `celulas-relatorios-escopo.spec.ts:518` (UX-24 do E2.02: limpar o anfitrião não chega mais ao servidor; a tela avisa "Escolha o anfitrião da célula." e o teste confere a recusa `would_leave_scope` pela API). Os outros dois são os do PR 1: `sign-in.spec.ts:416` (passou isolado) e `excluidos-membros.spec.ts:612` (depende do tamanho da massa local). Smoke de login verde. As massas de 7 arquivos do E2E ganharam as três pessoas.
+- Revisão: sem a ferramenta de acionar agentes nesta execução; o `architect` implementou o banco, o ajuste mínimo do front e os testes, e revisou o próprio diff. Não houve `code-reviewer` nem `qa` independentes.
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-01 | CR (service role e `postgres` recebem `timothy_required`; em `replica` os `NOT NULL` e os `CHECK`s valem, o trigger não; pessoa excluída em `cell_rule_violations`; Caio sem "Editar Célula": 0 linhas; sem "Criar Célula": 42501) | ✅ |
+| RN-02, RN-03, RN-04 | CR (sem líder, timóteo ou anfitrião, inclusive Macrocélula, com código, campo e mensagem; André nos três papéis; duas células iguais; Beatriz e Fábio aceitos; Bruno `deleted_member_chosen`; Diego `person_not_visible`; Pedro muda só o horário com Beatriz anfitriã); `CellForm` | ✅ |
+| RN-05, RN-06, RN-07, DA-1, DA-8, DA-12 | CR e CS (os casos do JSON); sync do Vitest com a migration e com `weekdays.ts`/`cell-types.ts` | ✅ |
+| RN-11, DA-2 | CR (`cell_new_inactive`; nulo vira ativa; inativar e reativar na edição); `CellForm` (sem "Célula Ativa" no cadastro) | ✅ |
+| RN-13, DT-13 | MG (guarda); CR (`cell_rule_violations()` vazia no fim) | ✅ |
+| RN-14 | CR (ordem dos triggers e das recusas: excluído antes de vazio, escopo antes de regra, pessoas < tipo < dia < horário < situação) | ✅ |
+| DA-3 | CR (na célula excluída, o `CHECK` recusa) | ✅ |
+
+**PRs 3 a 5 (2026-11-26, pista local A, banco zerado com as migrations dos PRs 1 e 2; branch `feat/E2.08-pr3-5-telas-celula`, só front):**
+- Vitest 1930/1930 (novos: `address/cep`, `time/hhmm` sobre a tabela de casos, `cells/{codes,validation,situation,changes,host-address,write}`, `members/labels`, `CepField` com o bloco de endereço do membro, `CellForm` refeito com 28 casos da UX e os 2 da T8 no `CellReportForm`). `tsc` e `build` verdes; `lint` só com os 3 erros que já existem na `main`.
+- Playwright (suíte inteira, `--workers=1`): 360 passaram, 8 pulados, 1 falhou: `excluidos-membros.spec.ts:612` (UX-19, "página 2" em `/cells`), o mesmo dos PRs 1 e 2, que depende do tamanho da massa local. Novos: `celulas-inativa.spec.ts` (5) e `celulas-cadastro.spec.ts` (15, com o axe nos dois temas). Os specs do E2.01 e do E2.02 seguem os rótulos novos; o UX-24 do E2.02 confere que os três seletores não têm "Limpar". Smoke de login verde.
+- pgTAP inteiro: 45 arquivos, 4320 testes. Na primeira rodada, o `e203_02_policy` parou por tempo (`sign_in_attempt: tempo-limite excedido`, o teto de 5 s por comando com a máquina carregada pela pista B); rodado de novo sozinho, 119/119. Este PR não muda o banco: concorrência e volume são os dos PRs 1 e 2.
+- Revisão: sem a ferramenta de acionar agentes nesta execução; o `architect` implementou, testou e revisou o próprio diff. Não houve `code-reviewer`, `qa` nem `ux-designer` independentes.
+- A gravação de célula desiste em 20 s (o mesmo tempo do cadastro de membro): sem isso, uma requisição que nunca volta deixava "Criando…" para sempre. A nova tentativa é segura (DT-09).
+
+| Critério | Testes | Resultado |
+|---|---|---|
+| RN-09, UX-18 (CEP comum, DA-11) | `cep.test`, `CepField.test` (máscara, 8º dígito, só a última busca, 8 s, avisos sem bloquear, CEP do anfitrião sem busca, complemento do membro intacto) | ✅ |
+| RN-11 (c), UX-21 a UX-23 | `celulas-inativa` (lista 1280 e 360, seletor do relatório, recusa pela lista e por Relatórios, atalho do Dashboard de Carla); `CellReportForm.test` (T8) | ✅ |
+| RN-02 a RN-07, RN-14, UX-02 a UX-12 | `CellForm.test`, `validation`, `codes` (pendência do PR 2: tipo, dia e horário inválidos no campo e célula nova inativa no topo, em pt-BR); `celulas-cadastro` (UX-06, UX-07, UX-10, RN-06) | ✅ |
+| RN-10, UX-13 a UX-17 | `host-address`, `CellForm.test` (respostas fora de ordem, falha e "Tentar de novo"); `celulas-cadastro` (Rita, Pedro, Gabriel, troca Carla → Fábio) | ✅ |
+| RN-11 (P60), UX-19, UX-20, UX-24, UX-25 | `situation`, `changes`, `CellForm.test`, `CellForm.saving.test`; `celulas-cadastro` (linha de 44 px, queda de conexão com uma célula só) | ✅ |
+| UX-01, UX-26 a UX-28 | `celulas-cadastro` (360×800, 320 px com fonte a 200%, 1280×800, axe claro e escuro) | ✅ |
+| UX-29 (leitor de tela) | nomes e `aria-describedby` nos testes de componente; leitor de tela de verdade não usado | 🟡 |

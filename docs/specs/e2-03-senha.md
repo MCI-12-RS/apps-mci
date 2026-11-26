@@ -1,9 +1,6 @@
 # E2.03: Redefinição de senha assistida e troca obrigatória de senha
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-23).
-> - **PR 1** (mci-connect#41, branch `feat/E2.03-pr1-cofre-senha`, 2026-11-26): tarefas 1 a 5 feitas na stack local, sobre o E2.06 PR 1. Falta: o bloco `[functions.change-own-password] verify_jwt = false` no `config.toml` versionado, o merge, o "Deploy: banco" e o passo A.
-> - Mudanças sobre o desenho, conferidas na stack local: a guarda descarta a senha na criação da conta em vez de recusar (DT-02); o limite por origem é 50 (E1.04 PR 1b; DA-8); o cofre aceita só `$2a$`; a `members_view` foi recriada sobre a definição do E2.06; `set_initial_password` recusa conta que já tem senha (`password_already_set`, tratado como reenvio pela `create-user-admin`).
-> - PRs 2 a 4 por fazer. Pela regra nova do fluxo, os PRs 2 e 3 (só front, seguidos) podem ir num PR só.
+> Status: **concluído e aceito pelo `product-owner` em 2026-11-26.** Em produção desde 2026-11-26: mci-connect#41 e #42 (PR 1, banco e funções; "Deploy: banco" do `6c4f67b` em 2026-11-25, conferências 1 a 8 sem parada e passo A ok), #44 (PRs 2 e 3, telas de senha; promote do `b35c5ed`) e #46 (PR 4, portão, Líder com a permissão, marca da senha inicial e `is_admin` removida; "Deploy: banco" do `74b4ee8`, as 5 contas com `123456` marcadas, *smoke* da tarefa 13 em produção ok). [Revisão final](#revisão-final-tarefa-14) APROVADA, com as revisões independentes de código e de UI; mudanças sobre o desenho em [Mudanças sobre o desenho](#mudanças-sobre-o-desenho-registradas-na-implementação); resultados em [Testes](#testes). Decisão do usuário: o registro "Sem permissão" da `reset_member_password` fica sem limite.
 > Slug: `e2-03-senha` · Paridade com o legado: sim (AUT-06), com regras novas: senha temporária gerada pelo sistema, troca obrigatória, política de senha, senha atual na troca, limites e registro na Auditoria.
 
 ## Negócio
@@ -1835,7 +1832,7 @@ Nada fica guardado em claro. O literal `123456` é a senha inicial pública da D
   - `my_password_status()`, que confere só a sessão;
   - `log_auth_event('logout')`, que não passa pelas funções de identidade (E2.01, DA-9);
   - a `change-own-password`, que usa a chave secreta e confere a sessão por conta própria;
-  - as utilitárias sem dado de ninguém: `sp_today`, `week_start`, `normalize_*`, `is_valid_cpf`, `mobile_match_key`, `is_placeholder_email` e `active_permissions`.
+  - as utilitárias sem dado de ninguém: `sp_today`, `week_start`, `normalize_*`, `is_valid_cpf`, `mobile_match_key`, `is_placeholder_email` e `active_permissions`; desde o E2.08, também as listas e o horário das células (`cell_weekdays`, `cell_types`, `cell_default_type`, `normalize_meeting_time`, `is_valid_meeting_time`), que só devolvem constantes ou o próprio argumento.
 - **Teste de catálogo:** o pgTAP do PR 4 lista toda tabela, view e função com privilégio para `authenticated` (`information_schema.role_table_grants`, `pg_proc` com `has_function_privilege`). Com uma pessoa marcada, cada uma precisa responder com `password_change_required` ou voltar vazia, menos a lista acima. Uma tabela ou função nova que esqueça o portão quebra o teste.
 - **Edge Functions:**
   - a `create-user-admin` já passa pelo portão no `check_member_insert`, com a sessão de quem chama (E2.02), e devolve o 403 com o `code`;
@@ -2127,6 +2124,7 @@ Segue o padrão do E1.08, do E2.01 e do E2.02: os componentes cuidam da tela, o 
 13. **Divergência entre a tela e o banco na política.** A tabela de casos e o teste de sincronia pegam qualquer diferença. A regra (e) é só do servidor, por desenho.
 14. **Operação.** O painel do Supabase não troca mais senha (DA-12). A armadilha entra no `CLAUDE.md`, com o caminho de emergência (`private.write_password` no editor SQL).
 15. **Lista de senhas na migration.** São cerca de 100 KB de `INSERT`s. Ela é revisada à parte (migration 2), com a origem e a licença no cabeçalho.
+16. **Recusas "Sem permissão" sem limite na Auditoria** (decisão do usuário, 2026-11-25). Cada chamada da `reset_member_password` recusada por falta de permissão grava uma linha em `events`, sem limite, porque só as redefinições aceitas contam no limite (RN-06). Fica como está; entra em "Problemas conhecidos" do `CLAUDE.md` na tarefa 14.
 
 ### Dependências e impactos em outros passos
 | Passo | Relação |
@@ -2375,6 +2373,29 @@ Quatro PRs no `mci-connect`. **Tudo começa depois do E1.04, do E2.01 e do E2.02
 8. **Tarefas 7 e 10:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 9. **Tarefa 13:** o *smoke* de produção é feito só com contas de teste.
 
+### Revisão final (tarefa 14)
+_2026-11-26, diff acumulado dos PRs 1 a 4 (mci-connect#41, #42, #44 e a branch `feat/E2.03-pr4-portao`)._ Sem a ferramenta de agentes nesta execução: implementação, testes e revisão do PR 4 feitos pelo `architect`, sem revisão independente (`code-reviewer`, `qa`).
+
+**Veredito: APROVADO**, com o backlog abaixo.
+
+Conferido:
+- **Segurança:** toda função *definer* de `public` e `private` tem `search_path`; nenhuma interna do `private` executável por `anon`, `authenticated` ou `service_role`; o portão nas três portas, com o teste de catálogo (`e203_06_gate`) que falha se uma tabela, view ou função nova com privilégio para `authenticated` escapar (provado com uma função e uma view de vazamento criadas à mão); a guarda em `auth.users` é o único trigger da tabela; `is_admin` removida sem uso.
+- **Concorrência:** a ordem global de travas (cabeçalho da `e203_03_vault`) vale para as quatro migrations; a marca na publicação trava só linhas do cofre (nível 4); o `CREATE OR REPLACE VIEW` fica no fim da migration 5, para a trava exclusiva da `members_view` durar o mínimo; os scripts `e203_concurrency.sh`, `e104`, `e201`, `e202`, `e204` e `e206` passam com o portão ligado.
+- **Escala:** metas do risco 3 cumpridas (`e203_volume.psql`); o portão custa menos que o ruído da medida.
+- **Padrões:** regra no banco e a tela só replica; nenhum `any` ou asserção de tipo nos arquivos novos do PR 4.
+
+Backlog (fora deste passo):
+1. `authenticated` tem `INSERT`, `UPDATE`, `DELETE` e `TRUNCATE` em `events` (concessão padrão do Supabase). O RLS barra a API e o PostgREST não faz `TRUNCATE`, mas o certo é revogar; num passo de banco próprio.
+2. Ao rebasear sobre o E2.08 (e qualquer passo com função nova para `authenticated`), rodar o `e203_06_gate`: ele pega a função nova sozinho; se ela não passar pelas portas, entra no portão ou na lista fechada, com justificativa aqui.
+3. A migration 5 recria a `members_view`: nenhum passo que mexa nela roda em paralelo até o merge (regra das pistas).
+4. Tarefa 14, pendente para a sessão principal: o `CLAUDE.md` (estado atual: cofre, portão, Líder com a permissão, `is_admin` fora, `change-member-password` fora; armadilhas: toda função nova com privilégio para `authenticated` passa pelas portas ou entra na lista fechada, senha só por `private.write_password`, `members_view.password_reset_status` sem função por linha; deploy: o passo B fora das noites de célula; a seção Edge Functions ainda descreve a `change-member-password`) e os registros no E1.04, E2.01 e E2.02 listados na tarefa 14.
+
+#### Mudanças sobre o desenho (registradas na implementação)
+_Movidas do cabeçalho de status no aceite (2026-11-26)._
+- **PR 1:** a guarda descarta a senha na criação da conta em vez de recusar (DT-02); o limite por origem é 50 (E1.04 PR 1b; DA-8); o cofre aceita só `$2a$`; a `members_view` foi recriada sobre a definição do E2.06; `set_initial_password` recusa conta que já tem senha (`password_already_set`, tratado como reenvio pela `create-user-admin`).
+- **PRs 2 e 3:** `password_reset_status` entrou na `MEMBER_ROW_SELECT` (opcional no tipo `MemberRow`); o portão de rotas também espera a marca ser lida (`passwordStatusLoaded`), e o `QueryClient` não repete leitura recusada com código do portão (`retryUnlessGate`); o 403 da `create-user-admin` com código do portão vai para o portão.
+- **PR 4** (migration `20261127000000_e203_05_gate`): o portão fica num lugar só (`private.assert_gate()`), chamado pelas três portas, que viram `plpgsql` para o portão rodar antes da leitura; a marca na publicação é a interna `private.mark_initial_passwords()` (testável), chamada pela migration; a `members_view.password_reset_status` passou a ler as funções cobertas num *InitPlan* (risco 3: com a Líder redefinindo, a página de Membros levava 12 s com 20 mil membros); a lista fechada inclui as utilitárias imutáveis do E2.04 e o `sp_now`, todas `SECURITY INVOKER` (conferido no pgTAP).
+
 ## Testes
 _Seção do `qa`._
 
@@ -2396,6 +2417,41 @@ _Seção do `qa`._
 | RN-15 | PR 1: `e203-password.edge` (`/recover` não muda a senha) | passou |
 | RN-16 | PR 1: `e203_03_reset`, `e203_04_change`, `e203_05_marks_initial` (`my_password_status` com sessão apagada), `e203_concurrency.sh` | passou (portão nas views: PR 4) |
 | RN-17 | PR 1: `e203_03_reset`, `e203_04_change` (sem senha, hash ou origem; `CHECK` em `events`), `e203-password.edge` (logs) | passou |
-| RN-08 (c), RN-09 | PR 4 | — |
+| RN-08 (c), RN-09 | PR 4: `e203_06_gate` (catálogo, marca na publicação), `portao-senha.spec.ts` | passou (ver PR 4 abaixo) |
+
+**PRs 2 e 3 (telas), 2026-11-25, stack `mci-b`:**
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| RN-01 a RN-04, RN-07 (tela) | `redefinicao-senha.spec.ts` (linha "Senha" de Caio, Lauro, Olga e do próprio cadastro; redefinição, cópia, "Concluir", login com a temporária e com a senha antiga; senha inicial recusada e aceita, conta com a marca) | passou |
+| RN-08 b, RN-10, RN-11, RN-15, RN-16 (tela) | `senha-propria.spec.ts` (marca no login, rotas, "Sair", troca obrigatória, senha atual errada, troca voluntária, a outra sessão vai ao login com o aviso) | passou |
+| RN-13 (gêmea) | `password-policy.test.ts` sobre a tabela de casos (sem os `server_only` e sem a regra h da obrigatória, que é do bcrypt) | passou |
+| RN-17 (T8) | `auth-events.test.ts` (segunda linha e painel das seis ações), `redefinicao-senha.spec.ts` (Auditoria) | passou |
+| UX-01, 02, 04 a 09, 14, 17 a 20, 22 a 29, 32, 35, 38 | `Login.test.tsx`, `ChangePassword.test.tsx`, `ChangeOwnPasswordDialog.test.tsx`, `ResetPasswordDialog.test.tsx`, `AppSidebar.test.tsx`, `password-*.test.ts`, `temporary-password.test.ts`, `permissions.test.ts` | passou |
+| UX-03, 10 a 13, 16, 19, 21, 24, 26, 30, 31, 36, 37, 39 | `senha-propria.spec.ts`, `redefinicao-senha.spec.ts`, `RouteGuards.test.tsx`, `AuthContext.test.tsx` (marca, `session_ended`, código do portão) | passou |
+
+Vitest 2.018 testes (136 arquivos), tsc, build e lint (só os 3 erros antigos da `main`) ok. Playwright inteiro: 363 testes, 346 passaram, 8 pulados; das 6 falhas, 3 eram testes antigos que dependiam do comportamento anterior e foram ajustados (`acesso-menu` UX-11: a leitura da marca é do AuthContext; `acesso-excluido` (c): o 5xx simulado vale também para `my_password_status`; `membro-validacoes-cadastro` UX-15: a conta nova vai para a troca), 1 era o tempo do axe em `hierarquia-listas` (`test.slow()`), e 2 já falham na `main` (UX-18 claro de `sign-in.spec.ts`, axe durante a animação do cartão; UX-19 de `excluidos-membros.spec.ts`, dados). Reexecutados, os ajustados e os novos passam. Não verificados: UX-12 com o teclado virtual aberto, UX-29 com leitor de tela real e UX-30 no Chrome do Android (inspeção manual); UX-32 "13 permissões" depende da migration 5 (PR 4).
 
 PR 1 (stack `mci-b`, 2026-11-26): `supabase test db` 42 arquivos e 4.093 testes, PASS; `e203_concurrency.sh`, `e104_concurrency.sh` e `e203_migrations.sh` PASS; edge 21/21 + 21/21 (rodar um arquivo por vez); Vitest 1.719, tsc e build OK; lint só com os 3 erros antigos da `main`; Playwright inteiro 284 passaram, com uma falha de dados (UX-19 de `excluidos-membros.spec.ts`, sem células na stack) sem relação com o PR. Não verificados: a migration 2 num banco sem os passos anteriores e o volume do risco 3 (`EXPLAIN`), que ficam para o PR 4.
+
+**PR 4 (portão, Líder e marca na publicação), 2026-11-26, stack `mci-b`** (sem a ferramenta de agentes: testes escritos e rodados pelo `architect`):
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| RN-09 (catálogo), RN-16 | `e203_06_gate`: toda tabela e view (SELECT), UPDATE e DELETE e toda função com privilégio para `authenticated` (fora a lista fechada, conferida como `SECURITY INVOKER`) recusam com o código, para Caio e Rita marcados, Davi com a sessão apagada e o token sem `session_id` (DA-9); inserções nas quatro tabelas de negócio; nada muda; controle sem marca lê tudo com linha; "na hora" sem encerrar a sessão. Prova de sensibilidade: uma função e uma view de vazamento criadas à mão quebram 7 asserções | passou (54) |
+| RN-01 | `e203_06_gate` (a Líder tem a permissão; Davi redefine Eva), `e202_05_roles` (13 permissões), `portao-senha.spec.ts` (Pedro, Líder, redefine pela lista) | passou |
+| RN-08 c | `e203_06_gate` (`mark_initial_passwords`: ativa e suspensa marcadas, já marcada sem novo registro, senha forte e conta sem cofre fora, evento sem autor, segunda rodada sem efeito, restauração mantém), `portao-senha.spec.ts` (sessão aberta vai à troca) | passou |
+| Risco 3 | `e203_06_gate` (a `password_reset_status` igual à regra por linha, com os quatro valores), `e203_volume.psql` | passou |
+| UX-03, UX-13 (banco real), UX-32 | `portao-senha.spec.ts` (rotas e API com 403/42501 e o código; marca com a lista aberta; dois contextos com o token antigo recusado e o aviso de sessão; "13 permissões") | passou |
+
+- pgTAP: 43 arquivos, 4.146 testes, PASS (uma rodada logo depois do `db reset` parou no `e203_02_policy` por erro do psql; o arquivo sozinho e a rodada seguinte passaram). Atualizados: `e203_03_reset` (o alvo redefinido só volta a agir depois de "trocar"; a redefinição com sessão apagada ou com a marca é barrada sem registro de recusa), `e202_02_rn23_grants` (`is_admin` removida), `e202_05_roles` (Líder com 13).
+- Concorrência: `e203_concurrency.sh`, `e104`, `e201`, `e202`, `e204` e `e206` PASS com o portão ligado; `e203_migrations.sh` (as cinco rodam de novo) PASS.
+- Volume (`e203_volume.psql`, 20 mil membros, 1.500 células, 100 mil relatórios, 800 mil participações), em ms, com o portão / sem o portão: pastor (Líder, igreja toda) página de membros + contagem 108 / 113, células 70 / 80, relatórios 143 / 157, `dashboard_summary` 161 / 166, `my_access` 37 / 38; G12 46 / 68, 75 / 80, 119 / 119, 126 / 131, 17 / 17. Antes da correção da `password_reset_status`, a página de membros levava 12.109 ms (pastor) e 2.325 ms (G12), com e sem o portão.
+- Edge (stack local): `e203-password` 21/21 e `sign-in` 21/21 (com `verify_jwt = false` da `change-own-password` no `config.toml` local da pista, como na `main` desde o #42).
+- Vitest 2.032 (137 arquivos), tsc e build OK; lint só com os 3 erros antigos da `main`.
+- Playwright inteiro: 368 testes, 356 passaram, 8 pulados, 1 não rodou; 3 falhas: 2 já conhecidas da `main` (UX-18 claro de `sign-in.spec.ts`; UX-19 de `excluidos-membros.spec.ts`) e `acesso-excluido` (c) 5xx, ajustado (a exclusão apaga as sessões, e o portão passa a responder `session_ended` a toda leitura: o 5xx simulado vale para toda a API) e reexecutado: 11/11. `portao-senha.spec.ts` + `login.spec.ts` depois do `db reset` final: 7/7.
+- SQL de rollback (risco 1) conferido numa transação: a conta marcada volta a ler, e os grants das três portas ficam iguais.
+- Não verificados: o *smoke* em produção da tarefa 13 (depois do passo B, com contas de teste); revisão independente (`code-reviewer`, `qa`) e de UI deste PR.
+
+**Aceite (2026-11-26, `product-owner`):** passo A em produção (PR 1, item 9 das conferências), com contas temporárias: `PUT /auth/v1/user` recusado (500, pela guarda), `grant_type=password` 422, redefinição com `must_change_password: true`, troca obrigatória 200, sessão do outro aparelho sem renovação (400) e `auth.users` sem senha. O *smoke* da tarefa 13 foi feito em produção depois do passo B, com uma Líder e um membro temporários (apagados): login da Líder, redefinição do discípulo, login com a temporária pedindo a troca, 403 `password_change_required` na `members_view` com a marca, `my_password_status` fora do portão, troca obrigatória 200, login com a nova sem marca e o portão liberando sem a marca. Todos ok. As revisões independentes de código e de UI foram aprovadas; Vitest 2.124 e pgTAP inteiro de 4.373 a 4.505 asserções, conforme a base.
+

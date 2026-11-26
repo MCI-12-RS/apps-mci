@@ -55,9 +55,9 @@ Documento vivo do plano para sair do legado (`g12app-net`, .NET + MySQL) e ir pa
 |---|---|---|
 | 0. Decisões | ✅ | Já |
 | 1. Preparação | ✅ 14 de 14 | Já |
-| 2. Paridade | 🔄 5 de 16 | E1.01 concluído |
+| 2. Paridade | 🔄 8 de 16 | E1.01 concluído |
 | 3. Contas e senhas | ⬜ | E1.04 concluído |
-| 4. Ferramentas de migração | ⬜ | Já (E1.01 concluído; o E1.10 não será feito) |
+| 4. Ferramentas de migração | 🔄 1 de 9 | Já (E1.01 concluído; o E1.10 não será feito) |
 | 5. Ensaios | ⬜ | Fases 2, 3 e 4 concluídas |
 | 6. Cutover | ⬜ | E5.05 (go/no-go) |
 | 7. Desligamento | ⬜ | Fim do plantão de suporte (E6.07) |
@@ -150,23 +150,33 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [x] **E2.02** Perfis e escopo de visibilidade e escrita · AUT-02 a AUT-05, AUT-07, CEL-04, DSH-01, MIN-02 e "quem lança" da REL-11, 6.5. Spec: [`specs/e2-02-perfis-escopo.md`](specs/e2-02-perfis-escopo.md). A REL-11 fica 🟡 até a RPC do E2.11, e a AUT-06 é do E2.03. Aceite do PO (2026-11-25)
   - PRs em produção (2026-11-25): mci-connect#29 (banco: escopo, leitura, escrita e funções semeadas; conferência sem parada), #30 (acesso, menu e rotas), #31 (tela de Funções), #32 (Membros), #33 (Células, Relatórios, Dashboard e Ministérios) e #34 (fecha a leitura e a escrita diretas de `roles` e `role_permissions` e mascara a `role_id`; squash `b50308d`), com smoke de produção só leitura.
   - Revisão final dos 6 PRs (tarefa 20): APROVADO, com o backlog técnico no spec. Testes do último PR: pgTAP 23 arquivos e 2.688 testes, Vitest 1.259, Playwright sem regressão (só as falhas de ambiente conhecidas).
-- [ ] ⛔ **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md) (desenho pronto; entra depois do E1.04, do E2.01 e do E2.02 em produção)
-  - PR 1 implementado (mci-connect#41, sem deploy). Bloqueado até o usuário:
-    - fazer, ou autorizar, o bloco `[functions.change-own-password] verify_jwt = false` no `supabase/config.toml`;
-    - autorizar as conferências em produção (só contagens sobre os hashes de senha);
-    - autorizar o passo A, com contas e cadastros temporários em produção;
-    - decidir se o registro de "Sem permissão" da `reset_member_password`, uma linha por tentativa e sem limite, ganha um limite ou entra em "Problemas conhecidos".
+- [x] **E2.03** Redefinição de senha assistida e troca obrigatória de senha, incluindo o escopo e o perfil do alvo na `change-member-password` · AUT-06, 6.4. Spec: [`specs/e2-03-senha.md`](specs/e2-03-senha.md). Aceite do PO (2026-11-26)
+  - PR 1 em produção (2026-11-25, mci-connect#41 e #42, "Deploy: banco" do `6c4f67b`): cofre de senhas, política, redefinição assistida e trocas no banco e nas funções; `change-own-password` publicada e `change-member-password` apagada. Conferências 1 a 8 sem parada (as 5 contas tinham a senha `123456`). Passo A com contas e cadastros temporários, todos os itens ok, dados apagados no fim. Decisão do usuário: o registro de "Sem permissão" da `reset_member_password` fica sem limite, em "Problemas conhecidos".
+  - PRs 2 e 3 em produção (2026-11-26, mci-connect#44, promote do `b35c5ed`, junto com o front do E2.08): as telas de senha, num PR só.
+  - PR 4 em produção (2026-11-26, mci-connect#46, "Deploy: banco" do `74b4ee8`, fora das noites de célula): o portão nas funções de identidade (quem tem a marca não lê nem grava nada pela API até trocar a senha), a Líder com "Redefinir Senha de Membros", a marca nas contas com a senha inicial `123456` (as 5 de produção) e a `is_admin` removida. *Smoke* da tarefa 13 em produção com uma Líder e um membro temporários, apagados no fim: redefinição pela Líder, login com a temporária levando à troca, 403 `password_change_required` na `members_view` com a marca, troca obrigatória e login com a senha nova; todos ok.
+  - Revisão final do passo (tarefa 14): APROVADA, com as revisões independentes de código e de UI e o SQL de rollback conferido. Testes: pgTAP inteiro de 4.373 a 4.505 asserções conforme a base, concorrência e volume dentro das metas (a página de Membros com o portão em 108 ms para o pastor), Vitest 2.124 e os E2E do portão e das telas de senha verdes, só com as falhas de massa local conhecidas.
+  - Fica para a sessão principal a parte técnica do `CLAUDE.md` da tarefa 14 (cofre, portão, Edge Functions sem a `change-member-password`, armadilhas e deploy).
 - [x] **E2.04** Validações de membro · MEM-01 a MEM-09, complemento da MEM-10, HIE-01 (antecipada do E2.06) e fechamento da DEL-04 · depende de D5. Spec: [`specs/e2-04-validacoes-membro.md`](specs/e2-04-validacoes-membro.md). Aceite do PO (2026-11-25)
   - PRs em produção (2026-11-25): mci-connect#35 (funções de regra e índices únicos de e-mail, celular e CPF entre não excluídos; squash `2f6eebf`), #36 (regras no banco, `create-user-admin` com conta de e-mail técnico, vazio vira nulo; conferência pós-deploy com os 9 itens ok; squash `83e5d49`) e #37 (formulário de membro da UX; squash `d680904`).
   - Revisão final dos 3 PRs (tarefa 12): APROVADO, com o backlog técnico no spec. Testes: pgTAP 33 arquivos e 3.388 asserções e concorrência (PRs 1 e 2); Vitest 1.699 e Playwright 296 ok no PR 3, só com as falhas de ambiente conhecidas.
   - Ressalva: o Auth de produção aceitar o `id` próprio da conta (risco 4 do spec) só se confirma no primeiro cadastro pela tela. Se não aceitar, o cadastro novo responde erro sem deixar conta nem cadastro, e a edição continua.
-- [ ] **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
+- [ ] 🔄 **E2.05** Auditoria (quem criou e quem alterou) · MEM-12. Spec: [`specs/e2-05-auditoria-autor.md`](specs/e2-05-auditoria-autor.md) (desenho pronto; entra depois do E2.01, E2.02, E1.04, E2.03 e E2.04 em produção)
+  - PR 1 em produção (2026-11-26, mci-connect#50, "Deploy: banco" e promote do `2dd4fba`): autoria em membros, células e relatórios, Auditoria com um evento por gravação, `save_cell_report`, `events_view` paginável com busca, guarda diária pelo `pg_cron`, eventos antigos convertidos e autoria dos registros existentes preenchida. Conferência em produção sem pendências; pgTAP 4.719; revisão de código aprovada (inclui a DT-25). Próximos: PRs 2 (gravação nos formulários, com o `save_cell_report`), 3 (autoria na tela) e 4 (Auditoria).
+  - PR 2 em produção (2026-11-26, mci-connect#52, squash `80c518d`, promote): o relatório numa chamada só (`save_cell_report`) e "Nenhuma alteração para salvar." nos três formulários. Revisão de código e QA independentes aprovados. Próximos: PRs 3 e 4 (autoria na tela e Auditoria).
 - [x] **E2.06** Hierarquia e totais · HIE-02 a HIE-04 e os totais do casal da MIN-01 (a HIE-01 foi feita no E2.04, 2026-11-25) · depende de D2. Spec: [`specs/e2-06-hierarquia-totais.md`](specs/e2-06-hierarquia-totais.md). Aceite do PO (2026-11-25)
   - PRs em produção (2026-11-25): mci-connect#39 (banco: `private.member_hierarchy`, nível, cadeia, G12 e totais por triggers na mesma transação, colunas calculadas fora de `members`; conferências de antes e de depois sem parada, drift 0; squash `af327ef`) e #40 (PRs 2 a 4 do spec num só: Membros e Células com nível e totais, Ministérios com os totais do casal e a referência do cônjuge, gravação que recalcula; squash `1553f09`, promote).
   - Revisão final (T15): APROVADO, com o backlog técnico no spec (linha órfã para o E4.07, contraste do `LevelBadge` no passo dos tokens de tema, 40P01/57014 na `create-user-admin`). Testes: pgTAP 3.709 asserções, concorrência 288 PASS, volume dentro das metas (troca de líder de um G12 com 2 mil abaixo em 24,5 ms), Vitest 1.828 e Playwright 333 ok, só com as falhas de ambiente conhecidas.
-- [ ] **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15. Spec: [`specs/e2-07-filtros-membros.md`](specs/e2-07-filtros-membros.md) (desenho pronto; o PR 1 exige o banco do E2.05 e o PR 1 do E2.06 em produção)
-- [ ] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md) (desenho pronto; o PR 1 espera o E2.01 inteiro e o PR 1 do E2.02 em produção)
-- [ ] **E2.09** Situação do relatório por célula · CEL-05. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md) (desenho pronto)
+- [ ] 🔄 **E2.07** Listagem de membros com filtros e vínculo celular · MEM-13, MEM-14, MEM-15. Spec: [`specs/e2-07-filtros-membros.md`](specs/e2-07-filtros-membros.md) (desenho pronto; o PR 1 exige o banco do E2.05 e o PR 1 do E2.06 em produção)
+  - PR 1 em produção (2026-11-26, mci-connect#51, squash `deff10d`, "Deploy: banco" sem promote): vínculo celular e situação de liderança na `members_view`, `members_list`/`members_list_count` com os nove filtros, card "Sem Vínculo Celular" pela RN-10. Revisão de código independente aprovada. A conferência da tarefa 1 não foi rodada em produção antes do deploy (sessão sem acesso ao banco); as guardas e pós-condições das migrations passaram. Próximos: PRs 2 (componentes de filtro), 3 (Membros com filtros) e 4 (Novo membro e cache).
+- [x] **E2.08** Cadastro de células · CEL-01 a CEL-04 · depende de D4. Spec: [`specs/e2-08-cadastro-celulas.md`](specs/e2-08-cadastro-celulas.md). A CEL-04 já vinha pronta do E2.02. Aceite do PO (2026-11-26)
+  - PRs em produção (2026-11-26): mci-connect#43 (banco: a célula inativa não recebe relatório novo, nem pela API; "Deploy: banco" do `0126c28`), #45 (banco: as três pessoas, dia, horário e tipo obrigatórios e dentro das listas, a célula nova sempre ativa, com o ajuste mínimo do front; conferência em produção sem nenhuma linha fora das regras; "Deploy: banco" e promote do `30bd8f0`) e #47 (PRs 3 a 5 do spec num só: CEP comum aos formulários de membro e de célula, lista de Células com a situação e o "Novo relatório" só na ativa, formulário de célula da UX; promote do `b35c5ed`).
+  - Revisão final do passo (tarefa 17): APROVADA, com as revisões independentes de código e de UI; a nova tentativa do cadastro compara a célula achada e grava só a diferença (complemento da DT-09). Testes: pgTAP 4.320 asserções no PR 2 e 4.373 com o PR 4 do E2.03 rebaseado, concorrência e volume dentro das metas, Vitest 1.940 e Playwright inteiro sem regressão, só com a falha de massa local conhecida (`excluidos-membros.spec.ts:612`).
+  - Ficam para o usuário as perguntas Q-1 a Q-6 do spec, que não bloqueiam.
+- [x] **E2.09** Situação do relatório por célula · CEL-05 e o card de pendentes da DSH-02. Spec: [`specs/e2-09-situacao-relatorio.md`](specs/e2-09-situacao-relatorio.md). Aceite do PO (2026-11-26)
+  - PRs em produção (2026-11-26): mci-connect#48 (banco: histórico dos períodos ativos das células, a situação calculada na `cells_view` e o `cells_pending` do Dashboard pela situação; "Deploy: banco" do `d74f9c8`; conferência em produção só com `info`, histórico criado para as 2 células) e #49 (PRs 2 e 3 do spec num só: o card "Células com relatório pendente" e a lista de Células com a situação, a legenda, os cartões e a tabela a partir de 1280 px; promote do merge `93d037f`).
+  - Revisão final do passo (tarefa 12): APROVADA, com as revisões independentes de código (duas rodadas no PR 1) e de UI. Testes: pgTAP 4.452 a 4.505 asserções conforme a base, concorrência sem regressão, Vitest 2.186 e Playwright inteiro com 382 ok, só com 3 falhas sem relação com o passo.
+  - Ressalva de volume: o filtro `pending` para o Administrador ficou entre 244 e 383 ms numa máquina compartilhada (meta 300 ms). Medir de novo antes da carga do legado (E4). As sugestões da revisão de UI (coluna G12 estreita, selos `muted` no escuro) estão no spec do E2.10.
+  - Ficam para o usuário as perguntas Q-1 a Q-6 do spec, que não bloqueiam.
 - [ ] **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07. Spec: [`specs/e2-10-listagem-celulas.md`](specs/e2-10-listagem-celulas.md) (desenho pronto; depende também do E2.07)
 - [ ] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3. Inclui: trocar o trigger de semana única por índice único, validar a semana atual só no lançamento e corrigir a data sugerida no formulário. Spec: [`specs/e2-11-lancamento-relatorio.md`](specs/e2-11-lancamento-relatorio.md) (desenho pronto; o retrato vira `snapshot_*`)
 - [ ] **E2.12** Listagem de relatórios com filtros e atalhos de semana · REL-13. Spec: [`specs/e2-12-listagem-relatorios.md`](specs/e2-12-listagem-relatorios.md) (desenho pronto; entra depois do E2.10 e do E2.11)
@@ -185,10 +195,10 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 
 ### Fase 4: Ferramentas de migração (seção 5)
 
-- [ ] **E4.01** Estrutura de `data-migration/`: README, variáveis de ambiente e modo `--dry-run` · _backend_
+- [x] **E4.01** Estrutura de `data-migration/`: README, variáveis de ambiente e modo `--dry-run` · _backend_. Node 22 (`mysql2`, `pg`), configuração lida do `local.config` sem exportar, travas de destino, testes unitários e de ponta a ponta com MySQL 8.4 em Docker e a stack local (2026-11-25)
 - [ ] **E4.02** Migrations de preparação: `legacy_id` e colunas de snapshot · 5.3 · depende de E2.01 e E2.05 · _backend_
-- [ ] **E4.03** Cópia bruta do MySQL para o schema `legacy` · 5.2 · usa a conexão do `local.config`, só leitura (5.1) · _backend_
-- [ ] **E4.04** Relatório de saneamento · 5.4 · _backend_
+- [ ] 🔄 **E4.03** Cópia bruta do MySQL para o schema `legacy` · 5.2 · usa a conexão do `local.config`, só leitura (5.1) · _backend_. Ferramenta pronta (`npm run copy`, 2026-11-25): leitura em transação `READ ONLY` com snapshot consistente, stream direto para o `legacy` numa transação, contagem e checksum dos dois lados, schema sem privilégio para a API. **Roda na máquina do usuário** (a sessão na nuvem não alcança o MySQL); antes, o IP precisa estar em *Trusted sources* do MySQL na DigitalOcean
+- [ ] 🔄 **E4.04** Relatório de saneamento · 5.4 · _backend_. Ferramenta pronta (`npm run report`, 2026-11-25): 51 verificações em quatro categorias, com as funções de regra do próprio banco novo, só contagens e Ids do legado em `data-migration/reports/` (ignorado). Falta rodar depois do E4.03 e responder as decisões que o relatório marcar como "Precisa de decisão"
 - [ ] **E4.05** Correções feitas no legado pela liderança, a partir do relatório de saneamento · 5.4 · _liderança_
 - [ ] **E4.06** SQL de transformação e carga · 5.5 · depende de D9 · _backend_
 - [ ] **E4.07** Backfill de nível e totais, reaproveitando as funções dos triggers · 5.5 · _backend_ · antes, uma migration põe o problema `orphan_row` na `member_hierarchy_drift()` e o `DELETE` da linha órfã no `rebuild` (backlog da revisão final do E2.06)
@@ -235,7 +245,7 @@ Estes itens precisam estar prontos antes de o novo receber dados reais. O andame
   - `create-user-admin`: exigir JWT e checar a permissão de quem chama. Hoje qualquer um cria contas com qualquer perfil.
   - `members`: impedir que `edit_own_data` altere `role_id`, `auth_user_id`, `leader_id` e as demais colunas restritas (regra AUT-05).
   - `get-user-email`: parar de devolver o e-mail de qualquer CPF ou celular. Ele será substituído pela função de login da seção 6.3.
-  - `change-member-password`: checar o escopo e o perfil do alvo.
+  - `change-member-password`: checar o escopo e o perfil do alvo. ✅ Feito no E2.03: a função saiu, e a redefinição assistida confere o escopo e a função do alvo no banco.
   - Política de SELECT de `members`: parar de expor a linha inteira dos líderes de membros visíveis. ✅ Feito no E1.13.
   - Auditoria: confirmar os grants de `_log_event`, restringir `log_auth_event` e registrar o autor dos cadastros feitos por Edge Function.
   - Impor no banco o que hoje só a UI respeita (`view_sensitive_data`, `assign_role`). ✅ Feito no E1.03 (`assign_role`) e no E1.08 (`view_sensitive_data`, com a trava por coluna).
@@ -262,7 +272,7 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 | AUT-03 | **Escopo de visibilidade e escrita.** O usuário vê e altera as subárvores de si mesmo, do cônjuge, do seu G12 e do cônjuge do seu G12, além dessas próprias pessoas. Uma célula ou relatório está no escopo se o líder, o timóteo ou o anfitrião estiver. | `Domain/Extensions/QueryingExtensions.cs` (`ApplyMinistryFilter`) | ✅ E2.02 (2026-11-25): o escopo do legado na leitura e na escrita, no banco, inclusive o próprio cônjuge, o anfitrião e os pastores (RN-01 a RN-09 do E2.02). Até o E2.11 gravar o retrato (REL-09), o relatório entra no escopo pelo líder, timóteo e anfitrião atuais da célula. | RLS (`is_in_same_ministry` e políticas de escrita) |
 | AUT-04 | O administrador geral vê e altera tudo. | `UserExtensions.IsSuperAdmin` | ✅ `view_all_church`; a função Administrador tem sempre todas as permissões (RN-17 do E2.02, 2026-11-25) | RLS |
 | AUT-05 | O perfil básico edita só o próprio cadastro e não altera líder, "não tem liderança", batismo, inativo nem perfil. | `UI/pages/Members/details.js` (`canEdit` e campos desabilitados) | ✅ no banco desde o E1.03 (regra 5); conferido pela RN-11 do E2.02 (2026-11-25) | Trigger em `members` |
-| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | 🟡 A função `change-member-password` existe, mas não checa o escopo nem o perfil do alvo (o E2.03 aplica a RN-09 e a RN-18 do E2.02 ao alvo). O próprio membro não troca a senha sem uma permissão especial. | Edge Function com a Admin API (6.4) |
+| AUT-06 | A senha é trocada pelo próprio membro ou por um administrador, para membros do escopo dele. | `Domain/Mappings/DomainToDTOMappingProfile.cs` (`Password`) | ✅ E2.03 (2026-11-26): redefinição assistida por quem tem "Redefinir Senha de Membros" (Administrador e Líder), só de membro visível, não excluído, com conta e de função coberta, nunca a própria, com senha temporária de 7 dias e troca obrigatória no login seguinte (RN-01 a RN-10 do E2.03); todo membro troca a própria senha com a senha atual, sem permissão (RN-11); política, limites e Auditoria no servidor (RN-12, RN-13, RN-17). A `change-member-password` saiu. | RPCs no banco, cofre `private.account_passwords`, guarda em `auth.users` e portão nas views e RPCs (E2.03) |
 | AUT-07 | Só o administrador geral altera o perfil de alguém, e ninguém altera o próprio perfil. | `DomainToDTOMappingProfile.cs` (`Role`), `UI/pages/Members/details.js` | ✅ E2.02 (2026-11-25): no banco, inclusive na `create-user-admin`. Atribui quem tem "Atribuir Função aos Membros" ou "Gerenciar Funções" e cobre a função atual e a nova; nas funções semeadas, só a Administrador; ninguém altera a própria (RN-18 do E2.02). | Trigger em `members` |
 
 ### 3.2 Membros (MEM)
@@ -298,20 +308,21 @@ Os caminhos na coluna **Fonte** são relativos a `g12app-net/`:
 
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
-| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ❌ só o líder (D4: os três obrigatórios) | NOT NULL |
-| CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | 🟡 têm valor padrão, mas aceitam nulo | NOT NULL + CHECK |
-| CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | 🟡 texto livre | CHECK ou enum |
-| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | ✅ E2.02 (2026-11-25): só com as permissões de célula e no escopo; ser líder ou timóteo não dá direito de editar (RN-12 do E2.02) | RLS |
-| CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ❌ | Função SQL |
+| CEL-01 | Líder, timóteo e anfitrião obrigatórios. | `Domain/Validators/CellDtoValidator.cs` | ✅ E2.08 (2026-11-26): os três obrigatórios em toda gravação, inclusive na Macrocélula e pela *service role*; a mesma pessoa pode ocupar mais de um papel; pessoa excluída recusada (RN-02 a RN-04 do E2.08) | `NOT NULL` + trigger com código e campo |
+| CEL-02 | Dia da semana e horário obrigatórios. | `CellDtoValidator.cs` | ✅ E2.08 (2026-11-26): sem padrão; dia só de Domingo a Sábado, horário de 00:00 a 23:59 sem segundos (RN-05 e RN-06 do E2.08) | `NOT NULL` + `CHECK` sobre `cell_weekdays()` e o horário + trigger com código e campo |
+| CEL-03 | Tipos: Evangelística, Discipuladora (no novo, "Discipulado") e Macrocélula. | `Domain/Model/Enum/CellType.cs` | ✅ E2.08 (2026-11-26): só os três valores; sem tipo, a célula nova fica Evangelística (RN-07 do E2.08) | `CHECK` sobre `cell_types()` + trigger com código e campo |
+| CEL-04 | Criar, editar e excluir célula: administradores, dentro do escopo. | `API/Controllers/CellController.cs` | ✅ E2.02 (2026-11-25): só com as permissões de célula e no escopo; ser líder ou timóteo não dá direito de editar (RN-12 do E2.02). Conferida no E2.08 (RN-12), sem mudança | RLS |
+| CEL-05 | **Situação do relatório** da semana atual (domingo a sábado, horário de Brasília). Ver a definição abaixo da tabela. | `QueryingExtensions.cs` (`ReportStatus`) | ✅ E2.09 (2026-11-26): calculada a cada consulta, na lista de Células, com a legenda (RN-01 a RN-07 e RN-09 do E2.09). O filtro e o detalhe da célula são da CEL-06 e da CEL-07 (E2.10) | `cells_view.report_status` e `report_missing_weeks` (`private.cell_report_situation`), com o histórico `private.cell_active_periods` |
 | CEL-06 | Filtros: líder, G12, logradouro, bairro, cidade, tipo, dia da semana, situação do relatório e período de cadastro. | `Domain/Querying/Filters/CellFilter.cs`; `UI/pages/Cells/index.js` | ❌ só busca por texto | RPC ou view + UI |
 | CEL-07 | O detalhe da célula mostra os 3 últimos relatórios e dá acesso à lista completa. | `CellController.GetLastReportsByCellId`; `UI/pages/Cells/details.js` | ❌ | UI |
 | CEL-08 | Exclusão lógica de células, preservando os relatórios (seção 3.8). | `IsDeleted` | ✅ E2.01 (2026-11-25): os relatórios ficam, com "Célula excluída" | Ver 3.8 |
 
-Definição da situação do relatório (CEL-05):
-- **Em dia**: já tem relatório nesta semana, ou a reunião ainda não aconteceu.
-- **Ainda não ocorreu**: sem relatório, e a reunião ainda não aconteceu nesta semana.
-- **Pendente nesta semana**: sem relatório, e já passou cerca de 1h do horário da célula.
-- **Sem relatório há 1, 2, 3 ou 4+ semanas**: conforme a data do último relatório.
+Definição da situação do relatório (CEL-05), como ficou no E2.09 (RN-02 a RN-06 de lá). Só a célula ativa e não excluída tem situação:
+- **Enviado** (Célula realizada ou Não houve célula): tem relatório não excluído nesta semana.
+- **Ainda não ocorreu**: sem relatório, e o prazo da reunião desta semana ainda não chegou. O prazo é exatamente 1 hora depois do dia e do horário da célula.
+- **Pendente**: sem relatório, o prazo chegou, e a semana conta para a célula.
+- **Conta a partir da próxima semana**: sem relatório, o prazo chegou, mas a célula não estava cadastrada, ativa e não excluída no prazo.
+- **Semanas anteriores sem relatório** (1, 2, 3 ou 4 ou mais), ao lado da situação, exceto no Enviado: contadas a partir da semana passada, até a primeira semana com relatório ou que não conta.
 
 ### 3.5 Relatórios de célula (REL)
 
@@ -338,7 +349,7 @@ Definição da situação do relatório (CEL-05):
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | DSH-01 | Todos os números respeitam o escopo do usuário. | `App/Services/DashboardService.cs` (repositórios com escopo) | ✅ E2.02 (2026-11-25): as RPCs do dashboard leem das views com o escopo novo | RLS / RPC |
-| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células. O cálculo de pendentes, que ignorava células de segunda a sexta, foi corrigido no PR 3 do E1.08 (mci-connect#15, em produção) | RPC (`dashboard_summary`, E1.08) |
+| DSH-02 | **Esta semana**: relatórios enviados, células com relatório pendente (CEL-05), visitantes, novos membros e novas células. | `DashboardService.cs` | 🟡 faltam novos membros e novas células (E2.14). Os pendentes já seguem a CEL-05 (E2.09, 2026-11-26): o card "Células com relatório pendente" conta as células "Pendente", o mesmo número da lista de Células (RN-08 do E2.09) | RPC (`dashboard_summary`, E1.08; `cells_pending` pela situação, E2.09) |
 | DSH-03 | **Geral**: membros ativos, células evangelísticas, células discipuladoras, inativos, não batizados, sem liderança e sem vínculo celular. | `DashboardService.cs` | 🟡 | RPC |
 | DSH-04 | Gráfico da semana: células realizadas × canceladas × sem relatório. | `UI/pages/Home` | 🟡 | UI |
 | DSH-05 | Cada card abre a listagem correspondente já filtrada. | `UI/pages/Home` | ❌ depende de MEM-13, CEL-06 e REL-13 | UI |
@@ -363,7 +374,7 @@ Continuam com exclusão física as tabelas de configuração (`roles`, `role_per
 | ID | Regra | Fonte | Novo | Onde impor |
 |---|---|---|---|---|
 | DEL-01 | Excluir marca o registro (`deleted_at`, `deleted_by`) em vez de apagá-lo. A API não permite exclusão física. | Repositórios (`IsDeleted`) | ✅ E2.01: RPCs `delete_*`; sem política nem privilégio de DELETE | RPC de exclusão; sem política de DELETE |
-| DEL-02 | Registros excluídos não aparecem em listagens, buscas, seletores, contagens, dashboard, árvore de ministérios nem nos totais de discípulos e células. | Filtro global (`HasQueryFilter`) em `Infrastructure.Data/Context/AppDbContext.cs` | ✅ E2.01: RLS, views, RPCs do dashboard, árvore e totais sem excluídos. CEL-05, novos cards (DSH) e exportação nascem já sem excluídos (E2.09, E2.13, E2.14) | RLS, e funções e triggers que ignoram excluídos |
+| DEL-02 | Registros excluídos não aparecem em listagens, buscas, seletores, contagens, dashboard, árvore de ministérios nem nos totais de discípulos e células. | Filtro global (`HasQueryFilter`) em `Infrastructure.Data/Context/AppDbContext.cs` | ✅ E2.01: RLS, views, RPCs do dashboard, árvore e totais sem excluídos. CEL-05 sem excluídos (E2.09, 2026-11-26); novos cards (DSH) e exportação nascem já sem excluídos (E2.13, E2.14) | RLS, e funções e triggers que ignoram excluídos |
 | DEL-03 | Excluir um relatório libera a semana: a célula pode receber outro relatório (REL-03). | `ReportApp.cs` (só considera não excluídos) | ✅ E2.01: índice `cell_reports_cell_week_key` só entre não excluídos | Índice único parcial (`WHERE deleted_at IS NULL`) |
 | DEL-04 | A unicidade de e-mail, celular e CPF considera só membros não excluídos. | `MemberDtoValidator.cs` | ✅ E2.01 e E2.04 (2026-11-25): a restauração, o aviso no cadastro e os índices únicos (MEM-03, MEM-05) consideram só não excluídos, com a mesma normalização (RN-18 do E2.01, RN-09 do E2.04) | Índices únicos parciais |
 | DEL-05 | Excluir um membro desfaz o vínculo de cônjuge. | `MemberService.Remove` (`UpdateSpouse`) | ✅ E2.01: `delete_member` desfaz o vínculo nos dois lados; a restauração não refaz | RPC de exclusão |
@@ -441,6 +452,7 @@ Estas migrations são feitas pelo `backend-developer` (passos E2.01, E2.05, E3.0
 - Toda coluna nova em `members` (`legacy_id`, `deleted_at`, `deleted_by`, `created_by`, `updated_by`…) precisa de `GRANT SELECT (coluna) ON public.members TO authenticated` na própria migration, por causa da trava por coluna do E1.08 PR 5.
 - Tabela `private.legacy_credentials` (6.3).
 - CHECKs de domínio (`gender`, `meeting_day`, `type`) e os índices únicos (MEM-03, MEM-05, REL-03), criados **antes** da carga para barrar dados ruins.
+- Células (E2.08, já em produção): `NOT NULL` em `leader_id`, `timothy_id`, `host_id`, `meeting_day` e `meeting_time`, e os `CHECK`s `cells_meeting_day_check`, `cells_type_check` e `cells_meeting_time_check`. Valem também para as células excluídas. A pessoa excluída num papel não é barrada em `replica`: é conferida na reconciliação (5.6).
 
 Na carga vamos usar `session_replication_role = replica`. Isso desliga triggers e FKs, mas os CHECKs e os índices únicos continuam valendo.
 
@@ -468,7 +480,10 @@ Rode depois da cópia bruta para o schema `legacy`. O que precisar de decisão h
 | Referência para registro excluído | Cônjuge excluído: o vínculo é desfeito (DEL-05). Membro ativo com líder excluído: listar para reatribuição (D10). Célula ou relatório excluído: migra com `deleted_at`, e a referência é mantida. |
 | Cônjuge não recíproco | Corrigir no legado |
 | Ciclo na hierarquia | Corrigir no legado |
-| Horário de célula fora do formato `HH:mm` | Corrigir no legado |
+| Horário de célula fora do formato `HH:mm`, inclusive em célula excluída | Corrigir no legado |
+| Célula não excluída com líder, timóteo ou anfitrião excluído (RN-13 do E2.08) | Listar (E4.04) e corrigir no legado (E4.05), escolhendo outra pessoa. A carga não termina enquanto houver |
+| Dia da célula fora de `0` a `6` ou tipo fora de `0` a `2` | Corrigir no legado (não deve existir: os dois são enumerações) |
+| Pessoa inativa num papel de célula, ou a mesma pessoa em mais de um papel | Migra como está (RN-03 e RN-04 do E2.08) |
 | Mais de um relatório da mesma célula na mesma semana | Fica o mais recente; os outros migram como excluídos. Listar para a liderança. Sem isso, o índice único da REL-03 (`cell_reports_cell_week_key`, E2.01) barra a carga, porque ele vale mesmo com `session_replication_role = replica`. |
 
 Exemplos em Postgres sobre o schema `legacy`. Eles assumem que a cópia preservou os nomes originais das tabelas e colunas (no pgloader, opção `quote identifiers`):
@@ -512,6 +527,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 6. **Backfill.**
    - `is_pastor` e `has_leadership` (D9).
    - Nível, cadeia, G12 e totais: `SELECT private.rebuild_member_hierarchy();`, com as mesmas regras das gravações (RN-13 do E2.06). Antes da carga, a linha órfã que uma exclusão física em `replica` deixa em `private.member_hierarchy` precisa ser tratada (E4.07). Depois, `private.member_hierarchy_drift()` volta vazia.
+   - Histórico dos períodos ativos das células (E2.09): `SELECT private.backfill_cell_active_periods();` depois de carregar `cells`, com o `created_at` vindo do `CreationDate` do legado como ponto de partida (nulo = desde sempre, RN-10 do E2.09). Sem isso, a célula carregada não tem situação do relatório.
    - `ANALYZE` nas tabelas carregadas. Com estatísticas desatualizadas, as views e RPCs do E1.08 podem escolher planos ruins (risco 17 do spec do E1.08).
 7. **Validação das FKs.** Como o modo `replica` não checa FKs, toda referência precisa ser conferida explicitamente.
 8. **Contas de acesso** (6.2).
@@ -553,7 +569,8 @@ Regras para `has_leadership`, `leader_id` e `is_pastor`:
 | `Id` | `legacy_id` | — |
 | `LeadId` / `HostId` / `TimothyId` | `leader_id` / `host_id` / `timothy_id` | Via `legacy_id` |
 | `WeekDay` | `meeting_day` | `0` Domingo, `1` Segunda, `2` Terça, `3` Quarta, `4` Quinta, `5` Sexta, `6` Sábado |
-| `Time` | `meeting_time` | `'HH:mm'::time` |
+| `Time` | `meeting_time` | `'HH:mm'::time`, sem segundos |
+| — | `is_active` | Sempre `true`, inclusive nas excluídas: o legado não tem célula inativa (RN-11 do E2.08) |
 | `CellType` | `type` | `0` Evangelística, `1` Discipulado, `2` Macrocélula |
 | `PlaceId` → `Addresses` | Endereço inline | Mesma regra do endereço dos membros |
 | `IsDeleted` | `deleted_at` | Mesma regra dos membros |
@@ -594,6 +611,8 @@ O relatório de reconciliação é gerado por script e anexado ao go/no-go.
   - Nível (RN-13 do E2.06): `12 ^ g12_level = MinistryLevel` para quem tem líder no novo; "sem liderança" no novo = 9999999 no legado; quem está a mais de 6 níveis do topo é comparado com 12^6. A diferença esperada, listada, são os membros sem líder e sem "não tem liderança" que não são os pastores da D9 e não foram corrigidos no E4.05.
   - `private.member_hierarchy_problems()` lista o que sobrou para a liderança (`no_top`, `cell_leader_deleted`, `no_leadership_with_disciples`).
 - **Regras de membro.** `private.member_rule_violations()` (E2.04) não devolve nenhuma linha: nenhum cadastro viola as regras do tipo (a) da RN-01 do E2.04 (RN-18).
+- **Regras de célula.** `private.cell_rule_violations()` (E2.08) não devolve nenhuma linha: nenhuma célula não excluída fica sem uma das três pessoas, com pessoa excluída, ou com dia, horário ou tipo fora das listas (RN-13 do E2.08).
+- **Situação do relatório** (E2.09). `private.cell_active_period_problems()` não devolve nenhuma linha (toda célula tem o histórico). O card de pendentes de uma semana de referência é comparado com o legado célula a célula (`private.cell_report_situation`, como `postgres`); cada diferença é listada com o motivo, que só pode ser o prazo exato de 1 hora ou a semana que não conta (RN-10 do E2.09).
 - **Totais** (RN-13 do E2.06). Os totais de discípulos e de células batem com os recalculados a partir do líder de cada membro no legado, sem inativos (D2) e sem excluídos. Os totais guardados no legado não servem de base, porque ele os atualiza por evento e só até 5 ancestrais.
   - `male_cells` e `female_cells` não podem estar todos zerados. Uma carga com os triggers desligados e sem o recálculo deixa os carregados sem linha em `private.member_hierarchy` ("Sem liderança" e totais zero), e o ranking G12 mostra 0 células.
   - A soma de `total_cells` do ranking G12 (`dashboard_g12_ranking`) bate com as células ativas sob os G12.
@@ -622,7 +641,7 @@ Os ensaios rodam no Supabase de produção, antes do cutover (5.1). Antes de cad
 | | Legado | Novo |
 |---|---|---|
 | Identificador de login | E-mail ou celular | E-mail, celular ou CPF |
-| Onde fica a senha | `Members.Password`: MD5 hexadecimal, sem salt, calculado no navegador | Supabase Auth (bcrypt) |
+| Onde fica a senha | `Members.Password`: MD5 hexadecimal, sem salt, calculado no navegador | Cofre `private.account_passwords` (bcrypt), fora do Auth desde o E2.03; só o banco grava (`private.write_password`) |
 | Quem tem conta | Todo membro com senha | Todo membro criado pela tela (`auth_user_id`) |
 | Membro sem e-mail | Entra pelo celular | Conta com e-mail fictício `@mci12fakemail.com` |
 | Superusuário | `AdminUser`, definido em configuração | Membros com o perfil Administrador |
@@ -637,7 +656,7 @@ O Supabase Auth não aceita importar hashes MD5. As senhas atuais só podem ser 
 - **E-mail da conta:**
   - para todos, o e-mail técnico `member_account_email(id)` (`<id do membro>@<domínio fictício>`), e o id da conta é o id do membro (DA-1 e DT-01 do E2.04). É determinístico: refeita, a carga acha a conta pelo e-mail e só religa;
   - `members.email` recebe só o e-mail real válido, ou fica nulo (RN-05 do E2.04).
-- **Senha inicial:** aleatória e longa, que o usuário nunca vai saber. A senha real é gravada no primeiro login (6.3) ou por redefinição (6.4).
+- **Sem senha** (E2.03): a conta da carga nasce sem senha, nem no Auth nem no cofre, e por isso sem a marca de troca obrigatória (RN-08 do E2.03). A senha real é gravada no primeiro login (6.3) ou por redefinição (6.4); os membros sem senha no legado (5.4) entram pela redefinição.
 - **Metadados:**
   - `email_confirm: true`;
   - `app_metadata.legacy_member_id = <Id>`. O `app_metadata` só pode ser escrito pela service role.
@@ -656,16 +675,14 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 2. Edge Function de login (`sign-in`), que **substitui** a `get-user-email`. Ela recebe o identificador e a senha:
    1. Encontra o membro pelo e-mail, celular ou CPF.
    2. Se existir uma credencial legada para ele, calcula o MD5 da senha recebida (UTF-8, hexadecimal minúsculo, igual ao pacote `md5` usado pelo legado) e compara em tempo constante.
-   3. Se o MD5 conferir:
-      - se a senha atende à política do Auth, grava essa senha (`auth.admin.updateUserById`);
-      - se não atende (por exemplo, curta demais), grava uma senha aleatória e marca `app_metadata.must_change_password = true`.
+   3. Se o MD5 conferir, grava a senha **como foi digitada** no cofre (`private.write_password`, E2.03; o `updateUserById` não serve mais, por causa da guarda em `auth.users`). Se ela não atende à política (RN-13 do E2.03), põe a marca de troca obrigatória `legacy_weak` na mesma transação, e a Auditoria registra "Troca de senha exigida", motivo "Senha fora das regras". Quem não concluir a troca volta a ela na próxima entrada com a mesma senha.
 
       Em seguida, apaga a credencial legada.
    4. Faz o login no Auth e devolve a sessão. O front chama `supabase.auth.setSession`.
    5. Em qualquer falha, responde só "Usuário ou senha inválidos", sem revelar se o usuário existe.
 3. **Front.**
    - O login passa a chamar a `sign-in`.
-   - Com `must_change_password`, o usuário é levado para uma tela de troca obrigatória antes de qualquer outra.
+   - Com a marca, o usuário é levado para a tela de troca obrigatória antes de qualquer outra, e a API recusa tudo até a troca (feito no E2.03).
 
 **Controles:**
 - Limite de tentativas por identificador e por IP, numa tabela de tentativas, com bloqueio temporário.
@@ -685,15 +702,16 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 ### 6.4 Redefinição de senha
 
 - **Sem recuperação por e-mail** (E1.07 fora do plano, 2026-11-25; o provedor de e-mail do Auth está desligado desde o E1.04). Quem esquece a senha fala com o líder ou com um administrador e recebe uma senha temporária (redefinição assistida).
-- **Redefinição assistida (AUT-06):** um administrador define uma senha temporária para um membro do seu escopo. É uma Edge Function que checa a permissão e o escopo de quem chama, grava a senha e marca `must_change_password`. É o caminho para quem só tem celular.
-- A troca obrigatória vale no próximo login depois da redefinição assistida.
+- **Redefinição assistida (AUT-06), feita no E2.03:** quem tem "Redefinir Senha de Membros" (Administrador e Líder) gera, para um membro visível com função coberta, uma senha temporária de 8 caracteres, válida por 7 dias, mostrada uma vez só e passada ao membro por quem redefiniu. A redefinição encerra as sessões do membro e põe a marca de troca obrigatória. É o caminho para quem só tem celular.
+- A troca obrigatória vale no próximo login depois da redefinição e segue a política de senha (RN-13 do E2.03: pelo menos 8 caracteres, sem senhas comuns, sequências ou os dados do próprio membro).
+- A senha inicial do cadastro (`123456`, D11, ou a digitada) também nasce com a marca. Na publicação do E2.03, as contas com `123456` foram marcadas.
 
 ### 6.5 Perfis
 
 | Legado | Novo (role) | Permissões |
 |---|---|---|
 | `AppSuperAdmin` | **Administrador** (`is_system`) | Todas, incluindo `view_all_church` |
-| `AppAdmin` | **Líder** | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `edit_own_data`, `submit_own_cell_report`, `edit_cell_report` e `delete_cell_report`, sem `view_members` nem `view_roles` (E2.02). A redefinição assistida entra no E2.03. As escritas valem só dentro do escopo (AUT-03). |
+| `AppAdmin` | **Líder** | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `edit_own_data`, `submit_own_cell_report`, `edit_cell_report` e `delete_cell_report`, sem `view_members` nem `view_roles` (E2.02), e `change_member_password` ("Redefinir Senha de Membros", E2.03). As escritas valem só dentro do escopo (AUT-03). |
 | `AppUser` (e sem perfil) | **Membro** (padrão) | `view_dashboard`, `view_own_ministry`, `edit_own_data` e `submit_own_cell_report` (D3) |
 
 - **Pastores** (RN-05 do E2.02): com `view_own_ministry`, o pastor vê a árvore inteira (ele, o cônjuge e a descendência dos dois); `view_all_church` só acrescenta quem está sem liderança. Ser pastor não dá permissão: ela vem da função.
@@ -709,7 +727,8 @@ A mensagem, enviada pela liderança antes do cutover, deve dizer:
 - o novo endereço do sistema;
 - que o login e a senha são os mesmos de antes, e que agora o CPF também funciona;
 - que não há prazo para o primeiro acesso: a senha antiga vale até ser usada uma vez no novo (D6);
-- que, em caso de problema, o caminho é falar com o próprio líder (redefinição assistida).
+- que, em caso de problema, o caminho é falar com o próprio líder (redefinição assistida), que gera uma senha temporária válida por 7 dias;
+- que, se a senha antiga for curta ou simples demais, o sistema pede uma nova no primeiro acesso, com as regras da política de senha em linguagem simples (RN-13 do E2.03).
 
 ## 7. Cutover e desligamento do legado
 
