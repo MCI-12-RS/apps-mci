@@ -2325,3 +2325,23 @@ _Seção do `qa`._ Arquivos em `mci-connect/supabase/tests/`: `database/e208_01_
 | RN-11 (d), DA-5, DA-6 | IC (tema, mesma célula reenviada, incluir e retirar participantes, Carla grava os participantes do relatório lançado antes da inativação, excluir, restaurar); CC 2, 3b, 5a, 5b | ✅ |
 | RN-14, DA-7 | IC (ordem dos triggers `BEFORE`; Hugo 42501, Diego `not_found_or_deleted` no INSERT e na troca, Fábio `report_submit_not_allowed`; nenhum recebe `cell_inactive`) | ✅ |
 | DT-06, DT-07 | IC (trigger `BEFORE INSERT OR UPDATE OF cell_id`, *definer* com `search_path`, sem EXECUTE para `anon` e `authenticated`; `cells_view` com as mesmas colunas, *security definer*, dona `postgres`, só SELECT para `authenticated`); CC; MG | ✅ |
+
+**PR 2 (2026-11-25, pista local A, banco zerado com todas as migrations até `20261126130000`):** arquivos novos `database/e208_02_cell_rules` (CR, 95 testes), `database/e208_02_cases` (CS, 43, gerado de `fixtures/cell-rules-cases.json` por `fixtures/generate-cell-rules-cases.mjs`, no lugar do `scripts/gen-cell-cases-sql.*` da tarefa 4, como no E2.04) e o MG estendido à migration 2.
+- pgTAP inteiro: 45 arquivos, 4320 testes, PASS. Sem os dois triggers novos, 38 testes do CR falham (conferido). As massas do E1.08, do E2.01, do E2.02 e do E2.06 passaram a ter as três pessoas (quem faltava repete o líder, RN-03, sem mudar o escopo), dia e horário válidos, e as células inativas são inativadas depois do cadastro. No E1.08 PR 3, as células de dia desconhecido e de dia nulo viraram células com relatório numa semana seguinte, e a "sem horário" virou quinta 23:59 (as pendentes de W continuam 9).
+- `e203_02_policy` falhou uma vez por tempo (`sign_in_attempt: tempo-limite excedido`, o teto de 5 s por comando com a máquina carregada pela pista B); passou nas duas rodadas seguintes. Não tem relação com células.
+- MG: as migrations 1 e 2 rodam de novo sem mudar nada; a guarda para com `timothy_required: <id>`, sem nome, sem listar a célula com segundos (corrigida antes) e sem gravar nada.
+- CC: o E2.08 (26 verificações), o E2.01 adaptado (71) e o E2.06 (252) passam.
+- VOL: lançamento 12,30 ms com o trigger do PR 1 e 12,22 ms sem ele; PATCH de célula (horário e rua, dispara os dois triggers novos) 4,07 ms (meta 20; no `EXPLAIN` frio, `a0_` 0,20 ms e `ad_` 0,41 ms); página da `cells_view` 16,8 ms (Administrador) e 66,6 ms (G12).
+- Vitest 1869/1869 (novos: `cell-rules-cases-sync`, `cell-types`, `write`, e 4 do `CellForm`: sem Sábado e 19:00, sem "Célula Ativa" no cadastro, nada enviado sem as cinco colunas, PATCH com a situação). `tsc` e `build` verdes; `lint` com os 3 erros que já existem na `main`.
+- Playwright (suíte inteira, `--workers=1`): 337 passaram, 8 pulados, 4 falharam. Adaptados e verdes na nova rodada: `exclusao-membros.spec.ts:432` (a massa tirava o timóteo) e `celulas-relatorios-escopo.spec.ts:518` (UX-24 do E2.02: limpar o anfitrião não chega mais ao servidor; a tela avisa "Escolha o anfitrião da célula." e o teste confere a recusa `would_leave_scope` pela API). Os outros dois são os do PR 1: `sign-in.spec.ts:416` (passou isolado) e `excluidos-membros.spec.ts:612` (depende do tamanho da massa local). Smoke de login verde. As massas de 7 arquivos do E2E ganharam as três pessoas.
+- Revisão: sem a ferramenta de acionar agentes nesta execução; o `architect` implementou o banco, o ajuste mínimo do front e os testes, e revisou o próprio diff. Não houve `code-reviewer` nem `qa` independentes.
+
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-01 | CR (service role e `postgres` recebem `timothy_required`; em `replica` os `NOT NULL` e os `CHECK`s valem, o trigger não; pessoa excluída em `cell_rule_violations`; Caio sem "Editar Célula": 0 linhas; sem "Criar Célula": 42501) | ✅ |
+| RN-02, RN-03, RN-04 | CR (sem líder, timóteo ou anfitrião, inclusive Macrocélula, com código, campo e mensagem; André nos três papéis; duas células iguais; Beatriz e Fábio aceitos; Bruno `deleted_member_chosen`; Diego `person_not_visible`; Pedro muda só o horário com Beatriz anfitriã); `CellForm` | ✅ |
+| RN-05, RN-06, RN-07, DA-1, DA-8, DA-12 | CR e CS (os casos do JSON); sync do Vitest com a migration e com `weekdays.ts`/`cell-types.ts` | ✅ |
+| RN-11, DA-2 | CR (`cell_new_inactive`; nulo vira ativa; inativar e reativar na edição); `CellForm` (sem "Célula Ativa" no cadastro) | ✅ |
+| RN-13, DT-13 | MG (guarda); CR (`cell_rule_violations()` vazia no fim) | ✅ |
+| RN-14 | CR (ordem dos triggers e das recusas: excluído antes de vazio, escopo antes de regra, pessoas < tipo < dia < horário < situação) | ✅ |
+| DA-3 | CR (na célula excluída, o `CHECK` recusa) | ✅ |
