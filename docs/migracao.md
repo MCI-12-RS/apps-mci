@@ -195,7 +195,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] **E3.01** Tabela `private.legacy_credentials` · 6.3 · _backend_
 - [ ] **E3.02** Conferência do MD5 legado na função `sign-in`, com política de senha e `must_change_password` · 6.3 · depende de E1.04 e E3.01 · _backend_
 - [ ] **E3.03** Testes do login legado com contas de teste: senha com acento, conta só com celular, senha fora da política · _qa_
-- [ ] **E3.04** Lista de quem será Administrador e Líder revisada pela liderança, com pelo menos 2 administradores · 6.5, 6.6 · _liderança_
+- [ ] **E3.04** Lista de quem será Administrador e Líder revisada pela liderança, com pelo menos 2 administradores · 6.5, 6.6 · _liderança_. Regra decidida em 2026-11-27 (G12 Líder, os demais Membro; RN-18 do E3); faltam os nomes dos Administradores e se os pastores entram como Administrador
 - [ ] **E3.05** Texto de comunicação aos usuários aprovado · 6.7 · _liderança + product-owner_
 
 ### Fase 4: Ferramentas de migração (seção 5)
@@ -558,7 +558,7 @@ Ordem de execução. Os passos 1 a 5 rodam com `SET session_replication_role = r
 | `SpouseId` | `spouse_id` | Via `legacy_id` (2º passe) |
 | `Notes` | `notes` | — |
 | `HomeAddressId` → `Addresses` | `street`, `number`, `complement`, `neighborhood`, `city`, `state`, `zip_code` | `Addresses.Notes` → `complement`; `PostalCode` → só dígitos; `State` em maiúsculas |
-| `Role` | `role_id` | Conforme 6.5 |
+| `Role` | `role_id` | Não usado: a função vem da posição na árvore (6.5, decisão de 2026-11-27) |
 | `Password` | `private.legacy_credentials.md5_hash` | Conforme 6.3 |
 | `IsDeleted` | `deleted_at` | Se o registro estiver excluído, usar `COALESCE(LastModifiedDate, CreationDate)` em horário de Brasília (o legado grava a exclusão como última alteração). `deleted_by` fica nulo. |
 | `CreationDate` / `LastModifiedDate` | `created_at` / `updated_at` | Horário de Brasília → `timestamptz` (`AT TIME ZONE 'America/Sao_Paulo'`). Data nula vira a data da migração |
@@ -718,14 +718,21 @@ O usuário entra com o mesmo login e a mesma senha de sempre. Na primeira vez, o
 
 ### 6.5 Perfis
 
-| Legado | Novo (role) | Permissões |
-|---|---|---|
-| `AppSuperAdmin` | **Administrador** (`is_system`) | Todas, incluindo `view_all_church` |
-| `AppAdmin` | **Líder** | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `edit_own_data`, `submit_own_cell_report`, `edit_cell_report` e `delete_cell_report`, sem `view_members` nem `view_roles` (E2.02), e `change_member_password` ("Redefinir Senha de Membros", E2.03). As escritas valem só dentro do escopo (AUT-03). |
-| `AppUser` (e sem perfil) | **Membro** (padrão) | `view_dashboard`, `view_own_ministry`, `edit_own_data` e `submit_own_cell_report` (D3) |
+**Decisão do usuário (2026-11-27, Q-1 do E3):** na carga, a função sai da **posição na árvore**, não do papel do legado (`Role` não é usado). Regra completa na RN-18 de [`specs/e3-login-legado.md`](specs/e3-login-legado.md).
 
-- **Pastores** (RN-05 do E2.02): com `view_own_ministry`, o pastor vê a árvore inteira (ele, o cônjuge e a descendência dos dois); `view_all_church` só acrescenta quem está sem liderança. Ser pastor não dá permissão: ela vem da função.
-- **Lista para revisão.** Antes do cutover, a liderança confere quem vai ter os perfis Administrador e Líder.
+| Quem, na carga | Novo (role) | Permissões |
+|---|---|---|
+| Os escolhidos pelos pastores (pelo menos 2, 6.6) | **Administrador** (`is_system`) | Todas, incluindo `view_all_church` |
+| Os **G12** (nível 1 da árvore carregada, `g12_level` = 1) | **Líder** | `view_dashboard`, `view_own_ministry`, `create_member`, `edit_member`, `delete_member`, `create_cell`, `edit_cell`, `delete_cell`, `edit_own_data`, `submit_own_cell_report`, `edit_cell_report` e `delete_cell_report`, sem `view_members` nem `view_roles` (E2.02), e `change_member_password` ("Redefinir Senha de Membros", E2.03). As escritas valem só dentro do escopo (AUT-03). |
+| Todos os outros, inclusive os pastores que não estiverem entre os Administradores | **Membro** (padrão) | `view_dashboard`, `view_own_ministry`, `edit_own_data` e `submit_own_cell_report` (D3) |
+
+- **Efeitos da decisão:**
+  - quem era `AppAdmin` no legado e não é G12 fica Membro: deixa de cadastrar e editar membros e células e de editar e excluir relatórios (continua lançando os da própria célula, D3);
+  - quem é G12 e era `AppUser` passa a Líder, com essas escritas no próprio ministério e a redefinição de senha;
+  - na virada, só os G12 e os Administradores redefinem senha: o pedido de quem não consegue entrar vai do líder direto ao G12, e o de G12 e pastores, a um Administrador (RN-19 do E3);
+  - a função não acompanha a árvore: depois da carga, mudanças de líder não mudam a função (atribuição manual, E2.02).
+- **Pastores** (RN-05 do E2.02): com `view_own_ministry`, o pastor vê a árvore inteira (ele, o cônjuge e a descendência dos dois); `view_all_church` só acrescenta quem está sem liderança. Ser pastor não dá permissão: ela vem da função. Se os pastores entram como Administrador está em aberto (Q-6 do E3), com a lista de Administradores.
+- **Lista para revisão (E3.04).** Antes do go/no-go, os pastores aprovam a lista gerada pela regra, por G12, com o papel do legado só como informação. Exceções entram só por essa aprovação.
 
 ### 6.6 Superusuário do legado
 
@@ -737,7 +744,7 @@ A mensagem, enviada pela liderança antes do cutover, deve dizer:
 - o novo endereço do sistema;
 - que o login e a senha são os mesmos de antes, e que agora o CPF também funciona;
 - que não há prazo para o primeiro acesso: a senha antiga vale até ser usada uma vez no novo (D6);
-- que, em caso de problema, o caminho é falar com o próprio líder (redefinição assistida), que gera uma senha temporária válida por 7 dias;
+- que, em caso de problema, o caminho é falar com o próprio líder, que leva o pedido ao G12 do ministério (G12 e pastores falam com um Administrador); quem redefine gera uma senha temporária válida por 7 dias. Não há aviso individual antes a quem não vai conseguir entrar (decisão do usuário, 2026-11-27; RN-19 do E3);
 - que, se a senha antiga for curta ou simples demais, o sistema pede uma nova no primeiro acesso, com as regras da política de senha em linguagem simples (RN-13 do E2.03).
 
 ## 7. Cutover e desligamento do legado
