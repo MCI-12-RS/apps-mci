@@ -2741,3 +2741,14 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| 01 a 14, 16, 18, DA-1 a DA-10 | `supabase/tests/database/e212_01_list.test.sql` (desenvolvedor, 110) | passa |
+| 01, 02, 05 a 11, 13, 16 (paridade com filtros, 9 personas, WHERE a mão sobre a `cell_reports_view`; `cell_visible` = `cells_view`; opções = nomes da view) | `e212_02_qa.test.sql` seções 1 e 6 | passa |
+| 03, 04, 05, 08, 16 (relatório excluído, célula inativa, célula excluída, retrato x célula atual) | `e212_02_qa.test.sql` seções 4 a 6 | passa |
+| 13, DA-1 (130 empates, filtros, teto de 100, opções de Hugo e Ester) | `e212_02_qa.test.sql` seção 2 | passa |
+| 10, 18 (`server_weeks` x `dashboard_summary(_at)`, virada de semana e de ano, bissexto, fusos de sessão) | `e212_02_qa.test.sql` seção 3 | passa |
+| DA-1 a DA-3, risco 1 (nulos, vazios, extremos, 20 mil curingas) | `e212_02_qa.test.sql` seção 7 | passa |
+| DT-10 (`save_cell_report` sem id e com id sem mudança), portão do E2.03, anon e `service_role` | `e212_02_qa.test.sql` seções 8 e 9 | passa |
+| Entradas pela API (PostgREST + JWT local), 35 casos | `supabase/tests/concurrency/e212_api_inputs.sh` | 35/35 |
+| Migrations (idempotência, guardas, pós-condições) | `supabase/tests/concurrency/e212_migrations.sh` | 5/5 |
+
+PR 1 (QA, `claude/e212-pr1`): pgTAP inteiro por `psql` na pista A, 71 arquivos, 5.989 asserções, 0 falhas (`e212_02_qa` 95). Sem bug aberto.
