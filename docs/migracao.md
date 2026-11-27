@@ -196,7 +196,7 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 - [ ] 🔄 **E3.01** Tabela `private.legacy_credentials` · 6.3 · _backend_
 - [ ] 🔄 **E3.02** Conferência do MD5 legado na função `sign-in`, com política de senha e `must_change_password` · 6.3 · depende de E1.04 e E3.01 · _backend_
 - [ ] 🔄 **E3.03** Testes do login legado com contas de teste: senha com acento, conta só com celular, senha fora da política · _qa_
-  - Spec: [`specs/e3-login-legado.md`](specs/e3-login-legado.md). E3.01 a E3.03 no PR 1 (banco e `sign-in`), aberto em 2026-11-27: mci-connect#60, aguardando revisão e merge. PR 2 (front: textos da Auditoria e o card "Primeiro acesso") depois do PR 1 em produção.
+  - Spec: [`specs/e3-login-legado.md`](specs/e3-login-legado.md). E3.01 a E3.03 no PR 1 (banco e `sign-in`), aberto em 2026-11-27: mci-connect#60, `code-reviewer` APROVADO, aguardando merge e "Deploy: banco" (depois do #59). PR 2 (front: textos da Auditoria e o card "Primeiro acesso") depois do PR 1 em produção.
 - [ ] **E3.04** Lista de quem será Administrador e Líder revisada pela liderança, com pelo menos 2 administradores · 6.5, 6.6 · _liderança_. Regra decidida em 2026-11-27 (G12 Líder, os demais Membro; RN-18 do E3); faltam os nomes dos Administradores e se os pastores entram como Administrador
 - [ ] **E3.05** Texto de comunicação aos usuários aprovado · 6.7 · _liderança + product-owner_
 
