@@ -7,7 +7,8 @@
 # escrita, cópia, idempotência, checksum, privilégios, saneamento, carga
 # (adoção, ambiguidade, --final, --dry-run, idempotência, mudança no legado,
 # conflitos com o novo, volume), contas e credenciais legadas (npm run accounts, E4.08:
-# Auth da stack local) e limpeza.
+# Auth da stack local), limpeza do ensaio (npm run unload: o destino volta ao retrato de antes
+# da carga) e limpeza do staging.
 # No fim, tira a carga (só teste), apaga o schema legacy e o contêiner.
 #
 # Variáveis:
@@ -41,6 +42,11 @@ if [ "$ACCOUNTS" != 0 ] && [ -z "${AUTH_SECRET_KEY:-}" ]; then
 fi
 
 cleanup() {
+  # A limpeza do ensaio tira também o que o ensaio criou em cima da carga (o reset só tira a carga).
+  if [ "$ACCOUNTS" != 0 ]; then
+    node "$ROOT/src/unload.mjs" --config "$CONFIG" --undo-final --out-dir "$WORK/unload-reports" >/dev/null 2>&1 || true
+    node "$HERE/assert-unload.mjs" "$CONFIG" unseed-pre >/dev/null 2>&1 || true
+  fi
   node "$HERE/assert-load.mjs" "$CONFIG" reset >/dev/null 2>&1 || true
   node "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -102,6 +108,8 @@ node --test "$HERE"/unit/*.test.mjs 2>&1 | grep -E '^# (pass|fail)'
 
 step "Limpeza inicial e --dry-run sem schema"
 $L reset >/dev/null
+# Rodar o teste de novo em menos de 15 min não pode esbarrar no limite de tentativas de login (E1.04).
+psql "postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres" -X -q -c 'DELETE FROM private.sign_in_throttle'
 $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes >/dev/null
 $A no-legacy
 $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" --dry-run >/dev/null
@@ -408,9 +416,168 @@ step "Limpeza do staging recusa com carga no destino"
 expect_fail "clean --yes recusa" "carga no destino" $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes
 $A grants
 
+if [ "$ACCOUNTS" != 0 ]; then
+  U="$N $HERE/assert-unload.mjs $CONFIG"
+  UNLOAD="$N $ROOT/src/unload.mjs --config $CONFIG --out-dir $WORK/unload-reports"
+  PSQL="psql postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres -X -q -v ON_ERROR_STOP=1"
+  step "Limpeza do ensaio: destino com cadastros do novo, antes da carga"
+  $L reset
+  $L seed-new
+  $U seed-pre
+  FP0="$($U fingerprint)"
+  $UNLOAD >"$WORK/unload0.log" 2>&1 || { cat "$WORK/unload0.log"; echo "FALHA: limpeza sem carga"; exit 1; }
+  check "sem carga: nada a desfazer" grep -q 'Nada a desfazer' "$WORK/unload0.log"
+  check "o destino ficou igual" test "$($U fingerprint)" = "$FP0"
+
+  step "Limpeza do ensaio: carga, contas e ensaio (login, sessões, cadastros, célula, relatórios, função)"
+  $LOAD >/dev/null 2>&1 || { echo "FALHA: carga antes do ensaio"; exit 1; }
+  $ACCOUNTS_RUN >/dev/null 2>&1 || { echo "FALHA: contas antes do ensaio"; exit 1; }
+  $U rehearsal
+  EVR="$($U events-count)"
+  FPR="$($U fingerprint)"
+
+  step "Limpeza do ensaio: --dry-run não apaga nada"
+  $UNLOAD --dry-run >"$WORK/unload-dry.log" 2>&1 || { cat "$WORK/unload-dry.log"; echo "FALHA: limpeza --dry-run"; exit 1; }
+  grep -E '^(Sai|Volta|Código|Contas)' "$WORK/unload-dry.log"
+  check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
+  check "nenhum relatório de limpeza gravado" test ! -e "$WORK/unload-reports"
+  for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail Ensaio Novo '@'; do
+    if grep -q -- "$pii" "$WORK/unload-dry.log"; then echo "FALHA: saída da limpeza contém dado pessoal ($pii)"; exit 1; fi
+  done
+  echo "ok: saída da limpeza sem dados pessoais"
+  PLANNED="$(sed -n 's/^Volta à linha de antes: .* contas a apagar no Auth: \([0-9.]*\).*/\1/p' "$WORK/unload-dry.log")"
+  check "previsão das contas igual à do plano ($PLANNED)" grep -q "^Contas a apagar no Auth (com as pendentes de limpezas anteriores): $PLANNED\$" "$WORK/unload-dry.log"
+  check "previsão com contas" test "$PLANNED" != 0
+  CONFIRM="$(sed -n 's/^Código de confirmação: //p' "$WORK/unload-dry.log")"
+  check "código de confirmação mostrado ($CONFIRM)" test -n "$CONFIRM"
+  WRONG="0000-0000"; [ "$CONFIRM" = "$WRONG" ] && WRONG="0000-0001"
+  expect_fail "--confirm diferente do --dry-run para sem apagar" "código de confirmação mudou" $UNLOAD --confirm "$WRONG"
+  check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
+
+  step "Limpeza do ensaio: cadastro e célula anteriores à carga que apontam para ela param a limpeza"
+  $U block-setup
+  FPB="$($U fingerprint)"
+  expect_fail "cadastro que fica com líder da carga" "member_points_to_removed" $UNLOAD
+  check "a célula também é citada" grep -q 'cell_points_to_removed.*anfitrião: Id do legado 5' "$WORK/fail-cmd.log"
+  check "o cônjuge de antes do adotado, casado no ensaio, também é citado" grep -q 'spouse_conflict.*: 3 ' "$WORK/fail-cmd.log"
+  check "nada mudou no destino" test "$($U fingerprint)" = "$FPB"
+  $U block-teardown
+  check "de volta ao ensaio" test "$($U fingerprint)" = "$FPR"
+
+  step "Limpeza do ensaio: falha no fim da transação do banco desfaz tudo"
+  $PSQL -c "CREATE FUNCTION public.qa_unload_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN RAISE EXCEPTION 'qa: falha no fim'; END \$f\$;
+            CREATE TRIGGER qa_unload_trap BEFORE UPDATE ON legacy._load_runs FOR EACH ROW EXECUTE FUNCTION public.qa_unload_trap();
+            ALTER TABLE legacy._load_runs ENABLE ALWAYS TRIGGER qa_unload_trap;"
+  expect_fail "a limpeza falha" "qa: falha no fim" $UNLOAD
+  check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
+
+  step "Limpeza do ensaio: o processo cai no meio da transação do banco"
+  $PSQL -c "CREATE OR REPLACE FUNCTION public.qa_unload_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN PERFORM pg_sleep(60); RETURN NEW; END \$f\$;"
+  $UNLOAD >"$WORK/unload-kill.log" 2>&1 &
+  UL_PID=$!
+  SLEEPING=""
+  for _ in $(seq 1 300); do
+    SLEEPING="$($PSQL -Atc "SELECT pid FROM pg_stat_activity WHERE wait_event = 'PgSleep' AND application_name = 'mci-data-migration' LIMIT 1")"
+    [ -n "$SLEEPING" ] && break
+    sleep 0.1
+  done
+  check "a limpeza chegou ao fim da gravação" test -n "$SLEEPING"
+  kill -9 "$UL_PID" 2>/dev/null || true
+  wait "$UL_PID" 2>/dev/null || true
+  # O servidor só percebe a conexão caída quando volta a falar com ela: encerra o comando, como faria o tempo-limite.
+  $PSQL -Atc "SELECT pg_terminate_backend($SLEEPING)" >/dev/null
+  $PSQL -c "DROP TRIGGER qa_unload_trap ON legacy._load_runs; DROP FUNCTION public.qa_unload_trap();"
+  for _ in $(seq 1 50); do
+    [ -z "$($PSQL -Atc "SELECT 1 FROM pg_stat_activity WHERE pid = $SLEEPING")" ] && break
+    sleep 0.1
+  done
+  check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
+
+  step "Limpeza do ensaio: o Auth recusa uma conta (depois do commit do banco)"
+  M4="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 4")"
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN
+               IF OLD.id = '${M4}' THEN RAISE EXCEPTION 'qa: conta não apagada'; END IF; RETURN OLD; END \$f\$;
+             CREATE TRIGGER qa_auth_trap BEFORE DELETE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  expect_fail "a limpeza termina com erro" "account_delete_failed" $UNLOAD --confirm "$CONFIRM"
+  auth_trap_drop
+  grep -E '^(Sai|Contas no Auth|Limpeza)' "$WORK/fail-cmd.log"
+  $U auth-pending 1
+  expect_fail "o clean recusa com contas pendentes no Auth" "pendentes de uma limpeza do ensaio" $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes
+
+  step "Limpeza do ensaio: rodar de novo completa; o destino volta ao retrato de antes da carga"
+  $UNLOAD >"$WORK/unload1.log" 2>&1 || { cat "$WORK/unload1.log"; echo "FALHA: limpeza 1"; exit 1; }
+  check "a conta pendente foi apagada" grep -qE '^Contas no Auth: 1 apagadas' "$WORK/unload1.log"
+  check "o destino voltou ao retrato de antes da carga" test "$($U fingerprint)" = "$FP0"
+  $U events-kept "$EVR"
+  $L lists-empty
+  REPORT="$(ls -t "$WORK"/unload-reports/limpeza-*.md | head -n 1)"
+  for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail Ensaio Novo '@'; do
+    if grep -q -- "$pii" "$REPORT" "$WORK/unload1.log"; then echo "FALHA: relatório ou saída da limpeza contém dado pessoal ($pii)"; exit 1; fi
+  done
+  echo "ok: relatório da limpeza sem dados pessoais"
+  $A grants
+
+  step "Limpeza do ensaio: repetir não muda nada"
+  $UNLOAD >"$WORK/unload2.log" 2>&1 || { cat "$WORK/unload2.log"; echo "FALHA: limpeza 2"; exit 1; }
+  check "nada a desfazer" grep -q 'Nada a desfazer' "$WORK/unload2.log"
+  check "o destino ficou igual" test "$($U fingerprint)" = "$FP0"
+
+  step "Limpeza do ensaio: o processo cai no meio da exclusão das contas"
+  $LOAD >/dev/null 2>&1 || { echo "FALHA: carga 2 antes da limpeza"; exit 1; }
+  $ACCOUNTS_RUN >/dev/null 2>&1 || { echo "FALHA: contas 2 antes da limpeza"; exit 1; }
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN PERFORM pg_sleep(0.3); RETURN OLD; END \$f\$;
+             CREATE TRIGGER qa_auth_trap BEFORE DELETE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  $UNLOAD --concurrency 1 >"$WORK/unload-kill2.log" 2>&1 &
+  UL_PID=$!
+  for _ in $(seq 1 300); do
+    LEFT="$($PSQL -Atc "SELECT count(*) FROM auth.users WHERE raw_app_meta_data ? 'legacy_member_id'")"
+    DBDONE="$($PSQL -Atc "SELECT count(*) FROM legacy._unload_runs WHERE status = 'auth_pending'" 2>/dev/null || echo 0)"
+    [ "$DBDONE" -ge 1 ] && [ "$LEFT" -le 30 ] && break
+    sleep 0.1
+  done
+  kill -9 "$UL_PID" 2>/dev/null || true
+  wait "$UL_PID" 2>/dev/null || true
+  auth_trap_drop
+  LEFT="$($PSQL -Atc "SELECT count(*) FROM auth.users WHERE raw_app_meta_data ? 'legacy_member_id'")"
+  check "o banco foi limpo e sobraram contas no Auth ($LEFT)" test "$LEFT" -ge 1
+  $UNLOAD >"$WORK/unload3.log" 2>&1 || { cat "$WORK/unload3.log"; echo "FALHA: limpeza 3"; exit 1; }
+  grep -E '^Contas no Auth' "$WORK/unload3.log"
+  check "o destino voltou ao retrato de antes da carga" test "$($U fingerprint)" = "$FP0"
+  check "a execução que caiu foi completada" test "$($PSQL -Atc "SELECT count(*) FROM legacy._unload_runs WHERE status = 'auth_pending'")" = 0
+
+  step "Limpeza do ensaio: recusa depois de uma carga --final"
+  $LOAD >/dev/null 2>&1 || { echo "FALHA: carga 3 antes da limpeza"; exit 1; }
+  $U mark-final
+  expect_fail "recusa sem --undo-final" "carga final" $UNLOAD
+  $UNLOAD --dry-run >"$WORK/unload-final-dry.log" 2>&1 || { cat "$WORK/unload-final-dry.log"; echo "FALHA: --dry-run depois da final"; exit 1; }
+  check "o --dry-run segue, com aviso" grep -q 'exige --undo-final' "$WORK/unload-final-dry.log"
+  $UNLOAD --undo-final >/dev/null 2>&1 || { echo "FALHA: --undo-final"; exit 1; }
+  check "o destino voltou ao retrato de antes da carga" test "$($U fingerprint)" = "$FP0"
+
+  step "Limpeza do ensaio: trava comum com a carga e as contas"
+  $PSQL -c "SELECT pg_advisory_lock(hashtextextended('mci.e4.load', 0)), pg_sleep(8)" >/dev/null &
+  LOCK_PID=$!
+  sleep 1
+  expect_fail "a limpeza recusa com a trava ocupada" "em andamento" $UNLOAD --dry-run
+  wait "$LOCK_PID"
+
+  step "Limpeza do ensaio: cônjuge, participante e autoria em cadastros que ficam"
+  $LOAD >/dev/null 2>&1 || { echo "FALHA: carga 4 antes da limpeza"; exit 1; }
+  $U side-effects-setup
+  $UNLOAD >"$WORK/unload4.log" 2>&1 || { cat "$WORK/unload4.log"; echo "FALHA: limpeza 4"; exit 1; }
+  $U side-effects-check
+  $L lists-empty
+
+  step "Limpeza do staging depois da limpeza do ensaio"
+  $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --dry-run >"$WORK/clean-after.log" 2>&1
+  check "o clean não acusa carga no destino" test -z "$(grep 'carga no destino' "$WORK/clean-after.log")"
+  $U unseed-pre
+fi
+
 if [ "${LOAD_VOLUME:-1}" != 0 ]; then
   step "Carga: volume (3 mil membros, 300 células, 30 mil relatórios)"
   $L reset
+  [ "$ACCOUNTS" != 0 ] && FPV0="$($U fingerprint)"
   psql "postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres" -X -q -v ON_ERROR_STOP=1 -f "$HERE/volume/legacy-volume.sql"
   for run in dry-run 1 2; do
     ARGS=""; [ "$run" = dry-run ] && ARGS="--dry-run"
@@ -431,6 +598,16 @@ if [ "${LOAD_VOLUME:-1}" != 0 ]; then
     $ACC unchanged
     $ACC volume-check
     $ACC problems-empty
+    step "Limpeza do ensaio: volume"
+    for run in dry-run 1 2; do
+      ARGS=""; [ "$run" = dry-run ] && ARGS="--dry-run"
+      VLOG="$WORK/vol-unload-$run.log"
+      $UNLOAD $ARGS >"$VLOG" 2>&1 || { cat "$VLOG"; echo "FALHA: limpeza no volume ($run)"; exit 1; }
+      echo "limpeza no volume ($run):"
+      grep -E '^(Sai|Volta|Contas no Auth|Tempo|Nada)' "$VLOG" | sed 's/^/  /' || true
+    done
+    check "o destino voltou ao retrato de antes da carga" test "$($U fingerprint)" = "$FPV0"
+    $L lists-empty
   fi
 fi
 

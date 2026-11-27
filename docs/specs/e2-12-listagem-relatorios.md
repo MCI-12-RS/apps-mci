@@ -6,6 +6,7 @@
 > - Ficam para o usuário revisar no PR os padrões P-LRE-01 a P-LRE-34 e as perguntas Q-1 a Q-7. Nenhuma bloqueia: cada uma já tem um padrão adotado.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.10 e do E2.11 (retrato do relatório, REL-09). Entra depois do E2.11.
 > - Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho: quatro PRs (banco; lista com filtros e atalhos; consulta; consulta no detalhe da célula, opcional). Ficam para o usuário revisar no PR as definições DA-1 a DA-14. Faltam os Testes (QA).
+> - **Andamento (2026-11-27):** PR 1 (banco, tarefas 1 a 4) implementado e testado na pista A, sem merge nem deploy; divergências em [Implementação do PR 1](#implementação-do-pr-1-2026-11-27). Faltam a conferência em produção, os PRs 2 a 4 e a revisão final.
 >
 > Slug: `e2-12-listagem-relatorios` · Paridade com o legado: sim (REL-13). Regras novas:
 > - filtros de múltipla escolha, pessoa indisponível e G12 que inclui os relatórios do próprio G12;
@@ -2650,6 +2651,40 @@ SELECT rolname, rolconfig FROM pg_roles WHERE rolname IN ('authenticated', 'auth
 
 **Playwright:** os critérios `UX-` de cada PR com a massa, mais o *smoke* de login. O relógio do servidor não é controlável: os critérios de atalho que dependem da hora (UX-04) interceptam a resposta da `server_weeks` (`page.route`) e mudam o fuso e o relógio do navegador (`timezoneId`, `Date` simulado), para provar que a tela segue o servidor.
 
+### Implementação do PR 1 (2026-11-27)
+Migrations `20261204100000_e212_01_report_list.sql` e `20261204100100_e212_02_save_report_edit_only.sql`, na `mci-connect` (branch `claude/e212-pr1`). Tarefa 1: os nomes do desenho batem com o que o E2.10 (PR 1) e o E2.11 entregaram (as 17 colunas da `cell_reports_view`, `viewer_sees_cell_people` com EXECUTE para `authenticated`, `sp_local`, `first_distinct_ids`, `cell_filter_person`, `cell_identity`, `private.report_raise` e `report_id_required`); a `cell_reports_view` vigente é a do E2.11 (`20261129100000`), igual ao `pg_get_viewdef`; a última definição da `save_cell_report` é a do `20261130100100`; no front da `main`, a única chamada (`use-cell-report-save`) manda sempre o id. Nenhuma pergunta de negócio. A [conferência em produção](#conferência-em-produção-tarefa-1) não foi rodada (a sessão não alcança o banco de produção): fica com o usuário, antes do "Deploy: banco".
+
+Divergências do código de referência, todas sem mudar regra:
+1. **Portão do E2.03.** As quatro RPCs chamam `PERFORM public.viewer_member_id()` antes de tudo (como as do E2.10), para responder com o código do portão mesmo sem linha a ler. Por isso as duas de seletor são `plpgsql` (`RETURN QUERY`, `#variable_conflict use_column`). `server_weeks` (só relógio) entrou na lista fechada do `e203_06_gate`, com a justificativa no spec do E2.03.
+2. **Seletores:** `_person` nulo devolve vazio nas duas; a `cell_report_filter_options` aplica à `_search` a normalização da lista (os 5 primeiros padrões não vazios, como no E2.10); a `cell_report_filter_names` devolve na ordem dos ids recebidos.
+3. **Página vazia:** a `cell_reports_list` devolve vazio cedo quando a etapa 1 não acha ids.
+4. **Migration 2:** a recusa `report_id_required` vem depois de quem chama e do portão, na mesma ordem da `submit_cell_report`, e não como o primeiro passo.
+5. **Pós-condições** conferem também a ordem das quatro colunas novas e as `reloptions` da view, e, na migration 2, que o corpo cita `report_id_required` e não cita a `submit_cell_report`. A guarda da migration 1 confere também `viewer_member_id()`; a da 2, `private.report_raise`.
+6. **Plano sem filtros:** com o `JOIN` da célula na view, o planejador lê os relatórios com *hash join* e *top-N heapsort*, e não pelo `cell_reports_date_id_idx` (que entra com o Período). A meta é atendida com folga (39 ms com 81 mil relatórios); o volume registra o plano.
+7. **Testes antigos ajustados:** as posições de coluna da `cell_reports_view` (`e108_pr2`, `e201_01`, `e205_01`, `e211_01`); `e206_01` (as duas funções de seletor leem `private.member_hierarchy.g12_level`); `e203_06_gate` (lista fechada); `e205_03`, `e205_04`, `e211_03`, `e205_concurrency.sh` e o E2E `autoria-tela` (UX-04) lançam pela `submit_cell_report`, e o `e211_03` passa a esperar `report_id_required` da `save_cell_report(NULL, …)`.
+
+Testes novos: pgTAP `e212_01_list` (110 asserções, a massa do Negócio: estrutura, paridade das 9 personas, filtros, DA-1 a DA-3, injeção, seletores, `server_weeks` em UTC e Asia/Tokyo, RN-18 por persona e semana, consulta e participantes, 60 relatórios na mesma hora, migration 2 e o líder registrado excluído); `supabase/tests/concurrency/e212_migrations.sh` (idempotência com as duas views iguais, guardas e pós-condições); `supabase/tests/volume/e212_volume.psql` (metas e planos).
+
+Volume (20 mil membros, 1.501 células, 81 mil relatórios, 650 mil participações, célula com 400 relatórios, relatório com 1.008 participantes; mediana de 5): Administrador sem filtros 39 / 25 ms (página / total), busca "fe" 321 / 301 ms, G12 24 / 18 ms, Esta semana 6 / 2 ms, Célula 9 / 2 ms, combinação da RN-02 10 / 2 ms, opções 35 a 48 ms, nomes 4 ms, consulta por id 3 ms, participantes do relatório grande 6 ms, `server_weeks` 0,1 ms; G12 (37 mil relatórios visíveis) 202 / 52 ms e opções 78 a 93 ms. Todas dentro das metas. A etapa 2 usa `cell_reports_pkey`; Líder, G12, Período, Célula, Tipo e Reunião entram na view; sem a busca, nem `search_normalize` nem `viewer_sees_cell_people` são calculados.
+
+Resultados (stack local `mci-e104-be`, depois de `db reset` com todas as migrations, mci-connect `c00cf47`): pgTAP 70 arquivos / 5.904 asserções, todos passando; `e212_migrations.sh` 5/5; `e205_concurrency.sh` e `e211_concurrency.sh` passando; Vitest 182 arquivos / 2.638 testes; `tsc` sem erro; build ok; lint com os 11 problemas antigos da `main` (3 erros, 8 avisos), nenhum novo. Playwright inteiro (`--workers=1`): 515 passaram, 8 pulados e 4 falharam: duas falhas conhecidas (UX-19 de `excluidos-membros` e o axe da `sign-in`) e duas intermitentes (UX-24 de `celulas-relatorios-escopo`, já conhecida, e UX-14 de `membro-validacoes-cadastro`), que passaram na nova rodada das duas specs (61/61). Concorrência: nenhum cenário novo (o passo só lê, menos a migration 2).
+
+### Implementação dos PRs 2 e 3 (2026-11-27)
+Juntos num PR só (branch `claude/e212-pr2`, mci-connect `61d26b9`): os dois são de front, sem banco entre eles, e a [Implantação](#implantação) não manda publicar um antes do outro. Tarefas 5 e 8; o PR 4 (T14, DA-14) fica separado. Publicação: merge → promote (o PR 1 já está no banco).
+
+Divergências do desenho, todas sem mudar regra:
+1. **Edição por cima da consulta sem entrada própria no histórico** (variante do plano B do P-LRE-29): a casca do formulário do E2.11 não aceita o pedido de fechar vindo de fora. "Editar relatório" abre o `CellReportDialog` por cima da consulta, que continua aberta atrás (UXD-10); salvar mostra os valores novos e devolve o foco a "Editar relatório". O voltar do aparelho com o formulário aberto fecha a consulta por baixo (a DA-11 fica para quando a casca aceitar o pedido de fora).
+2. **O chip da Célula** é o `RecordFilterChip` do E2.10, desenhado antes dos outros chips (P93); a `cellReportFilterChips` monta só os demais (Líder, G12, De, Até, Tipo e Reunião). Tirá-lo leva o foco a "Filtros".
+3. **`report` sem formato** sai na mesma limpeza dos filtros (`parseCellReportFilters`), numa atualização só da URL.
+4. **Participantes**: a consulta usa o mesmo `use-cell-report-participants` do formulário de edição (mesma chave), agora com `fetchAllRows`; "Tentar de novo" da consulta relê também os participantes que falharam junto.
+5. **Exclusão pela consulta** (DA-12): `useDeleteCellReport({ onDeleted })` fecha a consulta, tira o relatório das páginas no cache e as leituras dele antes do `refreshAfterReportWrite`.
+6. **Esc com aviso na tela**: o toast do Radix é a camada de cima; o primeiro `Esc` depois de salvar fecha o aviso, e o segundo, a consulta (comportamento do Radix, igual em todo o sistema).
+7. **Cabeçalho da lista** com `px-4` abaixo de 640 px, para os três atalhos caberem numa linha em 360 px (UX-05).
+8. `ReportMeetingBadge` (`StatusBadges`) é o badge da reunião; o detalhe da célula ainda usa o dele (unificar no PR 4). Saíram `cell-filter.ts`, `use-cell-report-filter.ts`, o `CellReportSheet` antigo, `CELL_REPORT_ROW_SELECT`, `withParticipantCounts`, `cellOfReport` e os textos da consulta em `deletion/texts.ts`. O `fetchListPage` continua (Auditoria e listas de excluídos).
+9. A busca continua com a espera de 300 ms do `useListSearchParams`, e a barra invertida já vai escapada pelo `toSearchPatterns` (teste novo em `filters.test.ts`).
+
+Testes: Vitest 180 arquivos / 2.601 testes (novos: `filters`, `weeks`, `report-row`, `report-sheet`, hooks e a tela); `tsc` sem erro; build ok; lint com os 11 problemas antigos. Playwright (`--workers=1`): `relatorios-filtros` (8) e `relatorios-consulta` (6) novos, e `login`, `relatorios-filtro-celula`, `relatorio-lancamento`, `relatorios-retrato`, `relatorios-retrato-escopo`, `relatorio-celula-excluida` (reescrita para a consulta nova), `exclusao-celulas-relatorios`, `excluidos-celulas-relatorios`, `autoria-tela`, `autoria-gravacao`, `celulas-relatorios-escopo` e `celula-detalhe` passando. Revisão de código, revisão de UI (tarefas 6 e 9) e QA (tarefas 7 e 10) ficam com a sessão principal.
+
 ## Tarefas
 _Seção do `architect`._
 
@@ -2722,3 +2757,14 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| 01 a 14, 16, 18, DA-1 a DA-10 | `supabase/tests/database/e212_01_list.test.sql` (desenvolvedor, 110) | passa |
+| 01, 02, 05 a 11, 13, 16 (paridade com filtros, 9 personas, WHERE a mão sobre a `cell_reports_view`; `cell_visible` = `cells_view`; opções = nomes da view) | `e212_02_qa.test.sql` seções 1 e 6 | passa |
+| 03, 04, 05, 08, 16 (relatório excluído, célula inativa, célula excluída, retrato x célula atual) | `e212_02_qa.test.sql` seções 4 a 6 | passa |
+| 13, DA-1 (130 empates, filtros, teto de 100, opções de Hugo e Ester) | `e212_02_qa.test.sql` seção 2 | passa |
+| 10, 18 (`server_weeks` x `dashboard_summary(_at)`, virada de semana e de ano, bissexto, fusos de sessão) | `e212_02_qa.test.sql` seção 3 | passa |
+| DA-1 a DA-3, risco 1 (nulos, vazios, extremos, 20 mil curingas) | `e212_02_qa.test.sql` seção 7 | passa |
+| DT-10 (`save_cell_report` sem id e com id sem mudança), portão do E2.03, anon e `service_role` | `e212_02_qa.test.sql` seções 8 e 9 | passa |
+| Entradas pela API (PostgREST + JWT local), 35 casos | `supabase/tests/concurrency/e212_api_inputs.sh` | 35/35 |
+| Migrations (idempotência, guardas, pós-condições) | `supabase/tests/concurrency/e212_migrations.sh` | 5/5 |
+
+PR 1 (QA, `claude/e212-pr1`): pgTAP inteiro por `psql` na pista A, 71 arquivos, 5.989 asserções, 0 falhas (`e212_02_qa` 95). Sem bug aberto.

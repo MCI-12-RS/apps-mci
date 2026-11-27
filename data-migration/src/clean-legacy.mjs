@@ -4,7 +4,8 @@
 // Recusa enquanto houver carga no destino (members.legacy_id preenchido, DT-05 do
 // spec e4-carga): o controle da carga (legacy._load_runs, legacy._load_adopted) fica
 // no schema e a limpeza do ensaio (npm run unload) precisa dele. Depois do cutover,
-// --after-cutover libera.
+// --after-cutover libera. Recusa também enquanto uma limpeza do ensaio tiver contas
+// pendentes no Auth (legacy._unload_runs): rodar o unload de novo completa.
 
 import { loadConfig, postgresOptions } from './lib/config.mjs';
 import { parseCli, log, runMain, formatInt } from './lib/cli.mjs';
@@ -54,6 +55,14 @@ async function main() {
         log(`  Carga no destino (${formatInt(loaded)} membros com legacy_id): --after-cutover.`);
       }
     }
+    const pending = await pendingUnloadAccounts(client);
+    if (pending > 0) {
+      // As contas pendentes de uma limpeza do ensaio (npm run unload) só estão anotadas aqui.
+      const msg = `Há ${formatInt(pending)} conta(s) do Auth pendentes de uma limpeza do ensaio (legacy._unload_runs). `
+        + 'Rode npm run unload de novo para completar antes de apagar o schema.';
+      if (!dryRun) throw new Error(msg);
+      log(`  AVISO: ${msg}`);
+    }
     if (dryRun) {
       await client.query('ROLLBACK');
       log('Nada foi apagado.');
@@ -68,6 +77,15 @@ async function main() {
   } finally {
     await client.end().catch(() => {});
   }
+}
+
+/** Contas pendentes de uma limpeza do ensaio que não terminou no Auth (0 sem a tabela). */
+async function pendingUnloadAccounts(client) {
+  const { rows: [t] } = await client.query(`SELECT to_regclass('${LEGACY_SCHEMA}._unload_runs') IS NOT NULL AS ok`);
+  if (!t.ok) return 0;
+  const { rows: [r] } = await client.query(`SELECT coalesce(sum(cardinality(pending_accounts)), 0)::int AS n
+    FROM ${qPg(LEGACY_SCHEMA)}._unload_runs WHERE status IN ('auth_pending', 'failed')`);
+  return r.n;
 }
 
 /** Membros carregados no destino (0 se a coluna do E4 PR 1 não existir). */

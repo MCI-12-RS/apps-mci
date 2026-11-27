@@ -136,6 +136,40 @@ export async function ensureAccount(admin, { id, email, legacyId }, { retries = 
   }
 }
 
+/**
+ * Apaga uma conta (limpeza do ensaio, `npm run unload`), idempotente. Devolve { outcome, info }:
+ *   deleted    apagada agora
+ *   gone       já não existia (outra execução, ou apagada antes)
+ *   failed     não apagou; info = status e código do Auth
+ * Rede, tempo-limite, 5xx e 429 são repetidos (até `retries` vezes), conferindo antes se a
+ * tentativa anterior chegou a apagar.
+ */
+export async function ensureAccountDeleted(admin, id, { retries = 2, sleep = defaultSleep } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await admin.deleteAccount(id);
+      return { outcome: 'deleted' };
+    } catch (err) {
+      if (!(err instanceof AuthAdminError)) throw err;
+      if (err.status === 404 && err.authCode === 'user_not_found') return { outcome: 'gone' };
+      let existing;
+      try {
+        existing = await admin.getAccount(id);
+      } catch (getErr) {
+        if (!(getErr instanceof AuthAdminError)) throw getErr;
+        existing = undefined;
+      }
+      if (existing === null) return { outcome: attempt > 0 ? 'deleted' : 'gone' };
+      const transient = err.status === 0 || err.status >= 500 || err.status === 429;
+      if ((transient || existing === undefined) && attempt < retries) {
+        await sleep(500 * 2 ** attempt);
+        continue;
+      }
+      return { outcome: 'failed', info: `http_${err.status}${err.authCode ? `_${err.authCode}` : ''}` };
+    }
+  }
+}
+
 const defaultSleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 /** Roda `fn` sobre `items` com até `limit` ao mesmo tempo; para de pegar itens novos se `shouldStop()`. */
