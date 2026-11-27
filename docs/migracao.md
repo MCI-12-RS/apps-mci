@@ -203,12 +203,12 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 ### Fase 4: Ferramentas de migração (seção 5)
 
 - [x] **E4.01** Estrutura de `data-migration/`: README, variáveis de ambiente e modo `--dry-run` · _backend_. Node 22 (`mysql2`, `pg`), configuração lida do `local.config` sem exportar, travas de destino, testes unitários e de ponta a ponta com MySQL 8.4 em Docker e a stack local (2026-11-25)
-- [ ] **E4.02** Migrations de preparação: `legacy_id` e colunas de snapshot · 5.3 · depende de E2.01 e E2.05 · _backend_
+- [ ] 🔄 **E4.02** Migrations de preparação: `legacy_id` e colunas de snapshot · 5.3 · depende de E2.01 e E2.05 · _backend_. Spec: [`specs/e4-carga.md`](specs/e4-carga.md) (E4.02, E4.06 a E4.09, em 6 PRs). PR 1 implementado (branch `claude/e4-carga-pr1` do `mci-connect`, 2026-11-27): `legacy_id` nas três tabelas, só gravado pela carga (`zy_keep_legacy_id`), e o `orphan_row` do E4.07. As colunas do retrato já vieram do E2.11. Falta revisão, merge e "Deploy: banco"
 - [ ] 🔄 **E4.03** Cópia bruta do MySQL para o schema `legacy` · 5.2 · usa a conexão do `local.config`, só leitura (5.1) · _backend_. Ferramenta pronta (`npm run copy`, 2026-11-25): leitura em transação `READ ONLY` com snapshot consistente, stream direto para o `legacy` numa transação, contagem e checksum dos dois lados, schema sem privilégio para a API. **Roda na máquina do usuário** (a sessão na nuvem não alcança o MySQL); antes, o IP precisa estar em *Trusted sources* do MySQL na DigitalOcean
 - [ ] 🔄 **E4.04** Relatório de saneamento · 5.4 · _backend_. Ferramenta pronta (`npm run report`, 2026-11-25): 51 verificações em quatro categorias, com as funções de regra do próprio banco novo, só contagens e Ids do legado em `data-migration/reports/` (ignorado). Falta rodar depois do E4.03 e responder as decisões que o relatório marcar como "Precisa de decisão"
 - [ ] **E4.05** Correções feitas no legado pela liderança, a partir do relatório de saneamento · 5.4 · _liderança_
 - [ ] **E4.06** SQL de transformação e carga · 5.5 · depende de D9 · _backend_
-- [ ] **E4.07** Backfill de nível e totais, reaproveitando as funções dos triggers · 5.5 · _backend_ · antes, uma migration põe o problema `orphan_row` na `member_hierarchy_drift()` e o `DELETE` da linha órfã no `rebuild` (backlog da revisão final do E2.06)
+- [ ] **E4.07** Backfill de nível e totais, reaproveitando as funções dos triggers · 5.5 · _backend_ · antes, uma migration põe o problema `orphan_row` na `member_hierarchy_drift()` e o `DELETE` da linha órfã no `rebuild` (backlog da revisão final do E2.06; no PR 1 do E4, junto com o mesmo para `cell_active_periods`)
 - [ ] **E4.08** Script de criação das contas no Auth e carga das credenciais legadas · 6.2, 6.3 · depende de E3.01 e D7 · _backend_
 - [ ] **E4.09** Script de reconciliação · 5.6 · _backend + qa_
 
