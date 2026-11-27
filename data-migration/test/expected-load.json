@@ -1,0 +1,71 @@
+{
+  "_comment": "Resultado esperado da carga (src/load.mjs, ensaio) sobre test/mysql/02-fixture.sql (massa fictícia), com LEGACY_PASTOR_IDS=1,2,99999, LEGACY_ADMIN_IDS=1,2,3 e os cadastros do novo de test/assert-load.mjs seed-new. lists: código da ocorrência → Ids do legado, em ordem; stage: contagens da transformação; roles: funções dos carregados.",
+  "lists": {
+    "admin_adopted_keeps_role": [3],
+    "cell_deleted_person_missing": [7],
+    "cell_person_deleted": [6],
+    "cell_person_missing": [5],
+    "cell_time_invalid": [2],
+    "cell_type_invalid": [4],
+    "cell_weekday_invalid": [3],
+    "member_adopted": [3, 9, 13],
+    "member_baptism_date_dropped": [40],
+    "member_cpf_dropped": [11, 12, 43],
+    "member_cpf_duplicate": [9, 10],
+    "member_email_dropped": [13, 14],
+    "member_email_duplicate": [5, 6],
+    "member_gender_invalid": [19],
+    "member_leader_cycle": [30, 31, 32],
+    "member_leader_deleted": [27],
+    "member_leader_missing": [29],
+    "member_leader_self": [46],
+    "member_leader_self_deleted": [45],
+    "member_mobile_duplicate": [7, 8],
+    "member_name_empty": [18],
+    "member_no_leader_not_marked": [22],
+    "member_no_leadership_with_leader": [26],
+    "member_spouse_dropped": [33, 34, 38],
+    "member_spouse_not_reciprocal": [35, 36],
+    "member_without_identifier": [6, 14, 15],
+    "participant_left_out": [4, 9996],
+    "pastor_config_invalid": [99999],
+    "report_cell_left_out": [6, 7, 8, 12],
+    "report_cell_missing": [5],
+    "report_date_missing": [6],
+    "report_duplicate_week": [1, 2]
+  },
+  "stage": {
+    "cells": {
+      "legacy": 10,
+      "deleted": 0,
+      "to_load": 4,
+      "left_out": 6
+    },
+    "members": {
+      "new": 41,
+      "legacy": 46,
+      "deleted": 4,
+      "to_load": 44,
+      "existing": 0,
+      "left_out": 2,
+      "adopted_now": 3
+    },
+    "reports": {
+      "legacy": 12,
+      "deleted": 1,
+      "to_load": 7,
+      "left_out": 5,
+      "duplicates_deleted": 1
+    },
+    "participants": {
+      "legacy": 8,
+      "to_load": 6,
+      "left_out": 2
+    }
+  },
+  "roles": {
+    "Líder": 5,
+    "Membro": 36,
+    "Administrador": 3
+  }
+}
