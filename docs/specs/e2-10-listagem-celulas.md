@@ -8,7 +8,8 @@
 > - Ficam para o usuário revisar no PR os padrões P-LCE-01 a P-LCE-33 e as perguntas Q-1 a Q-7. Nenhuma bloqueia: cada uma já tem um padrão adotado, e a T17 da UX mostra a tela em cada resposta. A Q-3 foi respondida pelo E2.09.
 > - As perguntas AQ-1 a AQ-12 do `architect` estão respondidas na Solução técnica.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.07 (PRs 1 e 2), do E2.08 e do E2.09.
-> - Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho. Ficam para o usuário revisar no PR também as definições DA-1 a DA-12. Falta Testes.
+> - Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho. Ficam para o usuário revisar no PR também as definições DA-1 a DA-12.
+> - **Andamento (2026-11-27):** PR 1 (banco, tarefas 1 a 4) implementado e testado na pista A, sem merge nem deploy; divergências em [Implementação do PR 1](#implementação-do-pr-1-2026-11-27). Faltam os PRs 2 a 5 e a revisão final.
 > Slug: `e2-10-listagem-celulas` · Paridade com o legado: sim (CEL-06 e CEL-07). Regras novas:
 > - filtro de situação (ativa ou inativa);
 > - filtros de múltipla escolha e pessoa indisponível;
@@ -2157,6 +2158,20 @@ _Conferido em 2026-11-24, só com leitura:_
 - _no `mci-connect` (`origin/main`, `4595daa`): `App.tsx` (sem rota de detalhe e sem `React.lazy`), `use-cells-list.ts`, `use-cell-reports-list.ts`, `use-cell.ts` (chave `["cells", "detail", id]`), `use-cell-options.ts`, `use-member-options.ts`, `use-paginated-select.ts`, `list-query.ts`, `search.ts`, `selectors.ts`, `src/lib/cells/*`, `CellReportForm.tsx` (oferta), `chart.tsx` (importa o Recharts inteiro, e nada usa o `chart.tsx` hoje) e o `index.html` (sem `viewport-fit=cover`);_
 - _nos specs: E1.08 (Pontos de extensão), E2.01 (rotas de excluídos, `use-restore`), E2.02 (predicados canônicos, `can_submit_report`, `my_access`, `canSeeRoute`, `NoAccess`), E2.05 (DT-03, `RecordAuthorship`, `use-cell-report`), E2.06 (`private.member_hierarchy.g12_id`, `cells_view.g12_leader_id`, `use-min-width`, `refreshAfterCellWrite`), E2.07 (Solução técnica inteira: `members_list`, `private.text_key`, `sp_day_start`, componentes P50 a P54), E2.08 (`cell_types()`, `cell_weekdays()`, `use-member-statuses`, `CellFormDialog`) e a Solução técnica do E2.09, escrita em paralelo a esta (`cell_report_status`, `report_status`, `report_missing_weeks`, `ReportStatus`, `CellCard`, `CellsTable`, `CELL_LIST_SELECT`, `refreshAfterReportWrite`, P74)._
 
+### Implementação do PR 1 (2026-11-27)
+Migrations `20261201100000_e210_01_cell_list.sql` e `20261201100100_e210_02_cell_detail.sql`. O desenho foi escrito antes do E2.03 PR 4 (portão), do E2.07 PRs 2 a 4 e do E2.11, todos já em produção. Divergências do código de referência abaixo, todas sem mudar regra:
+1. **Portão do E2.03.** As seis funções públicas chamam `PERFORM public.viewer_member_id()` antes de tudo, como a `members_list`, para responder com o código do portão mesmo sem linha a ler (o `e203_06_gate` chama cada função e exige o código). Por isso as quatro *invoker* (`cell_filter_options`, `cell_filter_names`, `cell_recent_reports`, `cell_identity`) são `plpgsql` com `RETURN QUERY` e `#variable_conflict use_column`, e não `sql`. `first_distinct_ids` (pura) entrou na lista fechada do `e203_06_gate`, com a justificativa no spec do E2.03.
+2. **Datas presas entre os anos 1 e 9999** na `cell_filter_normalize`, como a `member_filter_normalize` do E2.07: `sp_day_start('9999-12-31' + 1)` estourava.
+3. **Página vazia:** `cells_list` devolve vazio cedo quando a etapa 1 não acha ids (como a `members_list`).
+4. **Busca das opções:** `cell_filter_options` aplica à `_search` a mesma normalização da lista (os 5 primeiros padrões não vazios).
+5. **G12 nos nomes:** `cell_filter_names('g12', …)` devolve `g12_level`, `is_pastor` e `gender` nulos também quando o nome vem da `members_view` (o contrato "no G12, nulos" passa a valer para as duas funções).
+6. **Porta do detalhe uma vez só:** `cell_recent_reports` confere a célula na `cells_view` num `IF NOT EXISTS` antes da consulta (e não num `EXISTS` por linha); id nulo devolve vazio. `cell_identity` com id nulo também.
+7. **Guardas mais largas:** a da migration 1 confere também `g12_leader_name`, `leader_name`, `search_text`, `created_at` da `cells_view` e `viewer_member_id()`; a da migration 2, as 14 colunas da `cell_reports_view` usadas. As pós-condições conferem também que `service_role` não tem USAGE em `private` (conferido em produção: não tem).
+8. **E2.11 (retrato):** a `cell_reports_view` já filtra pelo retrato (`snapshot_*`, `viewer_sees_report_people`). `cell_recent_reports` e o filtro Célula a acompanham sem mudança (DT-09). A `cell_identity` lê as colunas `cell_*` (valores **atuais** da célula, DA-10), nunca as `snapshot_*`; o pgTAP troca o líder da célula e confere. O número de participantes conta os automáticos do E2.11 (RN-18). A leitura técnica 4 continua: em produção, nenhum relatório tem oferta nula; desde o E2.11 a célula realizada exige oferta, e "Não informada" fica para o legado.
+9. **E2.07:** `private.text_key` e `sp_day_start` usados como estão. A recomendação de a `member_filter_normalize` passar a usar `first_distinct_ids` fica para quando ela for mexida.
+10. **Índice do detalhe:** o planejador usa `cell_reports_cell_week_key` (também começa por `cell_id`) no lugar de `cell_reports_cell_id_date_idx`; a meta é atendida com folga. O volume confere "um índice que começa por `cell_id`".
+11. **Testes antigos ajustados:** `e203_06_gate` (lista fechada) e `e206_01_structure_grants` (`cell_filter_names` cita `members_view.g12_level`, como a `members_list`).
+
 ### Revisão das regras
 Nenhuma RN voltou ao PO. As lacunas técnicas foram resolvidas pela leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr). As perguntas Q-1, Q-2 e Q-4 a Q-7 ficam com o usuário: o desenho segue os padrões adotados, e o custo de cada alternativa está em [Perguntas Q-1 a Q-7](#perguntas-q-1-a-q-7-padrão-e-custo-das-alternativas).
 
@@ -2994,6 +3009,8 @@ SELECT (SELECT count(*) FROM public.members WHERE deleted_at IS NULL)      AS me
        current_setting('work_mem')                                         AS work_mem;
 SELECT rolname, rolconfig FROM pg_roles WHERE rolname IN ('authenticated', 'authenticator');
 ```
+**Resultado (2026-11-27, pela Management API, só leitura):** (a) todos verdadeiros, inclusive `members_list` (E2.07), `submit_cell_report` e o retrato na `cell_reports_view` (E2.11); última migration `20261130100100`. (b) 0 linhas. (c) nenhum índice em `cells.created_at` (a migration cria). (d) 2 células, 0 inativas, 0 sem data de cadastro, 2 sem rua, 0 com oferta nula (coluna anulável), 0 visitantes sem nome, no máximo 1 relatório por célula. (e) as definições locais da `cells_view` e da `cell_reports_view` têm o mesmo `md5` das de produção; as duas com `security_barrier=true, security_invoker=false` e SELECT só para `authenticated`. (f) 6 membros, 1 relatório, `work_mem` 2184kB, `statement_timeout` de 8 s em `authenticated`. `service_role` sem USAGE em `private`. Nada bloqueia.
+
 **Parar e voltar ao `architect`:** (a) com algum falso; (b) com linhas. Em (d), `visitante_sem_nome` maior que zero não para a publicação, mas o número de visitantes do detalhe contaria esses nomes vazios: vai como achado para o E2.11 (REL-08).
 
 ### Verificações obrigatórias (para o QA)
@@ -3104,3 +3121,19 @@ _Seção do `qa`._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| RN-01, RN-03 | `e210_01_list`: paridade por persona (Rita, Samuel, Pedro, André, Diego, Caio, Fábio, Ester, Hugo, Lia: todas as páginas de 2 em 2 = a `cells_view` na ordem da RN-13, e o total); células visíveis de cada uma | PR 1: passa |
+| RN-02 | `e210_01_list`: combinação E entre filtros, OU dentro do filtro, busca junto, página além do fim vazia | PR 1: passa |
+| RN-04 a RN-06, DA-2, DA-3, DA-8, DA-11 | `e210_01_list`: Líder e G12 (o próprio G12, casal, pastor e sem liderança fora); opções de Pedro, André, Rita, Hugo e Lia, com busca e paginação; `cell_filter_names` (Tânia para Pedro e André, Débora, Caio para Rita, excluída, inexistente, repetidos e nulos); 12 ids valem 10; nenhuma resposta de Pedro traz Tânia, Débora, Samuel ou Magda | PR 1: passa |
+| RN-07, risco 1 | `e210_01_list`: acentos, maiúsculas, espaços, tabulação, `%`, `_`, `\`, aspas, 100 caracteres, célula sem endereço; textos maliciosos sem erro e sem efeito | PR 1: passa |
+| RN-08, RN-09 | `e210_01_list`: tipo, dia, situação | PR 1: passa |
+| RN-10, DA-6, DA-12 | `e210_01_list`: propriedade (lista e total = a `cells_view` com o valor, na mesma chamada) para cada opção, Rita e Pedro; a inativa nunca entra; `no_meeting_day` e semanas fora de 1 a 4 ignorados | PR 1: passa |
+| RN-11, DA-7 | `e210_01_list`: 23:30 de Brasília (C6) e 00:10 (C2), só "a partir de", só "até", "data não registrada", invertidas, futuras, extremos; sessões em UTC e Asia/Tokyo | PR 1: passa |
+| RN-13 | `e210_01_list`: a ordem da massa; 60 células com o mesmo `created_at` de 25 em 25, sem repetir; com filtro, a mesma ordem relativa | PR 1: passa |
+| RN-21 | `e210_01_list`: Rita, Pedro e André: `cells_pending`, cada tipo e cada casal do ranking = `cells_list_count` | PR 1: passa |
+| DA-1 | `e210_01_list` e `e210_02_detail`: tipo, dia, `_limit`, `_offset` normalizados; enum e uuid malformados dão 22P02 | PR 1: passa |
+| RN-14, DA-4 | `e210_02_detail`: `cells_view` por id (Diego, Hugo, Lia); `cell_recent_reports` vazio para Diego e Lia em C1 e para a célula excluída | PR 1: passa |
+| RN-17, RN-18, RN-20, DA-9 | `e210_02_detail`: ordem de C1, R3 excluído fora, setas (R1 +1/+1, R2 sem, R4 +1/−1, R5 sem), R1 excluído, R3 restaurado, oferta nula e zero, 12 dão 10, participante excluído conta, nenhuma coluna de nomes | PR 1: passa |
+| RN-19, DA-10 | `e210_02_detail`: `cell_identity` (Pedro e Lia em C1, Diego nenhuma, Rita em C5 excluída pelo relatório, Ester em C8, inexistente e nulo); valores atuais da célula, não o retrato; `cell_reports_view` por `cell_id` | PR 1: passa |
+| Estrutura | `e210_02_detail`: enum, *definer*/*invoker*, `search_path`, EXECUTE só para `authenticated`, internas fechadas, sem USAGE em `private`, índice; `e203_06_gate` (as seis respondem com o código do portão) | PR 1: passa |
+| Migrations | `tests/concurrency/e210_migrations.sh`: rodam de novo sem mudar nada; de um banco sem elas, as views ficam iguais; as duas guardas; a pós-condição | PR 1: 5/5 |
+| Volume | `tests/volume/e210_volume.psql` (20 mil membros, 1.501 células, 81 mil relatórios, 649 mil participações, uma célula com 400): Administrador sem filtros 11,5 e 1,9 ms; Pendente 165 e 139 ms; combinação 24 e 18 ms; opções até 24 ms; nomes 6 ms; detalhe 3 ms; `cell_recent_reports` 11 ms; `cell_identity` 4 ms; Relatórios por célula 47 ms; G12 sem filtros 71 e 33 ms. Planos: etapa 2 por `cells_pkey`; contagem sem situação não chama `cell_report_situation`; G12 e data dentro da view; relatórios por índice de `cell_id` e a PK de participantes | PR 1: todas as metas |

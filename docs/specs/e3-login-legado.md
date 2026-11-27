@@ -1,6 +1,6 @@
 # E3: Login com a senha do legado (E3.01 a E3.05)
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-27). Negócio: Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário. UX: pendências PO-UX-1 a PO-UX-4 (texto e posição do card), que não bloqueiam. Próximo: PR 1 (banco).
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-27). Negócio: Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário. UX: pendências PO-UX-1 a PO-UX-4 (texto e posição do card), que não bloqueiam. **PR 1 (banco, tarefas 1 a 7) implementado em 2026-11-27** (branch `feat/E3-pr1-login-legado`, pista B; divergências em "Divergências do PR 1"). Próximo: merge, "Deploy: banco" e o PR 2 (front).
 > Slug: `e3-login-legado` · Paridade com o legado: sim (AUT-01, 6.3), sem prazo (D6) · Pendências só da liderança (Q-2, Q-6), que não bloqueiam a implementação.
 
 <!--
@@ -317,6 +317,14 @@ Recriada a partir do corpo de `e203_03`; limites, travas, `lock_timeout`, teto d
 5. **Vazamento da tabela:** `bcrypt(md5)` sem prazo (D6). Quebrar exige um bcrypt de custo 10 por palpite e conta; o MD5 dos backups do legado não serve como credencial, porque a `sign-in` recebe a senha.
 6. **Mudança de motivo:** contas de produção sem hash no cofre passam de "Conta de acesso indisponível" a "Sem senha definida" (DT-06); a tarefa 1 conta quantas são.
 
+### Divergências do PR 1
+Implementação em `20261202100000_e3_01_legacy_credentials.sql` e `20261202100100_e3_02_sign_in_legacy.sql`.
+- **PR1-1.** A `add_legacy_credential` trava também o membro (`FOR KEY SHARE`, como a `reset_member_password`), antes do cofre: a ordem da DT-05 fica inteira, e a carga não cria credencial para quem a `delete_member` está excluindo.
+- **PR1-2.** A `sign_in_attempt` continua sem travar o membro (como no E1.04). Uma primeira entrada simultânea à exclusão pode gravar a senha e descartar a credencial de quem acabou de ser excluído; a sessão não sai (a conta está suspensa), e a restauração devolve a mesma senha pelo cofre. Só o card conta essa pessoa como "feito".
+- **PR1-3.** "Credencial ativa" é `legacy_hash IS NOT NULL` (pendente ou usada com hash, DA-2); `legacy_credential_problems` usa a mesma condição para `both_passwords` e `no_account`. `no_password` vale também para a conta sem linha no cofre.
+- **PR1-4.** Trocar para `123456` na troca obrigatória dá `password_too_short` (a política vem antes da regra de não repetir, RN-10 do E2.03): a recusa do critério vale.
+- **PR1-5.** O gerador da tarefa 5 escreve o JSON (MD5 pelo pacote) e o pgTAP; o JSON tem também o caso U+0000 (`db: false`, DA-1). O `timing.mjs` e o `sign-in.edge.test.mjs` ganharam os casos do E3 (credencial errada, sem senha, DA-1, "Login realizado" com a credencial).
+
 ### Implantação
 - **PR 1 (banco: tarefas 1 a 7).** Merge → "Deploy: banco" (migrations e `sign-in`) → login de uma conta comum em produção (o caminho do cofre) e, como `postgres` só leitura, `SELECT count(*) FROM private.legacy_credentials` = 0. Sem promote (o front não muda). Nada muda para quem usa enquanto não houver credencial (antes do E4.08).
 - **Conferências em produção** (tarefa 1, só leitura, com autorização do usuário): `SHOW server_encoding` = UTF8; quantas contas de membros não excluídos não têm hash no cofre; a `private.legacy_credentials` não existe.
@@ -339,3 +347,14 @@ Recriada a partir do corpo de `e203_03`; limites, travas, `lock_timeout`, teto d
 | 11 | architect | 2 | Revisão final do passo; `CLAUDE.md` (estado atual e armadilhas: a credencial e a ordem cofre → credencial) e Progresso E3.01 a E3.03 em `docs/migracao.md`. | — | APROVADO | 10 |
 
 Paralelo: 4 junto com 3 depois da migration 2 pronta na stack; 5 começa com a 3; 8 e 9 no mesmo PR, em paralelo.
+
+## Testes
+| RN | Testes | Resultado |
+|---|---|---|
+| RN-01, RN-03, RN-07, RN-10, DT-01, DT-02, DT-09 | pgTAP `e3_01_structure` (45): tabela, RLS e grants, CHECKs, resultados da carga, descarte pela `write_password` e pela senha inicial, reconciliação, card sem permissão | PR 1 verde |
+| RN-01, RN-02, RN-05, DT-03, DT-04 | `generate-legacy-md5-cases.mjs` → `legacy-md5-cases.json` → pgTAP `e3_02_md5_cases` (69); Vitest `legacy-md5-cases-sync` (pacote `md5` 2.3.0 = JSON = SQL) | PR 1 verde |
+| RN-02 a RN-14 (massa Ana a Hugo) | pgTAP `e3_03_sign_in_legacy` (86) | PR 1 verde |
+| RN-12, DT-05 | `e3_concurrency.sh`: 20 entradas simultâneas (1 `legacy`, 19 `account`), entrada × redefinição (10 rodadas e a trava segura), carga × redefinição (10 rodadas); sem 40P01 | PR 1 verde |
+| RN-14, risco 1 | `e3_volume.psql`: 20 mil credenciais, `dashboard_first_access` 9,8 ms; carga 62 ms por credencial (cerca de 960 por minuto numa conexão) | PR 1 verde |
+| DA-1, DA-4, RN-06, RN-13 | Vitest do contrato da `sign-in`; `sign-in.edge.test.mjs` (23); `timing.mjs` (casos i e j a menos de 5 ms da referência) | PR 1 verde |
+| RN-02, RN-04, RN-05 | Playwright `login-legado.spec.ts` (Ana pelo celular com máscara, Bruno pelo CPF até a troca, Hugo com 72 letras) | PR 1 verde |
