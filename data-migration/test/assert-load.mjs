@@ -45,6 +45,18 @@ async function tx(fn) {
 try {
   if (mode === 'reset') {
     // Só teste: tira a carga e os cadastros de teste (a limpeza de verdade é o PR 3, DT-13).
+    // Contas da carga (npm run accounts, app_metadata.legacy_member_id) e as de teste: primeiro
+    // desliga os cadastros e tira as credenciais (em replica, sem Auditoria), depois apaga as
+    // contas fora do replica, para o cofre, as identidades e as sessões caírem em cascata.
+    await tx(async () => {
+      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(`DELETE FROM private.legacy_credentials c USING public.members m
+                           WHERE c.member_id = m.id AND (m.legacy_id IS NOT NULL OR m.id = ANY ($1::uuid[]))`, [TEST_IDS]);
+      await client.query(`UPDATE public.members SET auth_user_id = NULL
+                           WHERE auth_user_id IN (SELECT id FROM auth.users
+                                                   WHERE raw_app_meta_data ? 'legacy_member_id' OR id = ANY ($1::uuid[]))`, [TEST_IDS]);
+    });
+    await client.query(`DELETE FROM auth.users WHERE raw_app_meta_data ? 'legacy_member_id' OR id = ANY ($1::uuid[])`, [TEST_IDS]);
     await tx(async () => {
       await client.query('SET LOCAL session_replication_role = replica');
       await client.query(`DELETE FROM public.cell_report_participants p USING public.cell_reports r
@@ -56,8 +68,7 @@ try {
       // Em replica as FKs não valem: sem a carga, nenhum cadastro de fora aponta para ela
       // (o a4, que aponta para o a1, também sai).
       await client.query('DELETE FROM public.members WHERE legacy_id IS NOT NULL OR id = ANY ($1::uuid[])', [TEST_IDS]);
-      await client.query('DELETE FROM auth.users WHERE id = ANY ($1::uuid[])', [TEST_IDS]);
-      await client.query('DROP TABLE IF EXISTS legacy._load_adopted, legacy._load_runs');
+      await client.query('DROP TABLE IF EXISTS legacy._load_adopted, legacy._load_runs, legacy._accounts_runs');
     });
     await tx(async () => {
       await client.query('SELECT private.rebuild_member_hierarchy(), private.backfill_cell_active_periods()');
@@ -69,10 +80,12 @@ try {
     console.log('ok: destino sem carga');
   } else if (mode === 'seed-new') {
     await tx(async () => {
+      // Os textos de token vazios (e não nulos), como o Auth grava: com nulo, a Admin API não lê a conta.
       await client.query(`INSERT INTO auth.users (id, instance_id, aud, role, email, email_confirmed_at,
-                            raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+                            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token,
+                            recovery_token, email_change_token_new, email_change)
                           VALUES ($1::uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-                                  $1::text || '@mci12fakemail.com', now(), '{}', '{}', now(), now())`, [N.a1]);
+                                  $1::text || '@mci12fakemail.com', now(), '{}', '{}', now(), now(), '', '', '', '')`, [N.a1]);
       await client.query(`INSERT INTO public.members (id, name, email, mobile_whatsapp, gender, is_pastor, has_leadership,
                             auth_user_id, role_id, instagram)
                           VALUES ($1, 'Novo Adotado Um', ' M3@Exemplo.org ', '(51) 99999-0003', 'M', true, false, $1,

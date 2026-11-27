@@ -209,3 +209,47 @@ export function postgresOptions(values) {
     },
   };
 }
+
+/**
+ * Admin API do Auth (E4.08, `npm run accounts`). A chave é a secreta nova
+ * (`SUPABASE_SECRET_KEY`, `sb_secret_…`) ou, na falta dela, a service role antiga
+ * (`SUPABASE_SERVICE_ROLE_KEY`). O endereço (`SUPABASE_URL`) tem de ser do mesmo
+ * destino do banco: o projeto gkhnjhmgeceoaqeynhrj (`https://<ref>.supabase.co`,
+ * o padrão) com o banco do projeto, ou um endereço local com a stack local.
+ * Nada disso é impresso: o `describe` só tem o host.
+ */
+export function authAdminOptions(values, pgDescribe) {
+  const ref = required(values, 'SUPABASE_PROJECT_REF');
+  if (ref !== EXPECTED_PROJECT_REF) {
+    throw new ConfigError(
+      `SUPABASE_PROJECT_REF não é o banco do app (${EXPECTED_PROJECT_REF}). Confira o arquivo de configuração.`,
+    );
+  }
+  const projectUrl = `https://${ref}.supabase.co`;
+  const raw = values.get('SUPABASE_URL') || (pgDescribe.local ? '' : projectUrl);
+  if (!raw) {
+    throw new ConfigError('Com o banco da stack local, falta SUPABASE_URL (a API da mesma stack, ex.: http://127.0.0.1:58321).');
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ConfigError('SUPABASE_URL não é um endereço válido.');
+  }
+  const local = isLocalHost(url.hostname.replace(/^\[|\]$/g, ''));
+  if (local !== pgDescribe.local) {
+    throw new ConfigError('SUPABASE_URL e o banco (SUPABASE_HOST) precisam ser do mesmo destino: os dois na stack local ou os dois no projeto.');
+  }
+  if (!local && `${url.origin}` !== projectUrl) {
+    throw new ConfigError(`SUPABASE_URL precisa ser ${projectUrl}.`);
+  }
+  if (!local && url.protocol !== 'https:') throw new ConfigError('SUPABASE_URL precisa usar https.');
+  const key = values.get('SUPABASE_SECRET_KEY') || values.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!key) {
+    throw new ConfigError('Falta a chave secreta do Supabase (SUPABASE_SECRET_KEY, ou SUPABASE_SERVICE_ROLE_KEY).');
+  }
+  if (!key.startsWith('sb_secret_') && !key.startsWith('eyJ')) {
+    throw new ConfigError('A chave do Supabase não parece ser a secreta (sb_secret_…) nem a service role.');
+  }
+  return { describe: { host: url.host, local }, baseUrl: url.origin, key };
+}
