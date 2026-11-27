@@ -713,7 +713,7 @@ Vocabulário de referência. O `ux-designer` pode ajustar o tom, mas não o sent
 | participantes automáticos | O líder, o timóteo e o anfitrião entram automaticamente. · no seletor: Já entra automaticamente. · Participantes: {N} |
 | participante inativo (aviso, não impede o envio) | {Nome} (inativo) · {Nome} (inativa) |
 | "Não houve célula" | Não houve célula · Reunião prevista: {dia}, {dd/mm/aaaa}, às {HH:mm} · Motivo * · dica: Por exemplo: feriado, chuva forte, viagem do anfitrião. |
-| o que sai ao trocar a situação | Ao enviar, {itens} não serão enviados. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. |
+| o que sai ao trocar a situação | Ao enviar, não será enviado: {item}. · Ao enviar, não serão enviados: {itens}. · Ao salvar, sai do relatório: {item}. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. |
 | oferta (dica) | Se não houve oferta, informe 0,00. |
 | botões | Enviar relatório (lançamento) · Salvar alterações (edição) · Enviando… · Salvando… · Cancelar · Fechar · Editar relatório (no aviso de "já foi enviado") · Adicionar visitante |
 | sucesso | Relatório enviado. · Relatório atualizado. |
@@ -1354,7 +1354,7 @@ Caio marca "Não houve célula"            Ao enviar sem o motivo
   - Data, Horário, Tema e os grupos e campos abaixo saem do DOM;
   - aparece, como texto, "Reunião prevista: {dia}, {dd/mm/aaaa}, às {HH:mm}" (Textos de tela). No lançamento, é a reunião da semana; na edição, a data e o horário gravados (RN-16);
   - **Motivo *:** `Textarea` com `text-base md:text-sm`, `rows={3}`, sem altura fixa e sem placeholder, com a dica "Por exemplo: feriado, chuva forte, viagem do anfitrião." † entre o rótulo e o campo;
-  - **o que sai (P20):** se algo da célula realizada estava preenchido, o aviso `(i)` embaixo das opções, com `role="status"`, diz o que não vai: "Ao enviar, {itens} não serão enviados." †, com os itens preenchidos ("o tema", "{N} participantes escolhidos", "{N} visitantes", "a oferta (R$ {valor})", "as observações"). Voltar para "Célula realizada" devolve tudo e tira o aviso. A edição tem textos próprios (T9);
+  - **o que sai (P20):** se algo da célula realizada estava preenchido, o aviso `(i)` embaixo das opções, com `role="status"`, diz o que não vai: "Ao enviar, não serão enviados: {itens}." † ("não será enviado: {item}" com um item só), com os itens preenchidos ("o tema", "{N} participantes escolhidos", "{N} visitantes", "a oferta (R$ {valor})", "as observações"). Voltar para "Célula realizada" devolve tudo e tira o aviso. A edição tem textos próprios (T9);
   - ao enviar, o formulário não manda tema, participantes, visitantes, oferta nem observações.
 
 #### T5. Participantes
@@ -1701,7 +1701,7 @@ R3 passa para célula realizada           R3, como está (só leitura na data)
   - os de cadastro excluído ficam na linha da T8 do E2.01, sem ✕. A pessoa registrada que foi excluída fica na lista das registradas, só pelo nome, e não se repete nessa linha;
   - o total conta todos, uma vez cada.
 - **Célula realizada → "Não houve célula" (P20):**
-  - o aviso `(i)`, com `role="status"`, diz o que sai: "Ao salvar, saem do relatório: {itens}." †, com os itens que o relatório tem ("o tema", "{N} participantes", "{N} visitantes", "a oferta (R$ {valor})", "as observações");
+  - o aviso `(i)`, com `role="status"`, diz o que sai: "Ao salvar, saem do relatório: {itens}." † ("sai do relatório: {item}" com um item só), com os itens que o relatório tem ("o tema", "{N} participantes", "{N} visitantes", "a oferta (R$ {valor})", "as observações");
   - a data e o horário ficam como estão e aparecem como texto ("Reunião prevista: …");
   - o Motivo é obrigatório;
   - voltar para "Célula realizada" devolve tudo e tira o aviso.
@@ -1840,7 +1840,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar os termos. As mensagens 
 | Opções de data † | {Dia}, {dd/mm/aaaa} · {Dia}, {dd/mm/aaaa} (hoje) |
 | Dicas † | Entre {dia}, {dd/mm/aaaa}, às {HH:mm}, e agora. · Dentro da semana do relatório, de {dd/mm/aaaa} a {dd/mm/aaaa}. · Por exemplo: feriado, chuva forte, viagem do anfitrião. · Um nome por campo. · Se não houve oferta, informe 0,00. |
 | Troca de célula † | Data e horário trocados pela reunião desta célula. |
-| O que sai (P20) † | Ao enviar, {itens} não serão enviados. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. · itens: o tema · {N} participantes escolhidos (no lançamento) · {N} participantes (na edição) · {N} visitantes · a oferta (R$ {valor}) · as observações (no singular com 1) |
+| O que sai (P20) † | Ao enviar, não será enviado: {item}. · Ao enviar, não serão enviados: {itens}. · Ao salvar, sai do relatório: {item}. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. · itens: o tema · {N} participantes escolhidos (no lançamento) · {N} participantes (na edição) · {N} visitantes · a oferta (R$ {valor}) · as observações (no singular com 1) |
 | Participantes | Participantes · O líder, o timóteo e o anfitrião entram automaticamente. · na edição: O líder, o timóteo e o anfitrião registrados no relatório não podem ser retirados dos participantes. · Outros participantes † · Buscar membros… · Já entra automaticamente. † · Participantes: {N} · {Nome} (inativo) · {Nome} (inativa) · Retirar {Nome} † · as linhas do E2.01 e do E2.02 |
 | Visitantes | Visitantes · Nome do visitante † (placeholder) · Nome do visitante {n} † (nome acessível) · Retirar o visitante {Nome} † · Retirar o visitante {n} † · Adicionar visitante · Visitantes: {N} † |
 | Oferta | Oferta * · R$ · 0,00 (placeholder) · as mensagens do Negócio |
