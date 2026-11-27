@@ -149,7 +149,7 @@ describe('Concorrência com gravações pela API', () => {
     assert.deepEqual(await integrity(), { drift: 0, periods: 0, member_rules: 0, cell_rules: 0, defaults: 1 });
   });
 
-  test('duas cargas ao mesmo tempo: uma termina e a outra falha com mensagem do banco (sem estado parcial)', async () => {
+  test('duas cargas ao mesmo tempo: uma termina e a outra espera a trava (ou falha com mensagem clara), sem estado parcial', async () => {
     legacy(base());
     for (let round = 0; round < 3; round += 1) {
       resetDest();
@@ -159,6 +159,8 @@ describe('Concorrência com gravações pela API', () => {
       assert.ok(ok >= 1, `ao menos uma carga termina (rodada ${round}): ${ra.out}\n---\n${rb.out}`);
       for (const x of [ra, rb].filter((y) => y.status !== 0)) {
         assert.doesNotMatch(x.out, /TypeError|Cannot read/, 'erro legível');
+        // QA-2: a trava consultiva vem antes do CREATE … IF NOT EXISTS do controle (sem 23505 em pg_type).
+        assert.doesNotMatch(x.out, /23505|pg_type/, 'sem colisão na criação do controle');
         console.log(`  (rodada ${round}) a outra carga falhou com: ${x.out.split('\n').filter((l) => /ERRO|Erro|erro/.test(l)).slice(0, 2).join(' | ')}`);
       }
       assert.deepEqual(await integrity(), { drift: 0, periods: 0, member_rules: 0, cell_rules: 0, defaults: 1 });

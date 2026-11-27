@@ -66,3 +66,72 @@ describe('Argumentos e pré-condições', () => {
     assert.notEqual(r.status, 0);
   });
 });
+
+describe('Decisões e travas da rodada de correções', () => {
+  test('Q-E4-6: excluído sem nome ou com sexo inválido fica de fora, é listado e não para o --final; o não excluído para', async () => {
+    const extra = [M(10, { LeadershipId: 2, Name: '   ', IsDeleted: 1 }), M(11, { LeadershipId: 2, Gender: 7, IsDeleted: 1 })];
+    legacy({ ...data(), members: [...data().members, ...extra] });
+    const r = load([...ADMINS, '--final']);
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /member_deleted_name_empty: 10/);
+    assert.match(r.out, /member_deleted_gender_invalid: 11/);
+    assert.doesNotMatch(r.out, /PARA A CARGA/);
+    const [{ n }] = await q('SELECT count(*)::int AS n FROM public.members WHERE legacy_id IN (10, 11)');
+    assert.equal(n, 0, 'os dois ficam de fora');
+
+    resetDest();
+    legacy({ ...data(), members: [...data().members, M(12, { LeadershipId: 2, Name: '   ' }), M(13, { LeadershipId: 2, Gender: 7 })] });
+    const before = await fingerprint();
+    const f = load([...ADMINS, '--final']);
+    assert.notEqual(f.status, 0);
+    assert.match(f.out, /member_name_empty  \[PARA A CARGA\]: 12/);
+    assert.match(f.out, /member_gender_invalid  \[PARA A CARGA\]: 13/);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  test('depois de uma carga --final, refazer é recusado sem --reload-after-final (o --dry-run segue); com a flag, passa', async () => {
+    assert.equal(load([...ADMINS, '--final']).status, 0);
+    await q(`UPDATE public.members SET notes = 'editado no novo' WHERE legacy_id = 4`);
+    const before = await fingerprint();
+    const r = load(ADMINS);
+    assert.notEqual(r.status, 0);
+    assert.match(r.out, /carga final \(cutover, execução #\d+\) já foi gravada/);
+    assert.match(r.out, /--reload-after-final/);
+    const again = load([...ADMINS, '--final']);
+    assert.notEqual(again.status, 0, 'outro --final também é recusado');
+    assert.deepEqual(await fingerprint(), before, 'nada foi regravado');
+    const dry = load([...ADMINS, '--dry-run']);
+    assert.equal(dry.status, 0, dry.out);
+    assert.match(dry.out, /exige --reload-after-final/);
+    assert.deepEqual(await fingerprint(), before);
+    // Carga final desfeita (o PR 3 marca undone_at): volta a valer o ensaio.
+    const [{ id }] = await q(`SELECT id FROM legacy._load_runs WHERE mode = 'final' ORDER BY id DESC LIMIT 1`);
+    await q('UPDATE legacy._load_runs SET undone_at = now() WHERE id = $1', [id]);
+    const undone = load([...ADMINS, '--dry-run']);
+    assert.doesNotMatch(undone.out, /reload-after-final/);
+    await q('UPDATE legacy._load_runs SET undone_at = NULL WHERE id = $1', [id]);
+    const forced = load([...ADMINS, '--reload-after-final']);
+    assert.equal(forced.status, 0, forced.out);
+    assert.match(forced.out, /Refazendo a carga depois da carga final/);
+    const [m] = await q('SELECT notes FROM public.members WHERE legacy_id = 4');
+    assert.equal(m.notes, null, 'com a flag, o legado volta a valer (por isso a trava)');
+  });
+
+  test('destino que não é a stack local: sem --yes e sem --dry-run, recusa antes de conectar', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'mci-qa-remote-'));
+    const cfg = join(dir, 'remote.config');
+    // Senha fictícia: a recusa vem antes de qualquer conexão (nenhum pacote sai da máquina).
+    writeFileSync(cfg, ['SUPABASE_PROJECT_REF="gkhnjhmgeceoaqeynhrj"', 'SUPABASE_HOST="db.gkhnjhmgeceoaqeynhrj.supabase.co"',
+      'SUPABASE_PORT="5432"', 'SUPABASE_DB="postgres"', 'SUPABASE_USER="postgres"', 'SUPABASE_PASS="nao-e-a-senha"',
+      'LEGACY_PASTOR_IDS="1"', 'LEGACY_ADMIN_IDS="1,2"'].join('\n'));
+    try {
+      const r = load(['--config', cfg], { timeout: 15000 });
+      assert.notEqual(r.status, 0);
+      assert.match(r.out, /não é a stack local: para gravar, rode com --yes/);
+      assert.doesNotMatch(r.out, /ECONN|ENOTFOUND|timeout|password/i, 'não tentou conectar');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

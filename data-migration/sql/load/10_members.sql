@@ -22,6 +22,11 @@ CREATE TEMP TABLE load_issues (code text NOT NULL, legacy_id integer, info text)
 CREATE FUNCTION pg_temp.blank_null(_v text) RETURNS text
 LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN _v ~ '^[[:space:]]*$' THEN NULL ELSE _v END $$;
 
+-- Tira os espaços das pontas: o mesmo [[:space:]] (tab, quebra de linha…), com o NBSP
+-- explícito (não depende do locale do banco). O btrim sem argumento só tira o espaço comum.
+CREATE FUNCTION pg_temp.trim_space(_v text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$ SELECT regexp_replace(_v, '^[[:space:]\u00a0]+|[[:space:]\u00a0]+$', '', 'g') $$;
+
 -- Membros, com os valores lidos pelas regras do novo -------------------------
 CREATE TEMP TABLE lm ON COMMIT DROP AS
 SELECT x."Id" AS lid,
@@ -78,10 +83,13 @@ UPDATE lm SET
   -- A chave do celular (9º dígito conta como igual) custa caro por chamada: calculada uma vez.
   mobile_key = public.mobile_match_key(mobile);
 
+-- O não excluído é pendência "corrigir no legado" (o --final para); o excluído não pode ser
+-- corrigido na tela do legado e só é listado (Q-E4-6).
 INSERT INTO load_issues
-SELECT 'member_name_empty', lid, CASE WHEN del THEN 'excluído' END FROM lm WHERE name IS NULL
+SELECT CASE WHEN del THEN 'member_deleted_name_empty' ELSE 'member_name_empty' END, lid, NULL FROM lm WHERE name IS NULL
 UNION ALL
-SELECT 'member_gender_invalid', lid, CASE WHEN del THEN 'excluído' END FROM lm WHERE gender IS NULL
+SELECT CASE WHEN del THEN 'member_deleted_gender_invalid' ELSE 'member_gender_invalid' END, lid, NULL FROM lm
+ WHERE gender IS NULL
 UNION ALL
 SELECT 'member_email_dropped', lid, CASE WHEN del THEN 'excluído' END FROM lm
  WHERE included AND email_n IS NOT NULL AND email IS NULL
@@ -93,7 +101,15 @@ SELECT 'member_baptism_date_dropped', lid, CASE WHEN del THEN 'excluído' END FR
  WHERE included AND NOT is_baptized AND baptism_date_raw IS NOT NULL
 UNION ALL
 SELECT 'member_no_leadership_with_leader', lid, CASE WHEN del THEN 'excluído' END FROM lm
- WHERE included AND no_leadership AND leader_raw IS NOT NULL;
+ WHERE included AND no_leadership AND leader_raw IS NOT NULL
+UNION ALL
+-- Migram como estão (nenhum CHECK nem a member_rule_violations confere): a tela avisa na edição.
+SELECT 'member_birth_out_of_range', lid,
+       concat_ws('; ', public.birth_date_problem(birth_date, public.sp_today()), CASE WHEN del THEN 'excluído' END)
+  FROM lm WHERE included AND public.birth_date_problem(birth_date, public.sp_today()) IS NOT NULL
+UNION ALL
+SELECT 'member_mobile_invalid_kept', lid, CASE WHEN del THEN 'excluído' END FROM lm
+ WHERE included AND mobile IS NOT NULL AND public.normalize_mobile(mobile) IS NULL;
 
 -- Identificador repetido entre não excluídos (índices únicos do E2.04): fica só no menor Id.
 CREATE TEMP TABLE lm_dup ON COMMIT DROP AS

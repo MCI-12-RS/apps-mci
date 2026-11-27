@@ -27,6 +27,7 @@ import { LOAD_CATEGORIES, blockingIssues, loadCodeInfo, parseIdList } from './li
 
 const USAGE = `
 Uso: node src/load.mjs [--config <arquivo>] [--dry-run] [--final] [--pastor-ids 1,2] [--admin-ids 3,4] [--out-dir <pasta>]
+                        [--yes] [--reload-after-final]
 
   --config      arquivo de configuração (padrão: MCI_LOCAL_CONFIG ou <raiz>/local.config)
   --dry-run     roda a carga inteira e desfaz no fim (nada fica gravado; nenhum arquivo)
@@ -34,6 +35,11 @@ Uso: node src/load.mjs [--config <arquivo>] [--dry-run] [--final] [--pastor-ids 
   --pastor-ids  Ids do legado dos pastores da D9 (padrão: LEGACY_PASTOR_IDS)
   --admin-ids   Ids do legado dos Administradores (padrão: LEGACY_ADMIN_IDS; RN-18 do E3)
   --out-dir     pasta do relatório de carga (padrão: data-migration/reports)
+  --yes         confirma a gravação num destino que não é a stack local (sem --dry-run, é obrigatório)
+  --reload-after-final
+                refaz a carga mesmo depois de uma carga --final (cutover) não desfeita. Só com
+                ordem expressa: refazer regrava os carregados com o legado (desfaz edições, reativa
+                células, restaura excluídos, zera a autoria e reaplica as funções)
 `;
 
 export const SQL_DIR = resolve(MIGRATION_ROOT, 'sql', 'load');
@@ -45,8 +51,33 @@ export const LOAD_TABLES = ['members', 'cells', 'cell_reports', 'cell_report_par
 const RUNS = `${qPg(LEGACY_SCHEMA)}._load_runs`;
 const ADOPTED = `${qPg(LEGACY_SCHEMA)}._load_adopted`;
 const OPEN_LIST_LIMIT = 30;
+// Trava consultiva da carga (por transação): duas cargas no mesmo destino não se cruzam,
+// nem na criação das tabelas de controle (antes do LOCK das quatro tabelas).
+export const LOAD_LOCK_KEY = 'mci.e4.load';
 
 const readSql = (name) => readFileSync(resolve(SQL_DIR, name), 'utf8');
+
+/** Uma carga por vez no destino: a trava consultiva espera até o lock_timeout (5 s). */
+async function takeLoadLock(client) {
+  try {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [LOAD_LOCK_KEY]);
+  } catch (err) {
+    if (err.code === '55P03') {
+      throw new Error('Outra carga está em andamento neste destino (a trava não foi liberada em 5 s). Espere ela terminar e rode de novo.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Carga --final (cutover) gravada e não desfeita: refazer depois dela regravaria com o
+ * legado o que já é usado em produção. Só passa com --reload-after-final (ou no --dry-run).
+ */
+async function finalLoadDone(client) {
+  const { rows } = await client.query(`SELECT id, finished_at FROM ${RUNS}
+     WHERE mode = 'final' AND undone_at IS NULL AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1`);
+  return rows[0] ?? null;
+}
 
 /** Controle da carga no schema legacy (DT-05), fora da API como o resto do schema. */
 async function ensureControlTables(client) {
@@ -243,6 +274,8 @@ async function main() {
     'pastor-ids': { type: 'string' },
     'admin-ids': { type: 'string' },
     'out-dir': { type: 'string' },
+    yes: { type: 'boolean', default: false },
+    'reload-after-final': { type: 'boolean', default: false },
   }, USAGE);
   const dryRun = args['dry-run'];
   const final = args.final;
@@ -254,6 +287,9 @@ async function main() {
 
   log(`Carga do legado (${final ? 'FINAL, cutover' : 'ensaio'})${dryRun ? ' (--dry-run: tudo é desfeito no fim)' : ''}`);
   log(`  Destino: Postgres ${pgo.describe.host}:${pgo.describe.port}/${pgo.describe.database}${pgo.describe.local ? ' (stack local)' : ''}`);
+  if (!pgo.describe.local && !dryRun && !args.yes) {
+    throw new Error('O destino não é a stack local: para gravar, rode com --yes (ou veja antes com --dry-run).');
+  }
   if (!pastorIds.length) warn('LEGACY_PASTOR_IDS não configurado: ninguém entra como pastor (D9).');
   if (!adminIds.length) warn('LEGACY_ADMIN_IDS não configurado: ninguém da carga recebe a função Administrador (RN-18 c do E3).');
 
@@ -277,8 +313,21 @@ async function main() {
     await client.query(`SET LOCAL lock_timeout = '5s'`);
     await client.query(`SET LOCAL statement_timeout = '15min'`);
     await precheck(client);
+    await takeLoadLock(client);
     await ensureControlTables(client);
     await client.query(`LOCK TABLE ${LOAD_TABLES.map((t) => `public.${t}`).join(', ')} IN EXCLUSIVE MODE`);
+    const finalRun = await finalLoadDone(client);
+    if (finalRun && !args['reload-after-final']) {
+      if (!dryRun) {
+        throw new Error(`A carga final (cutover, execução #${finalRun.id}) já foi gravada neste destino. Refazer agora `
+          + 'regravaria com o legado os dados que já são usados no novo (edições, células inativadas, exclusões, '
+          + 'autoria e funções). Só rode de novo com ordem expressa, com --reload-after-final.');
+      }
+      warn(`A carga final (execução #${finalRun.id}) já foi gravada neste destino; o --dry-run segue (nada é gravado), `
+        + 'mas a carga de verdade exige --reload-after-final.');
+    } else if (finalRun) {
+      warn(`Refazendo a carga depois da carga final (execução #${finalRun.id}), por --reload-after-final.`);
+    }
     ({ rows: [{ id: runId }] } = await client.query(
       `INSERT INTO ${RUNS} (mode, tool_commit) VALUES ($1, $2) RETURNING id`, [mode, gitCommit()],
     ));

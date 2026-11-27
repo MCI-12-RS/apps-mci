@@ -156,4 +156,26 @@ describe('Leituras depois da carga (stack local, PostgREST)', () => {
     const bad = await rest('/rest/v1/rpc/sign_in_attempt', { method: 'POST', body: { _identifier: '%%%', _password: 'x', _origin: '203.0.113.9' } });
     assert.equal(bad.status, 200, JSON.stringify(bad.json));
   });
+
+  test('PR2-9: relatório realizado com timóteo/anfitrião do retrato fora dos participantes é listado e salva no formulário (save_cell_report)', async () => {
+    // Relatório 3: retrato líder 4, timóteo e anfitrião 5; no legado só o 4 participou.
+    const [run] = await q(`SELECT lists FROM legacy._load_runs ORDER BY id DESC LIMIT 1`);
+    assert.ok((run.lists.report_snapshot_not_participant ?? []).includes(3), JSON.stringify(run.lists.report_snapshot_not_participant));
+    const [rep] = await q(`SELECT r.id, (SELECT id FROM public.members WHERE legacy_id = 4) AS m4,
+                                  (SELECT id FROM public.members WHERE legacy_id = 2) AS m2
+                             FROM public.cell_reports r WHERE r.legacy_id = 3`);
+    // Só o tema (participantes intocados, como o formulário manda quando não mudam).
+    const a = await rest('/rest/v1/rpc/save_cell_report', { token: tokens.admin, method: 'POST',
+      body: { _report_id: rep.id, _report: { theme: 'Tema corrigido' }, _participant_ids: null } });
+    assert.equal(a.status, 200, JSON.stringify(a.json));
+    // Com o conjunto final de participantes (o 4 e mais o 2): o 5, do retrato, não precisa entrar.
+    const b = await rest('/rest/v1/rpc/save_cell_report', { token: tokens.admin, method: 'POST',
+      body: { _report_id: rep.id, _report: {}, _participant_ids: [rep.m4, rep.m2] } });
+    assert.equal(b.status, 200, JSON.stringify(b.json));
+    const ps = await q(`SELECT m.legacy_id FROM public.cell_report_participants p JOIN public.members m ON m.id = p.member_id
+                         WHERE p.report_id = $1 ORDER BY 1`, [rep.id]);
+    assert.deepEqual(ps.map((x) => x.legacy_id), [2, 4]);
+    const [t] = await q('SELECT theme FROM public.cell_reports WHERE id = $1', [rep.id]);
+    assert.equal(t.theme, 'Tema corrigido');
+  });
 });

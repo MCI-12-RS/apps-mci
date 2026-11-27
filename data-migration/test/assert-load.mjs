@@ -129,7 +129,7 @@ try {
     const [run] = await q('SELECT * FROM legacy._load_runs ORDER BY id DESC LIMIT 1');
     assert.ok(run.finished_at, 'carga terminada');
     const codes = Object.keys(expected.lists).sort();
-    assert.deepEqual(Object.keys(run.lists).sort(), codes, 'lista de ocorrências');
+    assert.deepEqual(Object.keys(run.lists).sort(), codes, `lista de ocorrências (obtida: ${JSON.stringify(run.lists)})`);
     for (const c of codes) assert.deepEqual(run.lists[c], expected.lists[c], `ocorrência ${c}`);
     assert.deepEqual(run.counts.stage, expected.stage, 'contagens da transformação');
     assert.deepEqual(run.counts.write.roles, expected.roles, 'funções dos carregados');

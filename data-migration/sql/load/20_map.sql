@@ -77,19 +77,23 @@ SELECT n.id, public.normalize_email(n.email) AS email, public.mobile_match_key(n
   FROM public.members n
  WHERE n.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM member_map mm WHERE mm.id = n.id);
 
+-- O cadastro adotado está no mapa e nunca aparece aqui. Só não se repete o que a
+-- adoption_ambiguous já lista: o par (Id do legado, cadastro coincidente) da ambiguidade.
+-- Qualquer outro cadastro de fora com o mesmo identificador é conflito, inclusive para
+-- um Id adotado por outro campo (o índice único barraria o INSERT … ON CONFLICT).
 INSERT INTO load_issues
 SELECT DISTINCT 'identifier_conflict_new', c.lid, 'campo: ' || c.field
   FROM (
-    SELECT l.lid, 'e-mail' AS field FROM lm l JOIN outside_members n ON n.email = l.email
+    SELECT l.lid, n.id, 'e-mail' AS field FROM lm l JOIN outside_members n ON n.email = l.email
      WHERE l.included AND NOT l.del
     UNION ALL
-    SELECT l.lid, 'celular' FROM lm l JOIN outside_members n ON n.mobile_key = l.mobile_key
+    SELECT l.lid, n.id, 'celular' FROM lm l JOIN outside_members n ON n.mobile_key = l.mobile_key
      WHERE l.included AND NOT l.del
     UNION ALL
-    SELECT l.lid, 'CPF' FROM lm l JOIN outside_members n ON n.cpf = l.cpf
+    SELECT l.lid, n.id, 'CPF' FROM lm l JOIN outside_members n ON n.cpf = l.cpf
      WHERE l.included AND NOT l.del
   ) c
- WHERE NOT EXISTS (SELECT 1 FROM adopt_pairs p WHERE p.lid = c.lid);
+ WHERE NOT EXISTS (SELECT 1 FROM adopt_pairs p WHERE p.lid = c.lid AND p.id = c.id);
 
 -- Carregados antes e ausentes agora (não são mexidos; a limpeza do PR 3 cuida).
 INSERT INTO load_issues

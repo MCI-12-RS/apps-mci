@@ -8,7 +8,7 @@ CREATE TEMP TABLE load_backfill (step text PRIMARY KEY, n integer) ON COMMIT DRO
 INSERT INTO load_backfill SELECT 'hierarchy_rebuilt', private.rebuild_member_hierarchy();
 
 -- (8) Funções, só para quem não foi adotado (o adotado fica com a do novo, Q-E4-1):
--- Administrador para LEGACY_ADMIN_IDS (não excluídos), Líder para o G12
+-- Administrador para LEGACY_ADMIN_IDS (não excluídos), Líder para o G12 não excluído
 -- (g12_level = 1, inclusive abaixo de um topo sem liderança e inativo), a padrão
 -- para os demais, inclusive excluídos. Refazer só regrava quem mudou.
 WITH roles AS (
@@ -19,7 +19,7 @@ WITH roles AS (
 target AS (
   SELECT m.id,
          CASE WHEN m.legacy_id = ANY (cfg.admin_ids) AND m.deleted_at IS NULL THEN r.sys
-              WHEN h.g12_level = 1 THEN r.lider
+              WHEN h.g12_level = 1 AND m.deleted_at IS NULL THEN r.lider
               ELSE r.def END AS role_id
     FROM member_map mm
     JOIN public.members m ON m.id = mm.id

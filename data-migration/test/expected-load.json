@@ -10,6 +10,7 @@
     "cell_weekday_invalid": [3],
     "member_adopted": [3, 9, 13],
     "member_baptism_date_dropped": [40],
+    "member_birth_out_of_range": [20, 21],
     "member_cpf_dropped": [11, 12, 43],
     "member_cpf_duplicate": [9, 10],
     "member_email_dropped": [13, 14],
@@ -21,6 +22,7 @@
     "member_leader_self": [46],
     "member_leader_self_deleted": [45],
     "member_mobile_duplicate": [7, 8],
+    "member_mobile_invalid_kept": [15, 16],
     "member_name_empty": [18],
     "member_no_leader_not_marked": [22],
     "member_no_leadership_with_leader": [26],
@@ -32,7 +34,8 @@
     "report_cell_left_out": [6, 7, 8, 12],
     "report_cell_missing": [5],
     "report_date_missing": [6],
-    "report_duplicate_week": [1, 2]
+    "report_duplicate_week": [1, 2],
+    "report_snapshot_not_participant": [2, 3, 4, 9, 10, 11]
   },
   "stage": {
     "cells": {

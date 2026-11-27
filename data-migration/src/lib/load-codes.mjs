@@ -26,8 +26,13 @@ export const LOAD_CODES = {
   admins_below_minimum: ['legacy_fix', 'Members', 'Menos de 2 Administradores não excluídos com identificador, contando os adotados (RN-18 c do E3); Id = quantidade'],
 
   // Membros que não podem ser gravados (nome e sexo são obrigatórios, também nos excluídos)
-  member_name_empty: ['legacy_fix', 'Members', 'Nome vazio: o membro fica de fora (e quem aponta para ele, como se ele não existisse)'],
-  member_gender_invalid: ['legacy_fix', 'Members', 'Sexo fora de 0 e 1: o membro fica de fora (e quem aponta para ele, como se ele não existisse)'],
+  member_name_empty: ['legacy_fix', 'Members', 'Não excluído com nome vazio: o membro fica de fora (e quem aponta para ele, como se ele não existisse)'],
+  member_gender_invalid: ['legacy_fix', 'Members', 'Não excluído com sexo fora de 0 e 1: o membro fica de fora (e quem aponta para ele, como se ele não existisse)'],
+  // Q-E4-6: o excluído não pode ser corrigido na tela do legado; fica de fora sem parar o --final.
+  member_deleted_name_empty: ['transform', 'Members', 'Excluído com nome vazio: fica de fora (e quem aponta para ele, como se ele não existisse); não para o --final (Q-E4-6)'],
+  member_deleted_gender_invalid: ['transform', 'Members', 'Excluído com sexo fora de 0 e 1: fica de fora (e quem aponta para ele, como se ele não existisse); não para o --final (Q-E4-6)'],
+  member_birth_out_of_range: ['info', 'Members', 'Nascimento no futuro ou há 100 anos ou mais: migra como está (a tela avisa na edição)'],
+  member_mobile_invalid_kept: ['info', 'Members', 'Celular que não é um número válido (10 ou 11 dígitos com DDD): migra só com os dígitos e não serve para o login'],
 
   // Identificadores (E2.04)
   member_email_dropped: ['transform', 'Members', 'E-mail inválido ou fictício: importado como nulo'],
@@ -74,6 +79,9 @@ export const LOAD_CODES = {
   report_duplicate_week: ['transform', 'Reports', 'Mais de um na mesma célula e semana: fica o de maior Id; os outros migram excluídos pelo sistema (Q-E4-4)'],
   report_snapshot_from_cell: ['info', 'Reports', 'Retrato com pessoa inexistente, de fora ou tipo vazio ou inválido: completado pela célula'],
   report_held_without_theme: ['info', 'Reports', 'Célula realizada sem tema: migra como está (Q-E4-3)'],
+  report_held_without_offering: ['info', 'Reports', 'Célula realizada sem oferta: migra como está (a edição pede a oferta)'],
+  report_skipped_without_reason: ['info', 'Reports', '"Não houve célula" sem motivo: migra como está (a edição pede o motivo)'],
+  report_snapshot_not_participant: ['info', 'Reports', 'Célula realizada em que líder, timóteo ou anfitrião do retrato não está entre os participantes: migra como está, sem inventar presença (PR2-9)'],
   report_week_conflict_new: ['block', 'Reports', 'A célula já tem, no novo, outro relatório não excluído na mesma semana: resolver ou rodar a limpeza antes'],
   report_stale: ['info', 'Reports', 'Carregado antes e ausente agora: não é mexido; rode a limpeza'],
 
@@ -99,11 +107,15 @@ export function blockingIssues(issues, { final }) {
   });
 }
 
+/** Maior Id do legado (int do MySQL e integer do Postgres). */
+export const PG_INT_MAX = 2147483647;
+
 /** Lista de Ids do legado (texto de configuração ou argumento): "1, 2;3". */
 export function parseIdList(text, label) {
   if (!text) return [];
   const ids = String(text).split(/[\s,;]+/).filter(Boolean).map((v) => {
     if (!/^\d+$/.test(v) || Number(v) <= 0) throw new Error(`${label} precisa ser uma lista de Ids numéricos.`);
+    if (Number(v) > PG_INT_MAX) throw new Error(`${label}: o Id ${v} passa do maior Id possível (${PG_INT_MAX}).`);
     return Number(v);
   });
   return [...new Set(ids)].sort((a, b) => a - b);

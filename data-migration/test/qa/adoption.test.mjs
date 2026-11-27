@@ -31,6 +31,36 @@ const mine = async (lid) => (await q('SELECT * FROM public.members WHERE legacy_
 
 beforeEach(() => resetDest());
 
+describe('Adotado por um campo com outro campo em uso fora da carga', () => {
+  test('adotado por e-mail cujo celular é de um carregado antes e ausente agora: identifier_conflict_new, sem 23505 e sem gravar', async () => {
+    // 1ª carga: o 20 (celular 51 99999-2020) entra pela carga.
+    legacy(core([M(20, { LeadershipId: 2, Email: 'x20@exemplo.org', MobileNumber: '51 99999-2020' })]));
+    assert.equal(load(ADMINS).status, 0);
+    // No legado, o 20 some e entra o 21, com o celular do 20 e o e-mail de um cadastro do novo.
+    legacy(core([M(21, { LeadershipId: 2, Email: 'adota21@exemplo.org', MobileNumber: '(51) 99999-2020' })]));
+    await newMember({ email: 'adota21@exemplo.org' });
+    const before = await fingerprint();
+    const r = load(ADMINS);
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /identifier_conflict_new[^\n]*PARA A CARGA[^\n]*21/);
+    assert.match(r.out, /member_stale[^\n]*20/);
+    assert.doesNotMatch(r.out, /23505|duplicate key/);
+    assert.doesNotMatch(r.out, /adoption_ambiguous/);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  test('adotado por e-mail cujo CPF é de outro cadastro do novo que não coincide com mais ninguém: para (não é ambiguidade de adoção, é conflito)', async () => {
+    // O 22 coincide com dois do novo: com A por e-mail e com B por CPF. É ambiguidade (os dois pares são do 22).
+    legacy(core([M(22, { LeadershipId: 2, Email: 'a22@exemplo.org', CPF: '529.982.247-25' })]));
+    await newMember({ email: 'a22@exemplo.org' });
+    await newMember({ cpf: '52998224725' });
+    const r = load(ADMINS);
+    assert.notEqual(r.status, 0);
+    assert.match(r.out, /adoption_ambiguous[^\n]*22/);
+    assert.doesNotMatch(r.out, /identifier_conflict_new/, 'o par da ambiguidade não é listado duas vezes');
+  });
+});
+
 describe('Adoção ambígua', () => {
   test('dois cadastros do novo coincidem com o mesmo membro do legado (um por e-mail, outro por CPF): para a carga, sem gravar', async () => {
     const d = core([M(10, { LeadershipId: 2, Email: 'amb10@exemplo.org', CPF: '529.982.247-25' })]);

@@ -62,9 +62,9 @@ describe('Texto: acento, emoji, espaços e caracteres hostis', () => {
 });
 
 describe('Texto: espaços que não são o espaço comum nos visitantes', () => {
-  // BUG QA-1 (sql/load/40_reports.sql, o ARRAY(... btrim(v.s) ...) dos visitantes): btrim sem argumento só tira o espaço
-  // comum; um visitante só com tab, quebra de linha ou espaço sem quebra (NBSP, comum ao colar) vira um visitante "vazio".
-  test('visitante só com tab, NBSP ou quebra de linha não vira visitante', { todo: 'BUG QA-1: btrim só tira o espaço comum' }, async () => {
+  // QA-1 (corrigido): os visitantes perdem nas pontas todo [[:space:]] e o NBSP (pg_temp.trim_space), como os
+  // outros textos; um visitante só com tab, quebra de linha ou espaço sem quebra não vira visitante "vazio".
+  test('visitante só com tab, NBSP ou quebra de linha não vira visitante', async () => {
     const d = core([], undefined, [rep(1, { Date: '2026-10-07 20:00:00', Visitors: ' \t |Ana|\t|\u00A0|\n|Bia\u00A0' })]);
     const r = run(d);
     assert.equal(r.status, 0, r.out);

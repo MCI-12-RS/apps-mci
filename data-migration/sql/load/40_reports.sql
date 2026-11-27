@@ -10,6 +10,8 @@
 --   vazio ou inválido vão nulos e o trigger do retrato (ENABLE ALWAYS) completa
 --   pela célula no INSERT em replica.
 -- - Relatório realizado sem tema migra como está (Q-E4-3).
+-- - Visitantes: separados por '|', sem os espaços das pontas (inclusive tab, quebra
+--   de linha e NBSP, pg_temp.trim_space) e sem os vazios.
 -- =============================================================================
 
 CREATE TEMP TABLE lr ON COMMIT DROP AS
@@ -24,9 +26,10 @@ SELECT r."Id" AS lid,
        CASE WHEN NOT coalesce(r."WeekCellSkipped", false) THEN pg_temp.blank_null(r."Subject") END AS theme,
        CASE WHEN NOT coalesce(r."WeekCellSkipped", false) THEN pg_temp.blank_null(r."Notes") END AS observations,
        CASE WHEN coalesce(r."WeekCellSkipped", false) THEN pg_temp.blank_null(r."Notes") END AS reason_not_held,
-       ARRAY(SELECT btrim(v.s)
+       ARRAY(SELECT t.name
                FROM regexp_split_to_table(coalesce(r."Visitors", ''), '\|') WITH ORDINALITY v(s, o)
-              WHERE btrim(v.s) <> '' ORDER BY v.o) AS visitors,
+              CROSS JOIN LATERAL (SELECT pg_temp.trim_space(v.s) AS name) t
+              WHERE t.name <> '' ORDER BY v.o) AS visitors,
        round(r."Contribution", 2) AS offering,
        ml.id AS snapshot_leader_id,
        mt.id AS snapshot_timothy_id,
@@ -95,7 +98,15 @@ SELECT 'report_snapshot_from_cell', lid,
    AND (snapshot_leader_id IS NULL OR snapshot_timothy_id IS NULL OR snapshot_host_id IS NULL OR snapshot_cell_type IS NULL)
 UNION ALL
 SELECT 'report_held_without_theme', lid, CASE WHEN del THEN 'excluído' END FROM lr
- WHERE included AND was_held AND theme IS NULL;
+ WHERE included AND was_held AND theme IS NULL
+UNION ALL
+-- Também migram como estão (o cell_reports_offering_check aceita nulo; nenhum CHECK exige o
+-- motivo): a edição pede o campo (RN-08 do E2.11).
+SELECT 'report_held_without_offering', lid, CASE WHEN del THEN 'excluído' END FROM lr
+ WHERE included AND was_held AND offering IS NULL
+UNION ALL
+SELECT 'report_skipped_without_reason', lid, CASE WHEN del THEN 'excluído' END FROM lr
+ WHERE included AND NOT was_held AND reason_not_held IS NULL;
 
 CREATE TEMP TABLE report_map (
   lid integer PRIMARY KEY,
@@ -137,3 +148,28 @@ SELECT 'participant_left_out', report_lid,
                  CASE WHEN report_id IS NULL THEN 'relatório não existe ou ficou de fora' END,
                  CASE WHEN member_id IS NULL THEN 'membro não existe ou ficou de fora' END)
   FROM lp WHERE report_id IS NULL OR member_id IS NULL;
+
+-- Relatório realizado em que alguém do retrato (depois de completado pela célula, como o
+-- trigger fará) não está entre os participantes do legado: migra como está, sem inventar
+-- presença. O ac_keep_snapshot_participants só barra a SAÍDA de quem está no retrato e a
+-- edição fixa só os registrados que já são participantes, então salvar o relatório no
+-- formulário continua funcionando (decisão PR2-9 do spec e4-carga).
+INSERT INTO load_issues
+SELECT 'report_snapshot_not_participant', s.lid, concat_ws('; ', s.missing, CASE WHEN s.del THEN 'excluído' END)
+  FROM (
+    SELECT l.lid, l.del,
+           concat_ws(', ',
+             CASE WHEN NOT EXISTS (SELECT 1 FROM lp WHERE lp.report_id = rm.id
+                                     AND lp.member_id = coalesce(l.snapshot_leader_id, c.leader_id)) THEN 'líder' END,
+             CASE WHEN NOT EXISTS (SELECT 1 FROM lp WHERE lp.report_id = rm.id
+                                     AND lp.member_id = coalesce(l.snapshot_timothy_id, c.timothy_id)) THEN 'timóteo' END,
+             CASE WHEN NOT EXISTS (SELECT 1 FROM lp WHERE lp.report_id = rm.id
+                                     AND lp.member_id = coalesce(l.snapshot_host_id, c.host_id)) THEN 'anfitrião' END
+           ) AS missing
+      FROM lr l
+      JOIN report_map rm ON rm.lid = l.lid
+      JOIN cell_map cm ON cm.id = l.cell_id
+      JOIN lc c ON c.lid = cm.lid
+     WHERE l.included AND l.was_held
+  ) s
+ WHERE s.missing <> '';

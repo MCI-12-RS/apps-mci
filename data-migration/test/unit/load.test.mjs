@@ -18,7 +18,9 @@ test('catálogo: todo código usado no SQL existe, e todo código do catálogo �
   // Códigos literais ('member_…', 'cell_…', …) e os montados ('member_' || field || '_duplicate').
   for (const m of allSql.matchAll(/'((?:member|cell|report|participant|admin|admins|adoption|identifier|pastor)_[a-z_]+)'/g)) {
     if (!['member_hierarchy_drift', 'member_rule_violations', 'cell_rule_violations', 'cell_active_period_problems',
-      'cell_periods_reset', 'cell_periods_backfilled']
+      'cell_periods_reset', 'cell_periods_backfilled',
+      // itens da validação (90_validate.sql), não ocorrências
+      'admin_without_system_role', 'cell_reports', 'cell_report_participants']
       .includes(m[1])) used.add(m[1]);
   }
   if (/'member_' \|\| field \|\| '_duplicate'/.test(allSql)) {
@@ -62,6 +64,21 @@ test('lista de Ids', () => {
   assert.deepEqual(parseIdList(undefined, 'X'), []);
   assert.throws(() => parseIdList('1,a', 'X'), /X precisa/);
   assert.throws(() => parseIdList('0', 'X'), /X precisa/);
+  // QA-3: Id acima do integer do banco é recusado na leitura dos argumentos.
+  assert.deepEqual(parseIdList('2147483647', 'X'), [2147483647]);
+  assert.throws(() => parseIdList('1,2147483648', 'X'), /X: o Id 2147483648 passa do maior Id/);
+  assert.throws(() => parseIdList('99999999999999999999', 'X'), /passa do maior Id/);
+});
+
+test('Q-E4-6: membro excluído sem nome ou com sexo inválido não para o --final; o não excluído para', () => {
+  const issues = [{ code: 'member_deleted_name_empty', n: 1 }, { code: 'member_deleted_gender_invalid', n: 1 }];
+  assert.deepEqual(blockingIssues(issues, { final: true }), []);
+  assert.deepEqual(blockingIssues([{ code: 'member_name_empty', n: 1 }, { code: 'member_gender_invalid', n: 1 }], { final: true })
+    .map((i) => i.code), ['member_name_empty', 'member_gender_invalid']);
+  for (const c of ['member_birth_out_of_range', 'member_mobile_invalid_kept', 'report_held_without_offering',
+    'report_skipped_without_reason', 'report_snapshot_not_participant']) {
+    assert.equal(loadCodeInfo(c).category, 'info', c);
+  }
 });
 
 test('SQL da carga: sem parâmetro posicional (nenhum dado pessoal vai como parâmetro)', () => {
