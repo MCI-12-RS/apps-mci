@@ -179,7 +179,8 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
   - Revisão final do passo (tarefa 12): APROVADA, com as revisões independentes de código (duas rodadas no PR 1) e de UI. Testes: pgTAP 4.452 a 4.505 asserções conforme a base, concorrência sem regressão, Vitest 2.186 e Playwright inteiro com 382 ok, só com 3 falhas sem relação com o passo.
   - Ressalva de volume: o filtro `pending` para o Administrador ficou entre 244 e 383 ms numa máquina compartilhada (meta 300 ms). Medir de novo antes da carga do legado (E4). As sugestões da revisão de UI (coluna G12 estreita, selos `muted` no escuro) estão no spec do E2.10.
   - Ficam para o usuário as perguntas Q-1 a Q-6 do spec, que não bloqueiam.
-- [ ] **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07. Spec: [`specs/e2-10-listagem-celulas.md`](specs/e2-10-listagem-celulas.md) (desenho pronto; depende também do E2.07)
+- [ ] 🔄 **E2.10** Listagem de células com filtros e detalhe com os últimos relatórios · CEL-06, CEL-07. Spec: [`specs/e2-10-listagem-celulas.md`](specs/e2-10-listagem-celulas.md) (desenho pronto; depende também do E2.07)
+  - PR 1 (banco) aberto em 2026-11-27: mci-connect#59, `code-reviewer` APROVADO, aguardando merge e "Deploy: banco". PRs 2 a 5 (front) na fila.
 - [x] **E2.11** Lançamento de relatório numa RPC atômica · REL-01 a REL-12, REL-15 · depende de D3. Spec: [`specs/e2-11-lancamento-relatorio.md`](specs/e2-11-lancamento-relatorio.md). Aceite do PO (2026-11-27)
   - PR 1 em produção (2026-11-27, mci-connect#54, squash `3506a5d`, "Deploy: banco" da migration `20261129100000`): retrato `snapshot_*` em `cell_reports` (os 5 relatórios de produção preenchidos), visibilidade do relatório pelo retrato (views, view de excluídos e políticas), troca de célula do relatório recusada e `cell_in_viewer_ministry` removida. Revisão de código aprovada; pgTAP 4.951. As divergências do desenho estão na Solução técnica do spec.
   - PR 2 e PRs 3 e 4 em produção (2026-11-27, mci-connect#57, squash `cb29883`, e #58, squash `423ca91`; "Deploy: banco" run 45997835737, migrations até `20261130100100`, e promote run 45998090478): lançamento (`submit_cell_report`, repetível pelo id do formulário) e edição (`save_cell_report`) numa transação, com as regras de data, semana, reunião, campos, oferta e participantes automáticos no banco; conferência antes de preencher (`cell_report_launch_check`) e contexto da edição (`cell_report_edit_context`); escrita direta fechada e saída dos triggers de semana e da `set_cell_report_participants`. Front: um formulário só (`CellReportDialog`) em Relatórios, Células e Dashboard, em tela cheia no celular, com as datas do servidor, os automáticos mostrados e contados e "Não houve célula" com o aviso do que sai; a lista e o "Ver relatório" mostram as pessoas registradas. Conferido em produção depois do deploy (RPCs novas presentes, a `set_cell_report_participants` e os triggers de semana fora, `authenticated` sem INSERT em `cell_reports`). Testes: pgTAP 5.313, Vitest 2.521 na combinação final, Playwright inteiro só com as falhas conhecidas (UX-19 de `excluidos-membros`, axe de `sign-in`, UX-24 intermitente de `celulas-relatorios-escopo`).
@@ -192,9 +193,10 @@ Cada passo vira um spec em `docs/specs/` e segue o fluxo do time de agentes: PO 
 
 ### Fase 3: Contas e senhas (seção 6)
 
-- [ ] **E3.01** Tabela `private.legacy_credentials` · 6.3 · _backend_
-- [ ] **E3.02** Conferência do MD5 legado na função `sign-in`, com política de senha e `must_change_password` · 6.3 · depende de E1.04 e E3.01 · _backend_
-- [ ] **E3.03** Testes do login legado com contas de teste: senha com acento, conta só com celular, senha fora da política · _qa_
+- [ ] 🔄 **E3.01** Tabela `private.legacy_credentials` · 6.3 · _backend_
+- [ ] 🔄 **E3.02** Conferência do MD5 legado na função `sign-in`, com política de senha e `must_change_password` · 6.3 · depende de E1.04 e E3.01 · _backend_
+- [ ] 🔄 **E3.03** Testes do login legado com contas de teste: senha com acento, conta só com celular, senha fora da política · _qa_
+  - Spec: [`specs/e3-login-legado.md`](specs/e3-login-legado.md). E3.01 a E3.03 no PR 1 (banco e `sign-in`), aberto em 2026-11-27: mci-connect#60, aguardando revisão e merge. PR 2 (front: textos da Auditoria e o card "Primeiro acesso") depois do PR 1 em produção.
 - [ ] **E3.04** Lista de quem será Administrador e Líder revisada pela liderança, com pelo menos 2 administradores · 6.5, 6.6 · _liderança_. Regra decidida em 2026-11-27 (G12 Líder, os demais Membro; RN-18 do E3); faltam os nomes dos Administradores e se os pastores entram como Administrador
 - [ ] **E3.05** Texto de comunicação aos usuários aprovado · 6.7 · _liderança + product-owner_
 
