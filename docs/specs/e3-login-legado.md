@@ -120,4 +120,96 @@ Respondidas pelo usuário em 2026-11-27: Q-1 (RN-18), Q-3 (RN-19), Q-4 (RN-05) e
 10. **Testes E3.03:** a massa dos Critérios e uma tabela de casos do MD5 (acento composto e decomposto, espaços, emoji, `123456`, 80 letras) gerada pelo pacote `md5` 2.3.0.
 
 ## Experiência (UX)
-_Seção do `ux-designer`. Pendente: o card "Primeiro acesso" do Dashboard (RN-14), no padrão de cards do E2.14._
+_Seção do `ux-designer`._
+
+Só o card "Primeiro acesso" do Dashboard (RN-14) tem tela nova. O login (E1.04) e a troca obrigatória (E2.03) não mudam: sem tela nem texto novos, e a pessoa com senha antiga fraca cai na troca do E2.03 como qualquer outra. Os padrões P110 a P114, o P44 e o P6 são os do E2.14 (seção UX, T1 a T7), citados e não copiados. O E2.14 ainda não foi implementado: este card depende da casca dele (seções com `h2`, grade P114, estados P112).
+
+### Fluxo
+Quem tem `view_all_church` abre o Dashboard (0 toques, tela inicial), vê o card e lê o número. Não há ação: o card não abre lista, não tem botão e não pede nada. O plantão (7.2) usa o número para saber quantos faltam; quem ajuda uma pessoa específica segue pelo líder e pela redefinição (RN-19). Quem não tem `view_all_church` não vê nada diferente, e o Dashboard fica como no E2.14.
+
+### Tela: card "Primeiro acesso" (T-LG1)
+**Onde fica:** numa `section` própria, **entre "Esta semana" e "Geral"** (ordem do DOM e do Tab), com `h2` "Primeiro acesso" e `aria-labelledby`. Motivos: o card de pendentes do E2.14 continua acima da dobra em 360×800 (UX-03 de lá), e o número temporário não rouba o lugar de "Esta semana" nem se perde no fim da página. Como o card é provisório (RN-14 f), a seção inteira some junto, sem deixar vaga.
+
+Celular (360 px), Rita (Administrador), 4 dias depois da virada, 1.240 contas com credencial na carga, 208 ainda pendentes:
+```
+│ Primeiro acesso                      │  h2
+│ ┌──────────────────────────────────┐ │  div (não é link), w-full
+│ │ Contas sem primeiro acesso     🔑│ │  text-sm, quebra linha; ícone aria-hidden
+│ │                                  │ │
+│ │ 208                              │ │  text-3xl font-bold tabular-nums
+│ │ de 1.240 contas com a senha do   │ │  text-sm text-muted-foreground
+│ │ sistema antigo                   │ │
+│ │ ██████████████████████████▒▒▒▒▒▒ │ │  barra h-2, aria-hidden
+│ │ 83% já fizeram o primeiro acesso │ │  text-sm, text-foreground
+│ └──────────────────────────────────┘ │
+```
+Computador (≥ 768 px): o mesmo card, `max-w-xl`, alinhado à esquerda, como o gráfico do E2.14 (`max-w-3xl`); mais largo, a barra se afasta dos números. Nenhuma outra mudança de estrutura.
+
+- **Estrutura:** `Card` (`bg-card border`, `rounded-lg p-4`, `space-y-2`), sem `Link`, sem `ChevronRight`, sem hover, sem `cursor-pointer`, fora do Tab (mesmo "sem link" do P110). Título e ícone em `flex items-start justify-between gap-2` (P110); o ícone é o `KeyRound` do `lucide-react`, `h-5 w-5 text-muted-foreground`, `aria-hidden`.
+- **Tom: neutro (P111), sempre.** Pendente aqui não é atraso: não há prazo (D6, RN-07). Nada de aviso, de sucesso nem de `destructive`. O número fica em `text-foreground`.
+- **Barra:** `div` `aria-hidden` com trilho `bg-muted` e preenchimento `bg-primary` (largura = % já feita, mínimo de 4 px quando maior que zero), `h-2 rounded-full`, sem animação. É só reforço: o texto abaixo diz o mesmo. Nenhum componente novo do shadcn (nem o `Progress`, para não anunciar duas vezes).
+- **Números (`formatCount`, "1.240"):**
+  - pendentes `N`; total `T` (credenciais da carga final, RN-14 b); já fizeram = `T − N`;
+  - porcentagem **arredondada para baixo**, para nunca mostrar "100%" enquanto falta alguém. Se `T − N > 0` e a conta der 0, "Menos de 1% já fizeram o primeiro acesso". Com `T − N = 0`: "0% já fizeram o primeiro acesso";
+  - `T` e `N` mudam com exclusão e restauração (RN-14 d); a porcentagem acompanha.
+- **Sem nomes, sem lista, sem link** (RN-14 c): nada no card leva a uma pessoa, e não há tooltip.
+
+### Estados
+| Estado | O que a pessoa vê |
+|---|---|
+| Sem `view_all_church` | A seção não existe no DOM (nem `h2`, nem vazio, nem `Skeleton`), e nenhuma consulta é feita. |
+| Carregando, primeira vez | Nada do card: ele pode sumir (RN-14 f), então não tem `Skeleton` (P112). Quem pode vê-lo usa a seção "Esta semana" como referência; a seção "Primeiro acesso" entra de uma vez, na mesma resposta que "Geral", sem entrar antes de outro item já na tela. Cada seção em carga segue o `aria-busy` e o "Carregando…" do E2.14 (T7); esta não acrescenta um "Carregando…" próprio, para o leitor não ouvir um aviso de uma seção que talvez não exista. |
+| Sem pendentes (0) ou antes da carga | A seção não existe (RN-14 f). Não há "Todos já entraram" nem estado vazio. |
+| Com pendentes | O card acima. |
+| Atualizando (depois de gravar com o Dashboard aberto, ao voltar para a aba) | Os números de antes ficam com `opacity-60` e `aria-busy="true"`, sem `Skeleton` (P44, P112). Se o último pendente sair, a seção só some quando a resposta chega. |
+| Erro ao carregar | Seção com o `h2` e um `Alert` (variante `default`, `CircleAlert`, texto em `text-foreground`) com o texto de erro e "Tentar de novo" (`outline`, `w-full h-11` no celular, `md:w-auto md:h-10`), como no T7 do E2.14: sem `role="alert"` na primeira carga e com ele depois de "Tentar de novo" falhar. Mostrar o erro, e não esconder o card, porque com erro não dá para saber se há pendentes. Nunca texto técnico. |
+| A atualização falha | Depois de uma gravação, o `Alert` no lugar dos números (nunca o número de antes de uma gravação, RN-17 do E2.14); ao voltar para a aba, os números ficam, sem aviso. |
+| Número grande | "1.240" e "20.000" cabem em 320 px sem corte (`tabular-nums`); o texto "de T contas…" quebra linha, sem `truncate` e sem altura fixa. |
+
+### Textos
+| Onde | Texto |
+|---|---|
+| Seção (`h2`) | Primeiro acesso |
+| Título do card | Contas sem primeiro acesso |
+| Apoio | de {T} contas com a senha do sistema antigo (com T = 1: de 1 conta com a senha do sistema antigo) |
+| Porcentagem | {P}% já fizeram o primeiro acesso · Menos de 1% já fizeram o primeiro acesso |
+| Nome acessível (leitura do card) | Contas sem primeiro acesso: {N}, de {T} contas com a senha do sistema antigo. {P}% já fizeram o primeiro acesso. |
+| Erro | Não foi possível carregar o primeiro acesso. Verifique a conexão e tente de novo. |
+| Botão do erro | Tentar de novo |
+
+Evitar: "credencial", "legado", "MD5", "hash" e "migração" na tela (termos técnicos); "usuários" (o termo da tela é "contas"); "pendente" solto (confunde com "Células com relatório pendente"); "Clique aqui" e "Ver mais".
+
+### Acessibilidade
+- Estrutura: `section` com `aria-labelledby` do `h2`; o título do card **não** é título (P110); o card é texto comum, sem papel interativo, sem `tabindex` e fora do Tab. Quem navega por títulos acha "Primeiro acesso" entre "Esta semana" e "Geral".
+- A leitura é a frase da tabela de Textos, em ordem de DOM: o número vem logo depois do título, e o apoio e a porcentagem depois. A barra e o ícone são `aria-hidden`.
+- Sem depender de cor: tom neutro; o progresso está também em texto; nenhum estado muda só de cor.
+- Contraste de 4,5:1 nos textos e de 3:1 na barra contra o trilho, nos dois temas. Os textos usam `text-foreground` e `text-muted-foreground` sobre `bg-card` (o `--muted-foreground` sobre `bg-card` passa; o problema conhecido é só sobre `--muted`); o preenchimento `bg-primary` no tema escuro tem o contraste conhecido do `--primary` (Problemas conhecidos), mas é só reforço visual do texto.
+- Zoom de 200%, 320 px e fonte grande: o card cai para a largura toda, os textos quebram linha, nada rola na horizontal.
+- `motion-reduce`: sem animação na barra nem na entrada do card (herda a regra da página).
+
+### Critérios de UX
+Numeração própria deste spec. "Rita" tem `view_all_church`; "Pedro" só `view_own_ministry`.
+
+| ID | Critério | Como verificar |
+|---|---|---|
+| UX-01 | Rita, com 208 pendentes de 1.240: entre os `h2` "Esta semana…" e "Geral" há o `h2` "Primeiro acesso", com um card que diz "Contas sem primeiro acesso", "208", "de 1.240 contas com a senha do sistema antigo" e "83% já fizeram o primeiro acesso". Com 1 pendente de 1: "de 1 conta com a senha do sistema antigo". | teste de componente + E2E (massa) |
+| UX-02 | O card não é `a`, `button` nem tem `tabindex`: sem `ChevronRight`, sem hover, sem `cursor-pointer`. Tocar ou dar Enter nele não navega nem muda a URL. Pelo Tab, o foco passa direto do último card de "Esta semana" ao primeiro de "Geral". Não há nome, lista nem link de pessoa na seção. | teste de componente + E2E |
+| UX-03 | Pedro (e qualquer pessoa sem `view_all_church`): o DOM não tem "Primeiro acesso" nem "Contas sem primeiro acesso", e a rede não mostra consulta ao número. Com 0 pendentes (Rita, antes da carga ou depois do último primeiro acesso), a seção também não está no DOM, sem texto de vazio. | teste de componente + E2E (rede) |
+| UX-04 | Arredondamento: 1.032 de 1.240 mostra "83%"; 1.239 de 1.240 mostra "99%" (nunca "100%"); 5 de 1.240 mostra "Menos de 1%"; 0 de 1.240 mostra "0%". A barra tem no mínimo 4 px quando há quem já entrou e é `aria-hidden`. | teste de unidade (regra pura) + componente |
+| UX-05 | Tom neutro: o card usa `bg-card border`, ícone e título em `text-muted-foreground`, número em `text-foreground`; não tem `border-l-4`, `bg-warning`, `bg-success` nem `destructive`. O código não tem cor em hex nem cor solta do Tailwind. | teste de componente + inspeção |
+| UX-06 | Primeira carga com consultas atrasadas: não há `Skeleton` nem "Carregando…" desta seção, e a seção aparece junto com os cards de "Geral", sem entrar antes de qualquer item já à vista. Depois de excluir uma conta com credencial pendente com o Dashboard aberto (e de restaurá-la), o número antigo fica com `opacity-60` e `aria-busy` até a resposta, e depois mostra N−1 e T−1 (e N e T de volta). | teste de componente + E2E |
+| UX-07 | Com a consulta falhando: a seção mostra o `h2`, o texto de erro, "Tentar de novo" (44 px de altura no celular) e nenhum número; sem `role="alert"` na primeira carga e com ele depois de "Tentar de novo" falhar. Um toque refaz só essa consulta. Nenhum texto técnico. | teste de componente (rede simulada) |
+| UX-08 | Em 360×800, o card ocupa a largura da coluna; em 1280×800, `max-w-xl` alinhado à esquerda. Em 320×640, com zoom de 200% e fonte do sistema a 130%, nada é cortado nem rola na horizontal; "20.000" e "1.240" cabem. Em 360×800 o card de pendentes de "Esta semana" continua visível sem rolar (UX-03 do E2.14). | teste E2E (viewport) + inspeção |
+| UX-09 | O leitor de tela lê a seção como "Primeiro acesso" (título) e o card como "Contas sem primeiro acesso: 208, de 1.240 contas com a senha do sistema antigo. 83% já fizeram o primeiro acesso."; o ícone e a barra não são lidos. Axe sem violações, nos dois temas. | inspeção (leitor de tela, axe) |
+| UX-10 | Com `prefers-reduced-motion: reduce`, o card não tem transição nem animação. As UX-01 a UX-18 do E2.14 continuam passando para Rita (a seção nova não quebra a ordem nem a grade). | teste E2E (emulação) + testes do E2.14 |
+
+### Pendências para o `product-owner`
+- **PO-UX-1. Posição do card.** Escolhi entre "Esta semana" e "Geral" (acima da dobra continua o card de pendentes do E2.14). Se o plantão preferir o card no topo do Dashboard durante a virada, a troca é só de ordem, mas empurra "Esta semana" para baixo em 360 px. Confirmar.
+- **PO-UX-2. Termo "contas".** O card diz "contas" (e não "membros" nem "usuários"), porque o número conta credenciais (RN-14 b). Confirmar o termo, já que o glossário só define Membro.
+- **PO-UX-3. Arredondamento.** Para baixo, nunca "100%" com alguém pendente, e "Menos de 1%" quando for o caso (UX-04). Confirmar. A alternativa seria mostrar a fração "208 de 1.240" sem porcentagem, mas a RN-14 b pede a porcentagem.
+- **PO-UX-4. Fim silencioso.** Pela RN-14 f, quando o último pendente sai o card some sem aviso. Quem acompanha o plantão não vê "chegamos a todos". Se a liderança quiser um fechamento, é regra nova (mensagem por um tempo), e não está especificada. Sem resposta, vale a RN-14 f.
+
+### Perguntas para o `architect`
+- Contrato: o card precisa só de `pending` e `total` (duas contagens, sem nomes, sem hash), atrás do portão e de `view_all_church`; a reposta sem permissão deve ser indistinguível de "sem pendentes" para o card (a tela não faz a consulta sem a permissão, mas o banco recusa mesmo assim).
+- O número entra na mesma atualização do Dashboard depois de gravar (P44): excluir ou restaurar membro (`refreshAfterMemberWrite`) e a redefinição de senha precisam recarregá-lo.
+- A seção depende da casca do E2.14 (seções, P112, P114): se o E3.02 sair antes dela, o card entra no Dashboard atual como um `Card` solto abaixo de "Esta semana", e passa para a casca nova no E2.14.
