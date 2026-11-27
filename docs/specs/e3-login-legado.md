@@ -1,6 +1,6 @@
 # E3: Login com a senha do legado (E3.01 a E3.05)
 
-> Status: Negócio pronto (Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário em 2026-11-27). Falta a seção Experiência (UX) do card da RN-14 (`ux-designer`); E3.01 a E3.03 podem ir ao `architect`.
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-27). Negócio: Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário. UX: pendências PO-UX-1 a PO-UX-4 (texto e posição do card), que não bloqueiam. Próximo: PR 1 (banco).
 > Slug: `e3-login-legado` · Paridade com o legado: sim (AUT-01, 6.3), sem prazo (D6) · Pendências só da liderança (Q-2, Q-6), que não bloqueiam a implementação.
 
 <!--
@@ -213,3 +213,129 @@ Numeração própria deste spec. "Rita" tem `view_all_church`; "Pedro" só `view
 - Contrato: o card precisa só de `pending` e `total` (duas contagens, sem nomes, sem hash), atrás do portão e de `view_all_church`; a reposta sem permissão deve ser indistinguível de "sem pendentes" para o card (a tela não faz a consulta sem a permissão, mas o banco recusa mesmo assim).
 - O número entra na mesma atualização do Dashboard depois de gravar (P44): excluir ou restaurar membro (`refreshAfterMemberWrite`) e a redefinição de senha precisam recarregá-lo.
 - A seção depende da casca do E2.14 (seções, P112, P114): se o E3.02 sair antes dela, o card entra no Dashboard atual como um `Card` solto abaixo de "Esta semana", e passa para a casca nova no E2.14.
+
+## Solução técnica
+_Seção do `architect`._ Código conferido na `origin/main` do `mci-connect` (423ca91): `sign_in_attempt` e o cofre em `20261126100200_e203_03_vault`, as RPCs de senha em `e203_04_rpcs`, a `sign-in` em `supabase/functions/sign-in`.
+
+### Revisão das regras
+Nenhuma RN bloqueia. A RN-05 acima de 72 bytes é viável sem aceitar o começo da senha (DT-04). Pontos definidos aqui (revisar no PR):
+- **DA-1. Texto que o legado não calculava** (RN-02): senha ou identificação com *surrogate* isolado ou com U+0000 não chega ao banco (o Postgres não guarda nenhum dos dois; hoje vira 500). A `sign-in` responde 401 `invalid_credentials` depois do piso de 700 ms, **sem contar e sem Auditoria**: a tentativa nunca confere, então não ajuda a adivinhar.
+- **DA-2. Senha legada acima de 72 bytes** (RN-05): depois da primeira entrada, a credencial continua sendo a senha da conta (marcada como usada) até a troca ou a redefinição. Para o card, a pessoa já fez o primeiro acesso.
+- **DA-3. Sessão que falha depois da gravação** (RN-04): a senha é gravada e a credencial some no *commit* da `sign_in_attempt`; se a emissão da sessão falhar em seguida (500, raro), a pessoa tenta de novo com a mesma senha e entra pelo cofre. Nesse caso o "Login realizado" sai sem "Senha do sistema antigo".
+- **DA-4.** O "Login realizado" leva "Senha do sistema antigo" sempre que a credencial conferiu, inclusive nas entradas seguintes do caso da DA-2.
+
+### Visão geral
+```
+sign-in (Edge) ─ DA-1 ─▶ sign_in_attempt (uma transação)
+  busca (E1.04) → conta disponível? → credencial pendente?
+     sim: trava o cofre, relê a credencial → bcrypt(md5(senha)) contra ela
+          ok ≤ 72 bytes: write_password (apaga a credencial) + política → legacy_weak
+          ok > 72 bytes: credencial fica (used_at) + legacy_weak
+     não: bcrypt(senha) contra o cofre; sem hash no cofre → no_password (bcrypt fictício)
+  → { result: ok, …, credential: 'legacy' | 'account' }
+sign-in → sessão → sign_in_record_login(_credential) → "Login realizado"
+```
+
+### Modelo de dados e migrations
+| # | Arquivo | Conteúdo |
+|---|---|---|
+| 1 | `<ts>_e3_01_legacy_credentials.sql` | guarda de pré-requisito (cofre do E2.03); tabela; `add_legacy_credential`; `discard_legacy_credential` recriada; `legacy_credential_problems` |
+| 2 | `<ts>_e3_02_sign_in_legacy.sql` | `sign_in_attempt` recriada; `sign_in_record_login` com `_credential`; `DROP private.sign_in_check_legacy`; `dashboard_first_access` |
+
+`<ts>` maior que o da última migration da `main` no merge (regra das pistas).
+
+```sql
+CREATE TABLE private.legacy_credentials (
+  member_id    uuid PRIMARY KEY REFERENCES public.members (id),   -- NO ACTION (DEL-)
+  legacy_hash  text CHECK (legacy_hash ~ '^\$2a\$10\$[./A-Za-z0-9]{53}$'),  -- bcrypt(md5), custo 10
+  loaded_at    timestamptz NOT NULL DEFAULT now(),
+  used_at      timestamptz,          -- primeira entrada com ela (DA-2)
+  discarded_at timestamptz,          -- senha gravada no novo (RN-03)
+  CONSTRAINT legacy_credentials_discard CHECK ((legacy_hash IS NULL) = (discarded_at IS NOT NULL))
+);  -- RLS ligado, sem políticas; REVOKE ALL de PUBLIC, anon, authenticated, service_role
+```
+- **DT-01. A linha fica; o hash some.** A RN-03 apaga a credencial anulando `legacy_hash` (com `discarded_at`); a linha guarda quem recebeu credencial na carga, que é o "total" da RN-14 b. Pendente = `legacy_hash IS NOT NULL AND used_at IS NULL`. Nenhuma coluna tem MD5 ou senha (RN-01).
+- **DT-02. Custo 10 fixo no `CHECK`:** o tempo da conferência é o mesmo do cofre e do bcrypt fictício (DT-07 do E1.04).
+
+### Funções
+| Função | Contrato |
+|---|---|
+| `private.add_legacy_credential(_member_id uuid, _legacy_md5 text) RETURNS text` | A carga do E4.08 (como `postgres`, uma chamada por membro, pode rodar em lotes paralelos). Devolve `created`, `updated` (pendente regravada), `kept_used` (usada ou descartada: nunca recria), `has_password` (hash no cofre, RN-03, RN-16 a), `unusable_md5` (fora de `^[0-9a-f]{32}$` ou o MD5 vazio, RN-01 c) ou `not_eligible` (membro inexistente, excluído ou sem `auth_user_id`, RN-01 a, b). Cria a linha do cofre (`password_hash` nulo, sem marca) se faltar e a trava antes de olhar o hash (DT-05). |
+| `private.discard_legacy_credential(_member_id)` | Recriada: anula o hash pendente (`discarded_at = now()`). Já é chamada pela `write_password`, então redefinição, troca, senha inicial e primeira entrada apagam a credencial sem mudança nelas (RN-03). |
+| `private.legacy_credential_problems()` | Para a reconciliação (5.6), precisa voltar vazia: `both_passwords` (credencial pendente e hash no cofre), `no_account` (credencial pendente de membro sem conta), `kept_without_mark` (usada, com hash, sem a marca `legacy_weak`). |
+| `public.dashboard_first_access() RETURNS TABLE (pending int, total int)` | DT-09. |
+
+### Conferência na `sign_in_attempt` (RN-02 a RN-08, RN-11, RN-12)
+Recriada a partir do corpo de `e203_03`; limites, travas, `lock_timeout`, teto de 5 s e a ordem dos motivos do E1.04 não mudam. Muda o passo 6:
+1. Conta: as condições do Auth (como hoje, sem o hash) dão `account_ok`; falhou, `account_unavailable`.
+2. Credencial pendente (leitura sem trava). Se há: `INSERT … ON CONFLICT DO NOTHING` no cofre, `SELECT … FOR UPDATE` da linha do cofre, e **relê** a credencial. Ainda pendente (ou usada com hash, DA-2): `_hash` = a credencial, `_input` = `md5(_password)`, `credential = 'legacy'`. Senão, segue o cofre.
+3. Cofre: `_hash` = `password_hash`, `_input` = `_password`; com hash nulo, `no_password` (RN-08) e o hash fictício.
+4. **Um bcrypt:** `crypt(_input, coalesce(_hash, c_dummy))`. No cofre, continua a DA-5 do E1.04 (acima de 72 bytes não confere); na credencial, não há limite (o MD5 tem 32 bytes).
+5. Sucesso com a credencial: até 72 bytes, `write_password(_auth, _member, _password, NULL)` (grava como digitada e apaga a credencial) e `used_at`; acima, só `used_at` (DA-2). Nos dois, `password_policy_violation` (a a g) põe `legacy_weak` por `set_must_change`, com "Troca de senha exigida" só quando a marca é nova (RN-05, RN-13 b), como no `weak_password` de hoje. Na entrada seguinte de quem não trocou, a marca já existe e não há novo registro.
+6. Falha: `wrong_password` com `metadata.credential = 'legacy'` quando a credencial foi conferida (RN-13 c); `no_password` → "Sem senha definida" (RN-13 d). Contagem, bloqueio e Auditoria das falhas como hoje (RN-06).
+7. Retorno `ok`: acrescenta `credential` (`'account'` ou `'legacy'`); `password_action` continua `null` (DT-07).
+
+- **DT-03. MD5 no banco:** `md5(text)` do Postgres calcula sobre os bytes UTF-8 (banco em UTF8), em hexadecimal minúsculo, sem normalizar: é o pacote `md5` 2.3.0 para todo texto que o Postgres aceita. A tabela de casos prova (tarefa 5).
+- **DT-04. Acima de 72 bytes** (RN-05): o cofre não guarda (bcrypt corta em 72), então a credencial, que confere o MD5 da senha inteira, continua sendo a senha até a troca (DA-2). O começo da senha tem outro MD5 e falha; depois da troca, a `write_password` apaga a credencial e as 80 letras caem na DA-5. A troca obrigatória funciona com o cofre sem hash (a `change_own_password` só compara com a senha atual quando há hash; e uma nova ≤ 72 bytes nunca é igual a uma de 80).
+- **DT-05. Concorrência (RN-12, RN-03).** Ordem de travas: limites → membro (E2.01) → `auth.users` → **cofre → credencial**, a mesma da `write_password` (cofre, depois `discard`), da `change_own_password` e da `set_initial_password`. Duas entradas simultâneas: a segunda espera o cofre, relê a credencial já anulada, confere pelo cofre e entra como login comum (um só primeiro acesso, um só bcrypt em cada). Entrada × redefinição: vale a última a fazer *commit* (RN-04 do E2.03). A carga trava o cofre antes de conferir o hash, então não cria credencial para quem acabou de gravar senha.
+- **DT-06. `no_password`** substitui o `account_unavailable` da DA-9 do E1.04 para a conta disponível sem senha. O tempo é o do bcrypt fictício.
+- **DT-07. Contrato compatível na publicação:** o "Deploy: banco" aplica as migrations antes de publicar a `sign-in`. O `ok` ganha só um campo novo (a `sign-in` antiga ignora), `password_action` fica `null` e a `sign_in_record_login(_member_id, _auth_user_id, _identifier_type, _identifier_masked, _credential text DEFAULT 'account')` troca a de 4 parâmetros (a chamada antiga resolve pelo padrão). `_credential` fora de `account`/`legacy` dá 22023; `legacy` grava `metadata.credential = 'legacy'`.
+- **DT-08.** `private.sign_in_check_legacy` sai (o ponto vazio do E1.04 vira o passo 2).
+
+### Card "Primeiro acesso" (RN-14)
+- **DT-09.** `dashboard_first_access()`: `SECURITY DEFINER`, `STABLE`, `SET search_path = public`, EXECUTE só para `authenticated`. Sem `viewer_has('view_all_church')` (que passa pelo portão), 42501, como o `_dashboard_assert_access`. Conta `private.legacy_credentials` com `members.deleted_at IS NULL` (RN-14 d): `total` = todas as linhas, `pending` = as pendentes. Não lê hash, nomes nem ids (RN-14 c). O `e203_06_gate` a cobre pelo catálogo.
+- **Respostas à UX:** (1) sem permissão o banco dá 42501, e a tela nem consulta; se a permissão cair no meio da sessão, o 42501 relê o acesso (E2.02) e a seção some. (2) A chave `["dashboard", "first_access"]` entra no `refreshAfterMemberWrite` e no sucesso da redefinição de senha (P44). (3) O card segue a ordem da UX: com o E2.14 já no ar, entra na casca dele; senão, no Dashboard atual. Os dois passos não rodam em paralelo (mesma tela).
+- A regra de exibição (RN-14 f, `pending > 0`) e o arredondamento (UX-04) ficam em `src/lib/dashboard/first-access.ts`, sem React.
+
+### Edge Function `sign-in`
+- `lib/contract.ts`: `isWellFormedText` (sem *surrogate* isolado e sem U+0000) para a DA-1; `AttemptResult.ok` aceita `credential` (`'account' | 'legacy'`, ausente = `'account'`).
+- `index.ts`: a DA-1 antes da RPC (log `invalid_credentials`, código `ill_formed`); `_credential` na `sign_in_record_login`. A resposta à tela não muda.
+
+### Onde cada regra é imposta
+| RN | Banco | Edge / tela |
+|---|---|---|
+| RN-01 | `add_legacy_credential`, `CHECK` do formato | — |
+| RN-02 | `md5(_password)` no passo 4 | DA-1 |
+| RN-03, RN-07, RN-11 | `write_password` → `discard_legacy_credential`; `add_legacy_credential` (`has_password`, `kept_used`); sem job de limpeza | — |
+| RN-04, RN-05, RN-12 | `sign_in_attempt` passos 2 a 5, trava do cofre | troca obrigatória do E2.03 |
+| RN-06, RN-08 | passo 6, limites do E1.04 | mensagem única |
+| RN-09, RN-10 | busca do E1.04 (`member_deleted`); `delete_member`/`restore_member` não tocam a credencial | — |
+| RN-13 | `_log_event` na RPC e `sign_in_record_login` | Auditoria (tarefa 8) |
+| RN-14 | `dashboard_first_access` | card (tarefa 9) |
+| RN-15 a RN-18 | E4.08 (abaixo) | — |
+
+### Para o E4.08 (fora deste passo)
+- Criar as contas (6.2), depois `add_legacy_credential` com o `Members.Password` de cada um, e listar os resultados que não são `created`/`updated` (`unusable_md5` = a lista "sem senha" da 5.4). Medir no ensaio 1: um bcrypt de custo 10 por membro (tarefa 6).
+- Limpeza dos ensaios (RN-17): apagar as credenciais e as linhas do cofre **só das contas criadas pela carga** (`app_metadata.legacy_member_id`); as contas que já existiam ficam (RN-16 a). RN-16 b (ligar o cadastro do legado à conta que já existe) e a conta criada na restauração de quem foi excluído no legado (RN-09) também são de lá.
+- RN-18: funções depois do `private.rebuild_member_hierarchy()` (Líder para `g12_level = 1`, Administrador pela lista aprovada, Membro para os demais), com a reconciliação de pelo menos 2 Administradores não excluídos com conta. A 5.6 ganha: `legacy_credential_problems()` vazia e credenciais `created` = membros com senha utilizável e conta.
+
+### Riscos
+1. **Tempo da carga:** cerca de 70 a 100 ms por credencial (bcrypt custo 10). Com milhares de membros, rodar em lotes paralelos; medir no ensaio 1.
+2. **Senha em parâmetro** (DT-19 do E1.04): o caminho legado faz até dois bcrypts (conferir e gravar), ainda longe do teto de 5 s, que continua.
+3. **Encoding:** a DT-03 depende do banco em UTF8 (conferido na tarefa 1 e no pgTAP).
+4. **DA-3:** primeiro acesso sem o registro "Senha do sistema antigo" quando a sessão falha depois do *commit*; a credencial já sumiu e a senha é a mesma.
+5. **Vazamento da tabela:** `bcrypt(md5)` sem prazo (D6). Quebrar exige um bcrypt de custo 10 por palpite e conta; o MD5 dos backups do legado não serve como credencial, porque a `sign-in` recebe a senha.
+6. **Mudança de motivo:** contas de produção sem hash no cofre passam de "Conta de acesso indisponível" a "Sem senha definida" (DT-06); a tarefa 1 conta quantas são.
+
+### Implantação
+- **PR 1 (banco: tarefas 1 a 7).** Merge → "Deploy: banco" (migrations e `sign-in`) → login de uma conta comum em produção (o caminho do cofre) e, como `postgres` só leitura, `SELECT count(*) FROM private.legacy_credentials` = 0. Sem promote (o front não muda). Nada muda para quem usa enquanto não houver credencial (antes do E4.08).
+- **Conferências em produção** (tarefa 1, só leitura, com autorização do usuário): `SHOW server_encoding` = UTF8; quantas contas de membros não excluídos não têm hash no cofre; a `private.legacy_credentials` não existe.
+- **Rollback:** migration nova que recria a `sign_in_attempt` de `e203_03` e a `sign_in_record_login` de 4 parâmetros, mais a `sign-in` anterior; a tabela fica (vazia até o E4.08). Depois da carga, um rollback deixa os membros do legado sem entrar (só `no_password`): exige decisão do usuário.
+- **PR 2 (front: tarefas 8 a 10),** depois do PR 1 em produção: merge → promote. Sem banco.
+
+## Tarefas
+| # | Resp. | PR | Tarefa | RN | Pronto quando | Dep. |
+|---|---|---|---|---|---|---|
+| 1 | backend-developer | 1 | Conferências em produção da Implantação, só leitura e com autorização do usuário. | — | resultado (só contagens) anotado no relatório | — |
+| 2 | backend-developer | 1 | Migration 1: tabela, `add_legacy_credential`, `discard_legacy_credential`, `legacy_credential_problems`, grants e RLS. | 01, 03, 07, 10 | pgTAP de estrutura e grants; `write_password` anula a credencial; carga refeita não recria (`has_password`, `kept_used`) | — |
+| 3 | backend-developer | 1 | Migration 2: `sign_in_attempt` (passos 1 a 7), `sign_in_record_login` com `_credential`, `DROP sign_in_check_legacy`, `dashboard_first_access`; atualizar os pgTAP do E1.04 e do E2.03 que esperavam `account_unavailable` sem hash ou o ponto vazio; regenerar `types.ts`. | 02, 04 a 06, 08, 11 a 14 | pgTAP inteiro verde; teto de 5 s e um bcrypt por falha mantidos | 2 |
+| 4 | backend-developer | 1 | `sign-in`: DA-1 e `credential` (`contract.ts`, `index.ts`) com Vitest do contrato (*surrogate*, U+0000, `credential` ausente, inválido e `legacy`). | 02, 13 | Vitest verde; logs sem senha | 3 |
+| 5 | qa | 1 | E3.03, tabela de casos: `md5@2.3.0` exato em `devDependencies`; `supabase/tests/fixtures/generate-legacy-md5-cases.mjs` → `legacy-md5-cases.json` (ASCII, "ç" composto e decomposto, espaços nas pontas, maiúsculas, emoji, `123456`, 72 e 80 letras, 40 "ç" = 80 bytes, texto vazio, *surrogate* isolado como "não calculável") → pgTAP `e3_02_md5_cases` (`md5()` = esperado e entrada pela `sign_in_attempt` com a credencial carregada pela `add_legacy_credential`); `src/test/legacy-md5-cases-sync.test.ts` refaz os MD5 pelo pacote e confere o SQL gerado. | 01, 02, 05 | os três lugares iguais; o sync quebra se divergirem | 3 |
+| 6 | qa | 1 | E3.03, critérios: pgTAP com a massa (Ana a Hugo; RN-18 fica para o E4.08); concorrência no molde do `e104_concurrency.sh` (20 entradas simultâneas de Ana com a senha certa: todas `ok`, uma `used_at`, um hash no cofre, um "Senha do sistema antigo"; entrada × redefinição; carga × redefinição, sem 40P01); volume (20 mil credenciais: `dashboard_first_access` < 50 ms; vazão da `add_legacy_credential` anotada para o E4.08); Playwright: Ana pelo celular com máscara, Bruno pelo CPF até a troca e o "Senha incorreta" de Hugo com 72 letras. | 02 a 13 | suíte inteira (PR com migration) verde | 3, 4 |
+| 7 | architect | 1 | Conferência das migrations (RLS, *definer*, grants, ordem de travas). | — | aprovado | 6 |
+| 8 | frontend-developer | 2 | Auditoria: `no_password` "Sem senha definida", `legacy_weak` "Senha fora das regras" e `metadata.credential = 'legacy'` como a linha "Senha do sistema antigo" em `src/lib/audit/auth-events.ts` (*type guard*) e no detalhe do evento. | 13 | Vitest dos rótulos e do *type guard* | PR 1 |
+| 9 | frontend-developer | 2 | Card T-LG1 pela seção UX (UX-01 a UX-10): `src/lib/dashboard/first-access.ts` (visibilidade e arredondamento), `src/hooks/use-first-access.ts` (só com `view_all_church`), o componente no Dashboard; a chave no `refreshAfterMemberWrite` e na redefinição. | 14 | Vitest da regra pura; nenhuma consulta sem a permissão | PR 1, UX |
+| 10 | qa + ux-designer | 2 | Vitest, tsc, build, lint; Playwright do card (UX-01 a UX-10) e da Auditoria, mais o smoke de login (último PR do passo: suíte inteira); revisão de UI do card (tela nova). | 13, 14 | verde; achados resolvidos | 8, 9 |
+| 11 | architect | 2 | Revisão final do passo; `CLAUDE.md` (estado atual e armadilhas: a credencial e a ordem cofre → credencial) e Progresso E3.01 a E3.03 em `docs/migracao.md`. | — | APROVADO | 10 |
+
+Paralelo: 4 junto com 3 depois da migration 2 pronta na stack; 5 começa com a 3; 8 e 9 no mesmo PR, em paralelo.
