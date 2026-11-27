@@ -1,6 +1,7 @@
 # E2.11: Lançamento de relatório numa RPC atômica
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. **PR 1 (banco: retrato e visibilidade) em produção em 2026-11-27**; faltam os PRs 2 a 4 e Testes.
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. **PR 1 (banco: retrato e visibilidade) em produção em 2026-11-27**; **PR 2 (banco: lançamento e edição numa chamada) implementado em 2026-11-27, em revisão** (vai ao ar junto com o PR 4, [Implantação](#implantação)); faltam os PRs 3 e 4.
+> **PR 2 (2026-11-27):** tarefas 4 a 7. `submit_cell_report`, `save_cell_report` (definer), `cell_report_launch_check`, `cell_report_edit_context`, regras puras e mensagens em `private.report_*`, escrita direta fechada (privilégios, políticas, guarda `a0_guard_cell_report_write` e marca `mci.cell_report_write`), `ac_keep_snapshot_participants`, oferta sem padrão e com `CHECK`; saíram os triggers de semana, os de escrita direta e a `set_cell_report_participants`. Conferência de produção sem linha `a` do PR 2. Divergências em [Divergências do PR 2](#divergências-do-pr-2-implementado).
 > **PR 1 em produção (2026-11-27):** mci-connect#54, squash `3506a5d`, "Deploy: banco" run 45917973610 (migration `20261129100000`). Retrato `snapshot_*` gravado em `cell_reports` (os 5 relatórios de produção preenchidos), visibilidade pelo retrato (views, view de excluídos, políticas e `viewer_sees_report_people`), troca de célula recusada (`report_cell_immutable`) e `cell_in_viewer_ministry` removida. `code-reviewer` APROVADO; pgTAP 4.951 testes. Divergências do desenho em [Divergências do PR 1](#divergências-do-pr-1-implementado).
 > - Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar".
 > - Experiência (UX) escrita no mesmo dia pelo `ux-designer`. As pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-REL-21 a P-REL-31.
@@ -2068,6 +2069,19 @@ Registradas em 2026-11-27, depois do PR 1 em produção. Valem sobre o desenho a
 4. **`snapshot_*` em `audit-fields.json` já no PR 1**, na lista `not_data` de `cell_reports` (o retrato não entra nos eventos, como diz a Escrita; a lista de campos do E2.05 exige decisão para toda coluna nova).
 5. **`e208_concurrency.sh`, cenário 3b**: passou a esperar a recusa (`report_cell_immutable`), porque a troca da célula do relatório deixou de existir.
 
+### Divergências do PR 2 (implementado)
+Registradas em 2026-11-27, no PR 2 (migrations `20261130100000_e211_02_rules` e `20261130100100_e211_03_write`). Valem sobre o desenho abaixo; o PR 4 (front) parte delas.
+1. **Portão antes de tudo:** as quatro RPCs chamam `viewer_member_id()` logo depois de `current_actor()`, antes da repetição (DT-06). Conta com a marca do E2.03 ou sessão encerrada não recebe nem o `replayed`.
+2. **Códigos técnicos a mais**, fora da tabela de erros (a tela nunca os provoca): `was_held_invalid` (`field: "was_held"`, situação ilegível pela API) e `participant_not_found` (`field: "participant_ids"`, `member_id`: id que não é de ninguém). A tabela de mensagens está em `private.report_message`.
+3. **Limite de participantes antes da trava:** o `too_many_participants` é conferido pelo tamanho do conjunto (escolhidos sem repetição mais os automáticos, ou o conjunto final da edição) antes de travar e ler os membros. Muda só a ordem entre recusas do mesmo campo e evita travar milhares de linhas.
+4. **Ordem da edição igual à do lançamento:** reunião (9) → participantes (10) → visitantes, oferta e observações (11). A tabela da edição punha os participantes depois de todos os campos.
+5. **`private.report_launch_status(now, meeting, has)`** (pura) decide `already_sent`/`not_yet`/`can_submit`; a conferência e a tabela de casos usam a mesma.
+6. **Marca devolvida, não apagada:** as RPCs guardam o valor anterior de `mci.cell_report_write` e o devolvem no fim (passo 17), para não desligar a marca de uma manutenção que chame a RPC.
+7. **Guarda dos participantes também no UPDATE** (o desenho: INSERT e DELETE); o `REVOKE` inclui `anon`; as políticas de escrita saem por laço em `pg_policies` (`cmd <> 'SELECT'`), o que cobre as antigas do E1.01; `enforce_insert_permission` fica só com o ramo de `cells`.
+8. **Entrada (`private.report_input`):** `was_held` nulo vale como ausente; data, horário e oferta vazios ou só com espaços valem como ausentes (obrigatórios); oferta `NaN`/`Infinity` é inválida; nulos dentro de `visitors` são descartados como vazios.
+9. **`cell_report_edit_context`** devolve a linha para quem vê o relatório, sem exigir "Editar Relatórios de Células" (só datas). A service role recebe `existing_*` na conferência.
+10. **Testes dos passos anteriores adaptados** (leitura técnica 8): massas com a marca e o lançamento e a edição pelas RPCs. Duas expectativas do E2.02 mudam pela DA-7: célula excluída que quem lança não vê dá `not_found_or_deleted` (antes `cell_deleted`). O `e201_07` passou a conferir a permissão dentro das RPCs; o `e211_migrations.sh` roda de novo a cadeia das três migrations.
+
 ### Revisão das regras
 Nenhuma RN voltou ao PO. As lacunas técnicas foram resolvidas pela leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr).
 
@@ -2860,6 +2874,8 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 
 ### Conferência em produção (tarefa 1)
 
+> **Resultado em 2026-11-27, antes do PR 2 (`architect`, Management API, só leitura):** nenhuma linha `a` (nenhuma oferta fora de 0 a R$ 999.999,99). `info`: 4 relatórios excluídos. `infra`: as quatro colunas `snapshot_*` "já existem" (criadas pelo PR 1, em produção; esperado depois dele).
+>
 > **Resultado em 2026-11-24 (sessão principal, só leitura, com o E2.01 PR 2 em produção):** só dados de teste. `a` · RN-21: 1 relatório numa célula sem timóteo (as células de teste já apontadas no E2.08, a corrigir antes do PR 2 de lá). `infra`: os pré-requisitos do E2.02, E2.05, E2.06, E2.08 e E2.09 ainda não estão em produção (esperado).
 Só leitura. O usuário roda no SQL Editor de produção (papel `postgres`), antes do "Deploy: banco" do PR 1 e de novo antes do PR 2.
 - A saída traz só o tipo, o problema, o tratamento e os ids dos relatórios. Não traz nome de pessoa, tema nem valor de oferta.
@@ -3098,7 +3114,13 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois dos pré-requisitos da [Imp
 6. **Tarefas 9 e 13:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`. No PR 2, escrita pelo `architect`, que implementou e testou sozinho (sessão sem a ferramenta `Agent`)._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| 04, 05, 06, 12, 13, 16, 18, 19 (regras puras) | pgTAP `e211_02_cases` (gerado de `report-rules-cases.json`: 24 lançamentos e 7 edições em UTC, Brasília e Tóquio, 13 ofertas, 7 visitantes, 19 horários do E2.08); Vitest `report-rules-cases-sync` | PR 2: passa (126 + 3) |
+| 01, 02, 04 a 13, 15, 20 (lançamento) | pgTAP `e211_03_submit` (ordem da DA-8 e da RN-20, campos, participantes, datas, retrato e automáticos, Auditoria, repetição, service role, DA-12) | PR 2: passa (89) |
+| 03, 05, 08 a 11, 15, 16 (edição) | pgTAP `e211_04_edit` (quem edita, semana do relatório, DA-3, DA-4, trocas da RN-09, registrados fixos, contexto da edição) | PR 2: passa (54) |
+| 01, 13, 19 (escrita fechada e conferência) | pgTAP `e211_05_write_closed` (privilégios, guarda e marca, catálogo, oferta, conferência por persona) | PR 2: passa (71) |
+| 07, 11, 14, 15, 16 (concorrência) | `e211_concurrency.sh` (11 cenários) e os do E2.01, E2.05 e E2.08 adaptados | PR 2: passa |
+| Risco 9 (volume) | `e211_volume.psql`: conferência 7 ms; lançamento com 30 escolhidos 110 ms; edição com 30 mudanças 72 ms; página da `cell_reports_view` 187 ms (Administrador) e 214 ms (G12); `dashboard_summary` 266 a 272 ms | PR 2: metas atendidas |
