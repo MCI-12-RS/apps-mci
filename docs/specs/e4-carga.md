@@ -143,9 +143,9 @@ Implementação em `20261203100000_e4_01_load_support.sql`.
 - **PR2-7. Antecipado do PR 3:** a recusa do `npm run clean` com carga no destino (`--after-cutover` libera; DT-05) e a coluna `legacy._load_runs.undone_at`.
 - **PR2-8.** O relatório de carga (`reports/carga-<data>-<execução>.md`) só é gravado fora do `--dry-run`, como o do saneamento; numa carga que para, as listas saem só no terminal (até 20 Ids por código).
 - **Perguntas novas** (não bloqueiam o ensaio; a implementação segue a recomendação):
-  - **Q-E4-6.** Membro excluído sem nome ou com sexo inválido não pode ser corrigido na tela do legado. *Recomendação:* fica de fora e não para o `--final` (hoje para).
-  - **Q-E4-7.** Relatório de célula inexistente ou sem data, e célula excluída sem uma das três pessoas (com os relatórios dela): *Recomendação:* ficam de fora, listados (como está).
-  - **Q-E4-8.** Retrato com pessoa inexistente ou tipo inválido: *Recomendação:* completado pela célula, como o tipo vazio (como está).
+  - **Q-E4-6.** Membro excluído sem nome ou com sexo inválido não pode ser corrigido na tela do legado. *Recomendação:* fica de fora e não para o `--final` (hoje para). **Decidido pelo usuário (2026-11-27): a recomendação (muda o `--final`, que deixa de parar nesse caso).**
+  - **Q-E4-7.** Relatório de célula inexistente ou sem data, e célula excluída sem uma das três pessoas (com os relatórios dela): *Recomendação:* ficam de fora, listados (como está). **Decidido pelo usuário (2026-11-27): a recomendação.**
+  - **Q-E4-8.** Retrato com pessoa inexistente ou tipo inválido: *Recomendação:* completado pela célula, como o tipo vazio (como está). **Decidido pelo usuário (2026-11-27): a recomendação.**
 - **Testes (sem QA independente):** `test:unit` 15; `test:local` verde, 62 verificações (cópia, saneamento e carga: `--dry-run` sem efeito, ambiguidade, `--final`, carga esperada, listas vazias, refazer sem mudança, legado mudado, conflitos, `clean` recusando). Volume (3 mil membros, 300 células, 30 mil relatórios, 135 mil participantes, stack local): primeira carga 13,3 s (transformação 2,5 s, gravação e recálculos 5,1 s, validação 2,8 s, `ANALYZE` 2,9 s), refazer 9,4 s, `--dry-run` 10,8 s. Metade do tempo está nas funções de regra do banco (chave do celular, índices e `CHECK`s de `members`, `member_rule_violations`).
 
 ## Testes
