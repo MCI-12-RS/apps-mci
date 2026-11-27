@@ -2669,6 +2669,22 @@ Volume (20 mil membros, 1.501 células, 81 mil relatórios, 650 mil participaç�
 
 Resultados (stack local `mci-e104-be`, depois de `db reset` com todas as migrations, mci-connect `c00cf47`): pgTAP 70 arquivos / 5.904 asserções, todos passando; `e212_migrations.sh` 5/5; `e205_concurrency.sh` e `e211_concurrency.sh` passando; Vitest 182 arquivos / 2.638 testes; `tsc` sem erro; build ok; lint com os 11 problemas antigos da `main` (3 erros, 8 avisos), nenhum novo. Playwright inteiro (`--workers=1`): 515 passaram, 8 pulados e 4 falharam: duas falhas conhecidas (UX-19 de `excluidos-membros` e o axe da `sign-in`) e duas intermitentes (UX-24 de `celulas-relatorios-escopo`, já conhecida, e UX-14 de `membro-validacoes-cadastro`), que passaram na nova rodada das duas specs (61/61). Concorrência: nenhum cenário novo (o passo só lê, menos a migration 2).
 
+### Implementação dos PRs 2 e 3 (2026-11-27)
+Juntos num PR só (branch `claude/e212-pr2`, mci-connect `61d26b9`): os dois são de front, sem banco entre eles, e a [Implantação](#implantação) não manda publicar um antes do outro. Tarefas 5 e 8; o PR 4 (T14, DA-14) fica separado. Publicação: merge → promote (o PR 1 já está no banco).
+
+Divergências do desenho, todas sem mudar regra:
+1. **Edição por cima da consulta sem entrada própria no histórico** (variante do plano B do P-LRE-29): a casca do formulário do E2.11 não aceita o pedido de fechar vindo de fora. "Editar relatório" abre o `CellReportDialog` por cima da consulta, que continua aberta atrás (UXD-10); salvar mostra os valores novos e devolve o foco a "Editar relatório". O voltar do aparelho com o formulário aberto fecha a consulta por baixo (a DA-11 fica para quando a casca aceitar o pedido de fora).
+2. **O chip da Célula** é o `RecordFilterChip` do E2.10, desenhado antes dos outros chips (P93); a `cellReportFilterChips` monta só os demais (Líder, G12, De, Até, Tipo e Reunião). Tirá-lo leva o foco a "Filtros".
+3. **`report` sem formato** sai na mesma limpeza dos filtros (`parseCellReportFilters`), numa atualização só da URL.
+4. **Participantes**: a consulta usa o mesmo `use-cell-report-participants` do formulário de edição (mesma chave), agora com `fetchAllRows`; "Tentar de novo" da consulta relê também os participantes que falharam junto.
+5. **Exclusão pela consulta** (DA-12): `useDeleteCellReport({ onDeleted })` fecha a consulta, tira o relatório das páginas no cache e as leituras dele antes do `refreshAfterReportWrite`.
+6. **Esc com aviso na tela**: o toast do Radix é a camada de cima; o primeiro `Esc` depois de salvar fecha o aviso, e o segundo, a consulta (comportamento do Radix, igual em todo o sistema).
+7. **Cabeçalho da lista** com `px-4` abaixo de 640 px, para os três atalhos caberem numa linha em 360 px (UX-05).
+8. `ReportMeetingBadge` (`StatusBadges`) é o badge da reunião; o detalhe da célula ainda usa o dele (unificar no PR 4). Saíram `cell-filter.ts`, `use-cell-report-filter.ts`, o `CellReportSheet` antigo, `CELL_REPORT_ROW_SELECT`, `withParticipantCounts`, `cellOfReport` e os textos da consulta em `deletion/texts.ts`. O `fetchListPage` continua (Auditoria e listas de excluídos).
+9. A busca continua com a espera de 300 ms do `useListSearchParams`, e a barra invertida já vai escapada pelo `toSearchPatterns` (teste novo em `filters.test.ts`).
+
+Testes: Vitest 180 arquivos / 2.601 testes (novos: `filters`, `weeks`, `report-row`, `report-sheet`, hooks e a tela); `tsc` sem erro; build ok; lint com os 11 problemas antigos. Playwright (`--workers=1`): `relatorios-filtros` (8) e `relatorios-consulta` (6) novos, e `login`, `relatorios-filtro-celula`, `relatorio-lancamento`, `relatorios-retrato`, `relatorios-retrato-escopo`, `relatorio-celula-excluida` (reescrita para a consulta nova), `exclusao-celulas-relatorios`, `excluidos-celulas-relatorios`, `autoria-tela`, `autoria-gravacao`, `celulas-relatorios-escopo` e `celula-detalhe` passando. Revisão de código, revisão de UI (tarefas 6 e 9) e QA (tarefas 7 e 10) ficam com a sessão principal.
+
 ## Tarefas
 _Seção do `architect`._
 
