@@ -6,7 +6,8 @@
 # do mci-connect (uma stack local do Supabase) e confere: --dry-run sem
 # escrita, cópia, idempotência, checksum, privilégios, saneamento, carga
 # (adoção, ambiguidade, --final, --dry-run, idempotência, mudança no legado,
-# conflitos com o novo, volume) e limpeza.
+# conflitos com o novo, volume), contas e credenciais legadas (npm run accounts, E4.08:
+# Auth da stack local) e limpeza.
 # No fim, tira a carga (só teste), apaga o schema legacy e o contêiner.
 #
 # Variáveis:
@@ -14,6 +15,11 @@
 #   MYSQL_IMAGE  imagem do MySQL (padrão mysql:8.4; mirror.gcr.io/library/mysql:8.4 se o Docker Hub limitar)
 #   MYSQL_PORT   porta local do MySQL de teste (padrão 53306)
 #   LOAD_VOLUME  0 pula a medição de volume da carga (padrão 1)
+#   ACCOUNTS     0 pula as contas (padrão 1)
+#   AUTH_URL     API da stack local (padrão http://127.0.0.1:58321, pista B)
+#   AUTH_SECRET_KEY  chave secreta da stack local (padrão: supabase status em LANE_DIR)
+#   LANE_DIR     pasta da stack local (padrão <raiz>/.worktrees/mci-connect-b)
+#   PG_CONTAINER contêiner do Postgres da stack (padrão supabase_db_mci-b), para as falhas injetadas no Auth
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +31,14 @@ CONTAINER="mci-dm-test-mysql"
 WORK="$(mktemp -d)"
 CONFIG="$WORK/test.local.config"
 PASTORS="1,2,99999"
+ACCOUNTS="${ACCOUNTS:-1}"
+LANE_DIR="${LANE_DIR:-$ROOT/../.worktrees/mci-connect-b}"
+AUTH_URL="${AUTH_URL:-http://127.0.0.1:58321}"
+PG_CONTAINER="${PG_CONTAINER:-supabase_db_mci-b}"
+if [ "$ACCOUNTS" != 0 ] && [ -z "${AUTH_SECRET_KEY:-}" ]; then
+  AUTH_SECRET_KEY="$(cd "$LANE_DIR" && supabase status -o env 2>/dev/null | sed -n 's/^SECRET_KEY="\(.*\)"$/\1/p')"
+  [ -n "$AUTH_SECRET_KEY" ] || { echo "Sem a chave secreta da stack local (AUTH_SECRET_KEY ou supabase status em $LANE_DIR). ACCOUNTS=0 pula as contas."; exit 1; }
+fi
 
 cleanup() {
   node "$HERE/assert-load.mjs" "$CONFIG" reset >/dev/null 2>&1 || true
@@ -53,7 +67,10 @@ SUPABASE_PASS="postgres"
 LEGACY_PASTOR_IDS="${PASTORS}"
 LEGACY_ADMIN_IDS="1,2,3"
 LEGACY_APP_URL="https://legado.invalid"
+SUPABASE_URL="${AUTH_URL}"
+SUPABASE_SECRET_KEY="${AUTH_SECRET_KEY:-}"
 CFG
+chmod 600 "$CONFIG"
 
 step "MySQL de teste (${MYSQL_IMAGE})"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -247,6 +264,146 @@ $L conflict-teardown
 $LOAD >/dev/null 2>&1 || { echo "FALHA: carga depois dos conflitos"; exit 1; }
 $L lists-empty
 
+if [ "$ACCOUNTS" != 0 ]; then
+  step "Contas: preparação (senhas do legado e uma conta que ficou sem ligação)"
+  ACC="$N $HERE/assert-accounts.mjs $CONFIG"
+  ACCOUNTS_RUN="$N $ROOT/src/accounts.mjs --config $CONFIG --out-dir $WORK/acc-reports"
+  PSQL="psql postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres -X -q -v ON_ERROR_STOP=1"
+  # Falha injetada no Auth: trigger em auth.users, criado como supabase_admin dentro do contêiner (só teste).
+  auth_trap() { docker exec -i "$PG_CONTAINER" psql -h 127.0.0.1 -U supabase_admin -d postgres -X -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null; }
+  auth_trap_drop() { auth_trap "DROP TRIGGER IF EXISTS qa_auth_trap ON auth.users; DROP FUNCTION IF EXISTS public.qa_auth_trap();"; }
+  auth_trap_drop
+  $ACC passwords
+
+  step "Contas: --dry-run não cria nada"
+  FPA0="$($ACC fingerprint)"
+  $ACCOUNTS_RUN --dry-run >"$WORK/acc-dry.log" 2>&1 || { cat "$WORK/acc-dry.log"; echo "FALHA: contas --dry-run"; exit 1; }
+  grep -E '^(Membros|Credenciais)' "$WORK/acc-dry.log"
+  check "nada mudou (contas, cofre, credenciais, membros)" test "$($ACC fingerprint)" = "$FPA0"
+  check "nenhum relatório de contas gravado" test ! -e "$WORK/acc-reports"
+  check "previsão: 4 sem senha utilizável e 2 só depois da normalização" grep -q 'sem senha utilizável 4 (só depois de passar para minúsculas e tirar os espaços das pontas: 2)' "$WORK/acc-dry.log"
+  for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail '@'; do
+    if grep -q -- "$pii" "$WORK/acc-dry.log"; then echo "FALHA: saída das contas contém dado pessoal ($pii)"; exit 1; fi
+  done
+  echo "ok: saída das contas sem dados pessoais"
+
+  step "Contas: conta de outro dono e Id do legado em outra conta param antes de criar"
+  $ACC block-setup
+  FPB="$($ACC fingerprint)"
+  expect_fail "conta de outro dono" "account_other_owner" $ACCOUNTS_RUN
+  check "Id do legado em outra conta também citado" grep -q 'account_legacy_id_taken.*: 7' "$WORK/fail-cmd.log"
+  check "nada mudou" test "$($ACC fingerprint)" = "$FPB"
+  $ACC block-teardown
+
+  step "Contas: o processo cai no meio da criação"
+  $ACC precreate
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN PERFORM pg_sleep(0.3); RETURN NEW; END \$f\$;
+             CREATE TRIGGER qa_auth_trap BEFORE INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  $ACCOUNTS_RUN --concurrency 1 >"$WORK/acc-kill.log" 2>&1 &
+  ACC_PID=$!
+  for _ in $(seq 1 200); do
+    [ "$($ACC unlinked-count)" -ge 5 ] && break
+    sleep 0.1
+  done
+  kill -9 "$ACC_PID" 2>/dev/null || true
+  wait "$ACC_PID" 2>/dev/null || true
+  auth_trap_drop
+  UNLINKED="$($ACC unlinked-count)"
+  check "contas criadas e não ligadas ficaram ($UNLINKED)" test "$UNLINKED" -ge 5
+  check "nenhuma credencial ainda" test "$($PSQL -Atc 'SELECT count(*) FROM private.legacy_credentials')" = 0
+
+  step "Contas: o Auth recusa uma conta (falha no meio)"
+  EMAIL11="$($PSQL -Atc "SELECT public.member_account_email(id) FROM public.members WHERE legacy_id = 11")"
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN
+               IF NEW.email = '${EMAIL11}' THEN RAISE EXCEPTION 'qa: conta recusada'; END IF; RETURN NEW; END \$f\$;
+             CREATE TRIGGER qa_auth_trap BEFORE INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  expect_fail "a execução termina com erro" "account_create_failed" $ACCOUNTS_RUN
+  auth_trap_drop
+  grep -E '^Contas:' "$WORK/fail-cmd.log"
+  $ACC after-failure
+
+  step "Contas 1"
+  $ACCOUNTS_RUN >"$WORK/acc1.log" 2>&1 || { cat "$WORK/acc1.log"; echo "FALHA: contas 1"; exit 1; }
+  grep -E '^(Contas|Credenciais|Tempo):' "$WORK/acc1.log"
+  $ACC expected
+  REPORT="$(ls -t "$WORK"/acc-reports/contas-*.md | head -n 1)"
+  for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail '@'; do
+    if grep -q -- "$pii" "$REPORT" "$WORK/acc1.log"; then echo "FALHA: relatório ou saída das contas contém dado pessoal ($pii)"; exit 1; fi
+  done
+  echo "ok: relatório de contas sem dados pessoais"
+  $A grants
+
+  step "Contas: login com a senha do legado"
+  $ACC logins
+
+  step "Contas 2 (idempotência)"
+  FPA1="$($ACC fingerprint | sed -E 's/,"runs":[0-9]+//')"
+  $ACCOUNTS_RUN >"$WORK/acc2.log" 2>&1 || { cat "$WORK/acc2.log"; echo "FALHA: contas 2"; exit 1; }
+  $ACC unchanged after-logins
+  check "nada mudou (contas, cofre, credenciais, membros)" test "$($ACC fingerprint | sed -E 's/,"runs":[0-9]+//')" = "$FPA1"
+
+  step "Contas 3: um lote de credenciais falha no meio"
+  $ACC change-passwords
+  M30="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 30")"
+  $PSQL -c "CREATE FUNCTION public.qa_cred_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN
+              IF NEW.member_id = '${M30}' THEN RAISE EXCEPTION 'qa: lote recusado'; END IF; RETURN NEW; END \$f\$;
+            CREATE TRIGGER qa_cred_trap BEFORE UPDATE ON private.legacy_credentials FOR EACH ROW EXECUTE FUNCTION public.qa_cred_trap();"
+  expect_fail "a execução termina com erro" "credential_batch_failed" $ACCOUNTS_RUN --batch-size 5 --concurrency 2
+  $PSQL -c "DROP TRIGGER qa_cred_trap ON private.legacy_credentials; DROP FUNCTION public.qa_cred_trap();"
+  $ACCOUNTS_RUN --batch-size 5 >"$WORK/acc3.log" 2>&1 || { cat "$WORK/acc3.log"; echo "FALHA: contas 3"; exit 1; }
+  grep -E '^Credenciais:' "$WORK/acc3.log"
+  $ACC updated-check
+  $ACC problems-empty
+  $L lists-empty
+
+  step "Contas: a carga refeita não mexe nas contas"
+  $LOAD >/dev/null 2>&1 || { echo "FALHA: carga depois das contas"; exit 1; }
+  $L unchanged
+  $ACC problems-empty
+
+  step "Contas: membro excluído entre a criação da conta e a ligação"
+  $ACC unlink 22
+  M22="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 22")"
+  # Assim que o Auth grava a conta do 22, o cadastro é excluído (em replica, como supabase_admin; só teste).
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS \$f\$ BEGIN
+               IF NEW.id = '${M22}' THEN
+                 PERFORM set_config('session_replication_role', 'replica', true);
+                 UPDATE public.members SET deleted_at = now() WHERE id = NEW.id;
+                 PERFORM set_config('session_replication_role', 'origin', true);
+               END IF; RETURN NEW; END \$f\$;
+             CREATE TRIGGER qa_auth_trap AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  $ACCOUNTS_RUN >"$WORK/acc4.log" 2>&1 || { auth_trap_drop; cat "$WORK/acc4.log"; echo "FALHA: contas 4"; exit 1; }
+  auth_trap_drop
+  check "listado na saída" grep -q 'account_unlinked_deleted_member: 22' "$WORK/acc4.log"
+  $ACC unlinked-deleted 22
+  $ACCOUNTS_RUN >"$WORK/acc5.log" 2>&1 || { cat "$WORK/acc5.log"; echo "FALHA: contas 5"; exit 1; }
+  check "o plano da execução seguinte lista o mesmo caso" grep -q 'account_unlinked_deleted_member: 22' "$WORK/acc5.log"
+  $ACC unlinked-deleted 22
+  $ACC undelete 22
+  $ACCOUNTS_RUN >"$WORK/acc6.log" 2>&1 || { cat "$WORK/acc6.log"; echo "FALHA: contas 6"; exit 1; }
+  check "sem a exclusão, a conta é religada" grep -qE '^Contas: 0 criadas, 1 religadas, 1 ligadas' "$WORK/acc6.log"
+  $ACC problems-empty
+
+  step "Contas: lote lento avisa e reduz os seguintes; lote no teto é dividido"
+  M30="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 30")"
+  $PSQL -c "CREATE FUNCTION public.qa_cred_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN
+              IF NEW.member_id = '${M30}' THEN PERFORM pg_sleep(1.5); END IF; RETURN NEW; END \$f\$;
+            CREATE TRIGGER qa_cred_trap BEFORE UPDATE ON private.legacy_credentials FOR EACH ROW EXECUTE FUNCTION public.qa_cred_trap();"
+  $PSQL -c "UPDATE legacy.\"Members\" SET \"Password\" = md5('Lenta ' || \"Id\") WHERE \"Id\" = 30"
+  ACCOUNTS_TEST_SLOW_MS=1000 ACCOUNTS_TEST_TIMEOUT_MS=60000 $ACCOUNTS_RUN --batch-size 8 --concurrency 1 >"$WORK/acc7.log" 2>&1 \
+    || { cat "$WORK/acc7.log"; echo "FALHA: contas 7"; exit 1; }
+  check "aviso do lote lento, os próximos com 4" grep -q 'lote de 8 credenciais lento (.*); os próximos com 4' "$WORK/acc7.log"
+  check "listado em credential_batch_slow" grep -q 'credential_batch_slow' "$WORK/acc7.log"
+  $PSQL -c "UPDATE legacy.\"Members\" SET \"Password\" = md5('No teto ' || \"Id\") WHERE \"Id\" = 30"
+  ACCOUNTS_TEST_SLOW_MS=60000 ACCOUNTS_TEST_TIMEOUT_MS=1000 $ACCOUNTS_RUN --batch-size 8 --concurrency 1 >"$WORK/acc8.log" 2>&1 \
+    && { cat "$WORK/acc8.log"; echo "FALHA: contas 8 deveria falhar no lote de 1"; exit 1; }
+  check "o lote no teto foi dividido até 1 e só então falhou" grep -q 'credential_batch_failed.*57014 (lote de 1)' "$WORK/acc8.log"
+  check "cada divisão avisada" grep -q 'cancelado no teto' "$WORK/acc8.log"
+  $PSQL -c "DROP TRIGGER qa_cred_trap ON private.legacy_credentials; DROP FUNCTION public.qa_cred_trap();"
+  $ACCOUNTS_RUN >"$WORK/acc9.log" 2>&1 || { cat "$WORK/acc9.log"; echo "FALHA: contas 9"; exit 1; }
+  $ACC problems-empty
+fi
+
 step "Limpeza do staging recusa com carga no destino"
 expect_fail "clean --yes recusa" "carga no destino" $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes
 $A grants
@@ -263,6 +420,18 @@ if [ "${LOAD_VOLUME:-1}" != 0 ]; then
   grep -E '^(Membros|Células|Relatórios|Participantes|Funções):' "$WORK/vol.log"
   $L unchanged
   $L lists-empty
+  if [ "$ACCOUNTS" != 0 ]; then
+    for run in dry-run 1 2; do
+      ARGS=""; [ "$run" = dry-run ] && ARGS="--dry-run"
+      VLOG="$WORK/vol-acc-$run.log"
+      $ACCOUNTS_RUN $ARGS >"$VLOG" 2>&1 || { cat "$VLOG"; echo "FALHA: contas no volume ($run)"; exit 1; }
+      echo "contas no volume ($run):"
+      grep -E '^(Membros carregados|Contas|Credenciais|Tempo):' "$VLOG" | sed 's/^/  /' || true
+    done
+    $ACC unchanged
+    $ACC volume-check
+    $ACC problems-empty
+  fi
 fi
 
 step "Limpeza final"
