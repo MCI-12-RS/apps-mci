@@ -1,6 +1,6 @@
 # E2.07: Listagem de membros com filtros e vínculo celular
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos; desenho pronto, sem implementação. Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar". Experiência (UX) escrita no mesmo dia pelo `ux-designer`; as pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia (P-FIL-16 a P-FIL-25). Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, que respondeu às AQ-1 a AQ-7 e não devolveu nenhuma RN ao PO. Ficam para revisão do usuário no PR os padrões P-FIL-01 a P-FIL-25, as decisões DA-1 a DA-8 do `architect` e as perguntas Q-1 a Q-4, que não bloqueiam (cada uma já tem um padrão adotado; a T9 da UX mostra a tela de cada resposta, e a Solução técnica dá o custo de cada alternativa). O PR 1 (banco) entra depois do banco do E2.05 e do PR 1 do E2.06 em produção. Faltam os Testes.
+> Status: **aceito em 2026-11-27** pelo `product-owner`. Em produção: PR 1 (banco) em 2026-11-26 (mci-connect#51, squash `deff10d`) e PRs 2 a 4 (front, num PR só) em 2026-11-27 (mci-connect#56, squash `8272e29`; no ar pelo promote run 45998090478 do commit `423ca91`, junto com o E2.11), com `code-reviewer` APROVADO (2 rodadas), achados da revisão de UI corrigidos e QA sem bugs (os nove filtros conferidos contra o servidor, escopo de um Líder de G12, corrida e ida e volta pela URL); resultados em [Testes](#testes). Ficam para o usuário os padrões P-FIL-01 a P-FIL-25, as DA-1 a DA-8 e as perguntas Q-1 a Q-4, que não bloqueiam.
 > Slug: `e2-07-filtros-membros` · Paridade com o legado: sim (MEM-13, MEM-14 e MEM-15), com regras novas: célula inativa não dá vínculo, "Não houve célula" não conta como participação, filtros de múltipla escolha, pessoa indisponível no filtro de liderança e o equivalente de cada card do Dashboard na lista.
 > **Coordenação (2026-11-24, E2.10):** a função de cache que o DT-14 chama de `refreshAfterCellReportWrite` é a mesma `refreshAfterReportWrite` do E2.09 (DT-12). Vale o nome do E2.09: o passo implementado primeiro cria, o outro reaproveita.
 
@@ -2048,6 +2048,17 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois do banco do E2.05 e do PR 1
 > - `cell_links_or_none` e `sp_day_start` entraram na lista fechada do `e203_06_gate` (funções puras: o próprio argumento e o relógio). Falta registrar isso no spec do E2.03 ("Fora do portão"), na tarefa 13.
 > - O `e206_01_structure_grants` passou a aceitar `members_list` e `member_filter_sql` na lista das funções que citam `g12_level` (leem a `members_view`).
 
+> **Andamento (2026-11-27):** PRs 2, 3 e 4 (tarefas 5 a 12) num PR só, mci-connect#56, branch `feat/E2.07-pr2-4-filtros-membros` (pista A): PRs de front seguidos, sem banco entre eles. Feito pelo `architect` sozinho (sessão sem a ferramenta `Agent`): sem `code-reviewer`, `ux-designer` (tarefas 8 e 11) nem QA independentes; a sessão principal os aciona sobre o diff.
+> Diferenças do desenho, revisar no PR:
+> - `refreshAfterCellReportWrite` não foi criada: a `refreshAfterReportWrite` do E2.09 já desatualiza `["members"]`, `["cells"]`, `["cell_reports"]` e `["dashboard"]` e é chamada pela gravação, exclusão e restauração de relatório (AQ-7 coberta, com o E2E).
+> - `initialLeader(viewer, isNew)` e `showPrefilledLeaderNotice(viewer, isNew, form)` recebem `{ memberId, memberName, seesWholeChurch }` (o `my_access` e o `member` do `AuthContext`), no lugar de `(access, me)`. O aviso fica no `MemberForm` (entre "Campos com *" e "Dados pessoais"); o `MemberFormDialog` não mudou.
+> - P20: `ministrySwitchNotices(switches, savedLeader)`. O aviso "Ao salvar, {Nome} deixa de ser o líder." só aparece com líder gravado e cita o **gravado** (antes, o da memória; na edição que troca o líder e liga "É Pastor(a)?", o nome é o de quem de fato deixa de ser o líder).
+> - O `PaginatedSelect` ganhou só `maxSelected`; o "rótulo do valor sem nome" não precisou de prop: o `PersonMultiFilter` monta as opções escolhidas já com "Pessoa indisponível", "Carregando…" ou "nome não carregado" (`resolveLeaderLabel`).
+> - A chave do chip da Liderança é a posição (`leaders:0`), e não o id: o `data-chip` iria para o DOM (UX-09).
+> - Data que não existe: o campo nativo fica vazio com `validity.badInput`; a tela confere isso ao sair do campo e em "Aplicar filtros" (P54).
+> - A Q-1 a Q-4 seguem o padrão (UX-24 não se aplica).
+> - Lista fechada do portão: `cell_links_or_none` e `sp_day_start` registradas no spec do E2.03 ("Fora do portão").
+
 ## Testes
 _Seção do `qa`._ PR 1 (banco), escrito e rodado pelo `architect` (sem QA independente). Arquivos em `mci-connect/supabase/tests/`: `database/e207_01_structure_grants` (EG, 47), `database/e207_02_list` (LI, 117), `volume/e207_volume.psql` (VOL) e `concurrency/e207_migrations.sh` (MIG). LI usa a massa do Negócio (19 pessoas, 5 células), isola a base dentro da transação e roda os cenários que gravam num bloco desfeito (`pg_temp.scn`); as datas são relativas a `sp_today()`.
 
@@ -2069,3 +2080,22 @@ _Seção do `qa`._ PR 1 (banco), escrito e rodado pelo `architect` (sem QA indep
 | Volume | VOL (20 mil membros, 1.500 células, 100 mil relatórios, 1 milhão de participantes), Administrador: sem filtros 57/5 ms (página/total); só "Sem vínculo" 129/97; só "Participante" 114/98; Liderança com o pastor 61/9 e com um G12 de 2 mil 21/8; combinação 10/6. G12 (2 mil): sem filtros 26/10. `dashboard_summary`: 182 → 201 ms (Administrador), 102 → 107 ms (G12). Planos: etapa 2 por `members_pkey`; sem filtro de vínculo, sem os `EXISTS`; com ele, tabelas *hash*; Liderança por semi-join com `member_hierarchy` | ✅ |
 | Testes adaptados | `e108_pr3_dashboard_rpcs` (André e Ana saem de "sem vínculo": célula ativa abaixo; 4 → 2), `e201_04_cells_reports`, `e203_01`, `e203_03`, `e205_01` (as duas colunas novas no fim), `e203_06_gate` (lista fechada), `e206_01` (lista das funções que citam `g12_level`) | ✅ |
 | Regressão | pgTAP inteiro: 56 arquivos, 4.883 testes, verde (136 s). Vitest 2.187 de 2.188 (a falha, `password-policy-cases-sync`, já está na `main`: o SQL do `e203_02_policy` foi editado à mão no PR #50 sem o gerador). tsc e build ok; lint sem erro nos arquivos do PR. Playwright inteiro (`--workers=1`, pista B): 390 passaram, 8 pulados, 3 falharam sem relação com o PR (que não muda tela): `celulas-relatorios-escopo` UX-24 instável (passa sozinho); `excluidos-membros` UX-19 depende de mais de 10 registros com "a" na base (falha com a base zerada); axe do login no tema claro (contraste dos tokens, Problemas conhecidos). Concorrência: nenhum cenário novo (só leitura) | ✅ |
+
+**PRs 2 a 4 (front, mci-connect#56)**, escritos e rodados pelo `architect` (sem QA independente). Vitest: `src/lib/filters/{url,dates}.test.ts` (FU), `src/lib/members/filters.test.ts` (MF), `src/components/filters/filters.test.tsx` (FC), `src/pages/Members.filters.test.tsx` (ML) e os testes do formulário (`member-form.test.ts`, `leadership.test.ts`, `MemberForm.access.test.tsx`: FM). Playwright com a massa do spec: `e2e/membros-filtros.spec.ts` (PW, 15) e `e2e/membros-novo.spec.ts` (PN, 2).
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| RN-01, RN-02, RN-04 | PW: F2 de Pedro (André + Ativo: Caio, Gabriel e Jonas; o chip tira Ativo na hora e Fábio volta); ML: argumentos das duas RPCs, sem `.order()` | ✅ |
+| RN-05, UX-09 | PW: Tiago e um id inexistente como "Pessoa indisponível", 0 membros, sem nome nem id no HTML, sem `member_names`; Tiago + André = a rede de André; MF: `resolveLeaderLabel` | ✅ |
+| RN-06, RN-12, UX-10 | PW: na rede de Pedro, bairro "sao joao" (sem acento) acha Caio ("São João"); datas invertidas com a mensagem e sem filtro; "até" há 5 dias = Jonas; chip da data; FC: campos sem `max`, dica e erros ligados | ✅ |
+| RN-10, AQ-7 | PW: Participante pelo relatório de C1; excluir o relatório pela tela tira Paula e André da lista filtrada, sem recarregar a página | ✅ |
+| RN-14, UX-05, UX-07, UX-11 | MF: leitura, limpeza, 10 primeiros, DA-4, contagem 0 a 9, chips; PW e ML: `level=abc&baptized=yes`, recarregar, histórico, "Limpar filtros" → `size=50` | ✅ |
+| RN-15, UX-13 | PW: a ordem da massa (Pastores … Nível 5, sem liderança por último); `aria-sort` só em "Nível" | ✅ |
+| RN-16, UX-22, UX-23 | FM e PN: Rita com o líder, o aviso, "Ir para o líder" (foco, à vista, 2 s), sem P20 no cadastro novo, gravado com Rita; Pedro sem aviso; edição sem mudança | ✅ |
+| RN-17, UX-12 | PW: `?status=active&cell_link=none` → Filtros (2), os dois chips, Lúcia, Paula, Gabriel, Jonas e Ester; MF: `memberListHref` | ✅ |
+| UX-01, UX-03, UX-04, UX-17, UX-18 | PW: Sheet de baixo (360) e da direita (768), 9 filtros na ordem, 44 px, foco no título, aplica uma vez, Esc sem mudar; painel com `aria-expanded`, Bairro com 300 ms, Popover de Nível, lembrado ao recarregar | ✅ |
+| UX-02, UX-14, UX-15, UX-16, UX-25 | ML: sem termos do legado, total em texto, vazios, 5 Skeleton, `Alert` com "Tentar de novo" no 57014 sem texto técnico | ✅ |
+| UX-06, UX-08, UX-20 | FC: chips de 36 px e o foco; grupos com legenda e dicas no `aria-describedby`; PW: seletor de Pedro com o texto do P11 | ✅ |
+| UX-19, UX-21 | PW: 320 px com zoom de 200% sem rolagem; axe no Sheet e no painel, claro e escuro, sem violações fora de `color-contrast` (contraste dos tokens globais, Problemas conhecidos) | ✅ (contraste não cobrado) |
+| Regressão | Vitest 2.427 verde; tsc, build ok; lint sem problema nos arquivos do PR. Playwright inteiro (`--workers=1`, pista A, em duas partes): adaptados `exclusao-membros`, `hierarquia-listas`, `hierarquia-gravacao`, `membro-validacoes-cadastro` e `senha-propria`; falha só `excluidos-membros` UX-19 (massa, já na `main`). A Auditoria (`auditoria-tela` e os Vitest dela) sem mudança | ✅ |
+

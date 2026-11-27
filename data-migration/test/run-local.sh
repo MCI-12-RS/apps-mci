@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Teste local de ponta a ponta das ferramentas E4.01, E4.03 e E4.04.
+# Teste local de ponta a ponta das ferramentas E4.01, E4.03, E4.04 e da carga (E4.06/E4.07).
 #
 # Sobe um MySQL 8.4 em Docker com o schema do legado e a massa FICTÍCIA de
 # test/mysql/, copia para o schema legacy de um Postgres local com as funções
 # do mci-connect (uma stack local do Supabase) e confere: --dry-run sem
-# escrita, cópia, idempotência, checksum, privilégios, saneamento e limpeza.
-# No fim, apaga o schema legacy e o contêiner.
+# escrita, cópia, idempotência, checksum, privilégios, saneamento, carga
+# (adoção, ambiguidade, --final, --dry-run, idempotência, mudança no legado,
+# conflitos com o novo, volume) e limpeza.
+# No fim, tira a carga (só teste), apaga o schema legacy e o contêiner.
 #
 # Variáveis:
 #   PG_PORT      porta do Postgres da stack local (padrão 58322, pista B)
 #   MYSQL_IMAGE  imagem do MySQL (padrão mysql:8.4; mirror.gcr.io/library/mysql:8.4 se o Docker Hub limitar)
 #   MYSQL_PORT   porta local do MySQL de teste (padrão 53306)
+#   LOAD_VOLUME  0 pula a medição de volume da carga (padrão 1)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,6 +27,7 @@ CONFIG="$WORK/test.local.config"
 PASTORS="1,2,99999"
 
 cleanup() {
+  node "$HERE/assert-load.mjs" "$CONFIG" reset >/dev/null 2>&1 || true
   node "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   rm -rf "$WORK"
@@ -47,6 +51,7 @@ SUPABASE_DB="postgres"
 SUPABASE_USER="postgres"
 SUPABASE_PASS="postgres"
 LEGACY_PASTOR_IDS="${PASTORS}"
+LEGACY_ADMIN_IDS="1,2,3"
 LEGACY_APP_URL="https://legado.invalid"
 CFG
 
@@ -65,11 +70,21 @@ echo "massa carregada"
 
 N="node --no-deprecation"
 A="$N $HERE/assert-local.mjs $CONFIG"
+L="$N $HERE/assert-load.mjs $CONFIG"
+LOAD="$N $ROOT/src/load.mjs --config $CONFIG --out-dir $WORK/load-reports"
+# expect_fail "<descrição>" "<texto esperado na saída>" <comando…>: o comando precisa falhar e citar o texto.
+expect_fail() {
+  local what="$1" text="$2"; shift 2
+  set +e; "$@" >"$WORK/fail-cmd.log" 2>&1; local st=$?; set -e
+  if [ "$st" -ne 0 ] && grep -q -- "$text" "$WORK/fail-cmd.log"; then echo "ok: $what"; else
+    cat "$WORK/fail-cmd.log"; echo "FALHA: $what (status $st)"; exit 1; fi
+}
 
 step "Unitários"
 node --test "$HERE"/unit/*.test.mjs 2>&1 | grep -E '^# (pass|fail)'
 
 step "Limpeza inicial e --dry-run sem schema"
+$L reset >/dev/null
 $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes >/dev/null
 $A no-legacy
 $N "$ROOT/src/copy-raw.mjs" --config "$CONFIG" --dry-run >/dev/null
@@ -166,7 +181,92 @@ check "sem link para o membro excluído (lista simples)" grep -q '^Ids do legado
 check "nenhum link para excluído" test -z "$(grep -E '\[(43|44|45)\]\(' "$REPORT")"
 check "sem link para Id que não existe" grep -q '^| 99999 | não existe |' "$REPORT"
 
+step "Carga: destino com cadastros do novo (adoção)"
+$L reset
+$L seed-new
+FPN="$($L fingerprint)"
+
+step "Carga: --dry-run não grava nada"
+$LOAD --dry-run >"$WORK/load-dry.log" 2>&1 || { cat "$WORK/load-dry.log"; echo "FALHA: --dry-run"; exit 1; }
+tail -n 3 "$WORK/load-dry.log"
+check "nada mudou no destino" test "$($L fingerprint)" = "$FPN"
+check "nenhum relatório de carga gravado" test ! -e "$WORK/load-reports"
+for pii in Ficticio exemplo.org 52998224725 99999-0002 Novo; do
+  if grep -q "$pii" "$WORK/load-dry.log"; then echo "FALHA: saída da carga contém dado pessoal ($pii)"; exit 1; fi
+done
+echo "ok: saída da carga sem dados pessoais da massa"
+
+step "Carga: coincidência ambígua para a carga"
+$L seed-ambiguous
+FPA="$($L fingerprint)"
+expect_fail "ambiguidade para nos dois modos" "adoption_ambiguous" $LOAD
+check "nada mudou no destino" test "$($L fingerprint)" = "$FPA"
+grep -E 'adoption_ambiguous' "$WORK/fail-cmd.log"
+$L unseed-ambiguous
+FPN="$($L fingerprint)"   # a Auditoria registrou o cadastro e a saída do ambíguo
+
+step "Carga: --final para nas pendências \"corrigir no legado\""
+expect_fail "--final --dry-run para" "Carga interrompida antes de gravar" $LOAD --final --dry-run
+for code in member_email_duplicate member_leader_cycle member_spouse_not_reciprocal cell_time_invalid cell_person_deleted pastor_config_invalid; do
+  check "--final cita $code" grep -q "$code.*PARA A CARGA" "$WORK/fail-cmd.log"
+done
+expect_fail "--final para sem Administradores suficientes" "admins_below_minimum" $LOAD --final --admin-ids 99998
+check "nada mudou no destino" test "$($L fingerprint)" = "$FPN"
+
+step "Carga 1 (ensaio)"
+$LOAD >"$WORK/load1.log" 2>&1 || { cat "$WORK/load1.log"; echo "FALHA: carga 1"; exit 1; }
+tail -n 8 "$WORK/load1.log"
+$L expected
+$L lists-empty
+REPORT="$(ls "$WORK"/load-reports/carga-*.md)"
+for pii in Ficticio exemplo.org 52998224725 99999-0002 Novo; do
+  if grep -q "$pii" "$REPORT"; then echo "FALHA: relatório de carga contém dado pessoal ($pii)"; exit 1; fi
+done
+echo "ok: relatório de carga sem dados pessoais da massa"
+$A grants
+FPL="$($L fingerprint)"
+
+step "Carga 2 (idempotência)"
+$LOAD >"$WORK/load2.log" 2>&1 || { cat "$WORK/load2.log"; echo "FALHA: carga 2"; exit 1; }
+$L unchanged
+check "o destino ficou igual" test "$($L fingerprint)" = "$FPL"
+
+step "Carga 3: o legado mudou"
+$L legacy-change
+$LOAD >"$WORK/load3.log" 2>&1 || { cat "$WORK/load3.log"; echo "FALHA: carga 3"; exit 1; }
+$L legacy-change-check
+$L lists-empty
+
+step "Carga: conflitos com cadastros do novo param a carga"
+$L conflict-setup
+FPC="$($L fingerprint)"
+expect_fail "identificador de um cadastro do novo" "identifier_conflict_new" $LOAD
+check "a semana com relatório lançado no novo também é citada" grep -q "report_week_conflict_new" "$WORK/fail-cmd.log"
+check "nada mudou no destino" test "$($L fingerprint)" = "$FPC"
+$L conflict-teardown
+$LOAD >/dev/null 2>&1 || { echo "FALHA: carga depois dos conflitos"; exit 1; }
+$L lists-empty
+
+step "Limpeza do staging recusa com carga no destino"
+expect_fail "clean --yes recusa" "carga no destino" $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes
+$A grants
+
+if [ "${LOAD_VOLUME:-1}" != 0 ]; then
+  step "Carga: volume (3 mil membros, 300 células, 30 mil relatórios)"
+  $L reset
+  psql "postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres" -X -q -v ON_ERROR_STOP=1 -f "$HERE/volume/legacy-volume.sql"
+  for run in dry-run 1 2; do
+    ARGS=""; [ "$run" = dry-run ] && ARGS="--dry-run"
+    $LOAD $ARGS --pastor-ids 1,2 --admin-ids 1,2 >"$WORK/vol.log" 2>&1 || { cat "$WORK/vol.log"; echo "FALHA: volume ($run)"; exit 1; }
+    echo "volume ($run): $(grep -E '^Tempo:' "$WORK/vol.log")"
+  done
+  grep -E '^(Membros|Células|Relatórios|Participantes|Funções):' "$WORK/vol.log"
+  $L unchanged
+  $L lists-empty
+fi
+
 step "Limpeza final"
+$L reset
 $N "$ROOT/src/clean-legacy.mjs" --config "$CONFIG" --yes | tail -n 1
 $A no-legacy
 

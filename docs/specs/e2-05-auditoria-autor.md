@@ -1,8 +1,9 @@
 # E2.05: Auditoria (quem cadastrou e quem alterou)
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos, sem perguntas em aberto. Negócio e UX escritos em 2026-11-23 (as pendências PO-UX-1 a PO-UX-8 foram resolvidas pelo PO no mesmo dia: P-AUD-20 a P-AUD-27). Solução técnica e Tarefas escritas pelo `architect` em 2026-11-24. **PR 1 (banco, tarefas 2 a 7) implementado em 2026-11-26** na branch `feat/E2.05-pr1-autoria`, rebaseada na `main` (93d037f, com o E2.03 e o E2.09 em produção), enviada e sem PR aberto (ver Testes). Falta: a revisão de código e o QA independentes (sem a ferramenta `Agent` nesta execução), abrir o PR, a tarefa 1 e o deploy; depois, os PRs 2 a 4; a tarefa 1 (conferência em produção) fica com o usuário, e as decisões DT-23 a DT-25 entraram na implementação. Ficam para o usuário revisar no PR os padrões P-AUD-01 a P-AUD-27, os pontos DA-1 a DA-12 e as DT-23 a DT-25.
+> Status: **aceito em 2026-11-27** pelo `product-owner` (PRs 1 a 4 em produção; MEM-12 e as regras RN-01 a RN-20 cumpridas). Negócio e UX de 2026-11-23 (P-AUD-01 a P-AUD-27), Solução técnica e Tarefas de 2026-11-24 (DA-1 a DA-12, DT-01 a DT-25).
 > **PR 1 em produção (2026-11-26):** mci-connect#50, squash `2dd4fba`, "Deploy: banco" (migrations `20261127200000` a `20261127200500`) e promote. Antes do merge: o `save_cell_report` passou a recusar a entrada sem a célula (`cell_required`) e em formato inválido (`invalid_input`) como `app_error` (achado da revisão); o pgTAP `e203_02_policy` passou a rodar um comando por caso. Em produção: `created_by_kind` preenchido em todos, o job `e205-audit-retention` agendado, `events` sem escrita pela API, `events_view` fechada para `anon`. Próximo: PR 2.
 > **Conferência em produção (tarefa 1), 2026-11-26, sessão principal, só leitura:** pré-requisitos todos presentes (última migration `20261127100100`); todos os formatos de descrição dos eventos antigos casam com a conversão; nenhum participante registrado junto com o envio (6 depois); banco 15 MB, `events` 152 kB com 111 eventos; `pg_cron` com o job `e104-sign-in-purge` rodando; `pg_trgm` disponível e não instalado; `events` com todos os privilégios para `anon`, `authenticated` e `service_role` (o PR 1 revoga) e `_log_event` só para `service_role`; nenhuma função cita `_trg_log_`; `20260327030611` aplicada; sem excluídos sem `deleted_by`; 12 eventos com autor sem cadastro; todo membro tem evento de cadastro.
+> **PRs 3 e 4 em produção (2026-11-27):** mci-connect#55, squash `9123944`, promote (só front, run 45918251905). Antes do merge: `code-reviewer` APROVADO (2 rodadas), `ux-designer` (achados corrigidos) e `qa` sem bugs: Vitest 2.361/2.362 (a falha era a `password-policy-cases-sync`, resolvida pelo mci-connect#53, squash `21a814f`), Playwright 411 ok (2 falhas conhecidas sem relação). O exemplo da UX-19 foi corrigido para a ordem da lista de campos.
 > Slug: `e2-05-auditoria-autor` · Paridade com o legado: sim (MEM-12), com regras novas: autoria visível no registro, Funções na Auditoria, e uma Auditoria completa, legível e com prazo de guarda.
 
 ## Negócio
@@ -743,7 +744,7 @@ Celular (360 px). A busca, os filtros e a lista ficam dentro do `Card` da lista,
 │ 1.234 eventos                        │  role="status"
 │──────────────────────────────────────│
 │ Alterou o membro Igor Nunes          │  card = botão; descrição em font-medium
-│ Líder, Celular/WhatsApp              │  segunda linha (UXD-6)
+│ Celular/WhatsApp, Líder              │  segunda linha (UXD-6)
 │ Bruno Lima · 23/11/2026 às 21:50     │
 │ [Alteração] Membro                   │
 │──────────────────────────────────────│
@@ -811,7 +812,7 @@ Computador (≥ 1024 px):
   - Entre 768 e 1023 px, a coluna Entidade some (`hidden lg:table-cell`), e a entidade aparece ao lado do badge da ação.
   - "OK" em `outline` (E1.04) e "Erro" no P6.
 - **Segunda linha dos eventos de registro (UXD-6) †:**
-  - alteração de membro, célula ou relatório: os campos mudados, pelo rótulo da tabela [Rótulos dos campos na Auditoria](#rótulos-dos-campos-na-auditoria), separados por vírgula, até 3, e "e mais {N}" (ex.: "Líder, Celular/WhatsApp"; "Nome, Líder, Cônjuge e mais 2");
+  - alteração de membro, célula ou relatório: os campos mudados, pelo rótulo da tabela [Rótulos dos campos na Auditoria](#rótulos-dos-campos-na-auditoria), separados por vírgula, até 3, e "e mais {N}" na ordem da tabela de rótulos (ex.: "Celular/WhatsApp, Líder"; "Nome, Líder, Cônjuge e mais 2");
   - função criada ou excluída: "{N} permissões" ou "1 permissão";
   - função alterada: os campos mudados ("Nome", "Descrição"), "{N} permissões incluídas" e "{N} permissões retiradas" (no singular, "1 permissão incluída"), separados por " · ";
   - envio de relatório: "{N} participantes" ou "1 participante"; na alteração do relatório, depois dos campos, "{N} participantes incluídos" e "{N} participantes retirados" (no singular, "1 participante incluído"), separados por " · " (P-AUD-24, ajuste do PO);
@@ -868,7 +869,7 @@ Celular, com Ana no histórico de Igor, depois de uma exclusão e de uma restaur
 │ 4 eventos                            │
 │──────────────────────────────────────│
 │ Alterou o membro Igor Nunes          │
-│ Líder, Celular/WhatsApp              │
+│ Celular/WhatsApp, Líder              │
 │ Bruno Lima · 23/11/2026 às 21:50     │
 │ [Alteração]                          │  sem a entidade (só no relatório)
 │──────────────────────────────────────│
@@ -1099,7 +1100,7 @@ Numeração própria deste spec. Continuam valendo os critérios da Auditoria do
 | UX-16 | Abaixo de 768 px, a Auditoria não tem rolagem horizontal, em 360 e em 320 px. Cada evento é um card-botão de pelo menos 44 px, com a descrição primeiro, a segunda linha, o autor e a data, o badge da ação e a entidade, e o badge "Erro" só nos que falharam. O card abre o painel, e fechar o painel devolve o foco ao card. | teste E2E (viewport e medida) + teste de componente |
 | UX-17 | A partir de 1024 px, a tabela tem as 6 colunas, sem rolagem horizontal, e a descrição de cada linha é um `button` que abre o painel pelo teclado (Tab e Enter). | teste E2E |
 | UX-18 | Na linha, no painel e no filtro, a ação de alteração aparece como "Alteração", e "Atualização" não está no DOM; a restauração, como "Restauração"; a entidade "Função" existe, e "Participante" não aparece no filtro. As opções de Ação e de Entidade seguem a ordem da T7. | teste de componente |
-| UX-19 | Na alteração de Igor (líder de Bruno Lima para Pedro Alves, e o celular), o card mostra "Líder, Celular/WhatsApp", e o painel mostra "Líder: Bruno Lima → Pedro Alves" e "Celular/WhatsApp", sem valor. A oferta aparece como "Oferta: R$ 50,00 → R$ 80,00". No DOM da Auditoria, nos eventos novos e nos de antes deste passo, não há nome técnico (`leader_id`, `mobile_whatsapp`), JSON, texto com cara de UUID nem data `aaaa-mm-dd`. | teste de componente + teste E2E (critério da RN-20) |
+| UX-19 | Na alteração de Igor (líder de Bruno Lima para Pedro Alves, e o celular), o card mostra "Celular/WhatsApp, Líder" (a ordem da tabela de rótulos), e o painel mostra "Líder: Bruno Lima → Pedro Alves" e "Celular/WhatsApp", sem valor. A oferta aparece como "Oferta: R$ 50,00 → R$ 80,00". No DOM da Auditoria, nos eventos novos e nos de antes deste passo, não há nome técnico (`leader_id`, `mobile_whatsapp`), JSON, texto com cara de UUID nem data `aaaa-mm-dd`. | teste de componente + teste E2E (critério da RN-20) |
 | UX-20 | Funções: a criação lista as permissões pelo rótulo do E2.02; a alteração mostra "Permissões incluídas" e "Permissões retiradas" e, quando o nome muda, "Nome: … → …"; a troca da padrão mostra a descrição do Negócio; a exclusão lista as permissões que a função tinha. Nenhum identificador de permissão (como `view_audit_log`) aparece. | teste de componente (critério da RN-15) |
 | UX-21 | O autor aparece como "Sistema" nos eventos sem pessoa e como "—" no login sem sessão (E1.04). No card, o evento sem autor mostra só a data. | teste de componente |
 | UX-22 | "Ver histórico" em Igor abre "Histórico de Igor Nunes", só com os eventos dele, inclusive os de antes da exclusão e da restauração, com "Ver toda a Auditoria" no topo. O histórico de um relatório mostra os participantes dentro do envio e de cada alteração, além dos eventos de participante de antes deste passo. Entidade e Status não aparecem, e Ação tem só Criação, Alteração, Exclusão e Restauração. O link direto e o recarregar mostram o mesmo. | teste E2E (critério da RN-19) |
@@ -2131,6 +2132,8 @@ Cada cenário termina num estado válido, sem *deadlock* novo.
 ## Tarefas
 _Seção do `architect`._
 
+> **Andamento (2026-11-26, PRs 3 e 4):** tarefas 11 e 14 em mci-connect#55. Divergências e decisões de implementação: o bloco lê a autoria por id (`use-record-authorship`), menos no "Ver relatório", que a lê junto com o relatório (`CELL_REPORT_DETAIL_SELECT`); a segunda linha e o painel seguem a ordem da lista de campos (P32), então a alteração de Igor aparece como "Celular/WhatsApp, Líder" (o exemplo da UX-19 foi corrigido para essa ordem); o "✕" dos painéis passou a um componente comum (`SheetCloseButton`, 44 px); nos testes de componente dos formulários, o bloco é trocado por um marcador (`src/test/record-authorship-stub.tsx`) para não consumir a fila do `fake-supabase`.
+
 > **Em produção (2026-11-26):** PR 2 mergeado (squash `80c518d`) e promovido logo depois do PR 1, como pede a Implantação. Antes do merge, `code-reviewer` e `qa` independentes aprovaram (o QA acrescentou o E2E da célula sem mudança e o pgTAP `e205_06_raise_errcode`, que barra `RAISE EXCEPTION` sem `ERRCODE`, de que depende a classificação de erro da tela). Próximo: PRs 3 e 4 num PR só (front seguido, sem momento próprio de publicação), com a revisão de UI e a revisão final do passo (tarefa 17).
 
 > **Andamento (2026-11-26, PR 2):** tarefas 8 a 10 feitas na branch `feat/E2.05-pr2-gravacao`, PR mci-connect#52, a partir da `main` 2dd4fba (PR 1 em produção), na pista A. Sem a ferramenta `Agent`: o `architect` implementou, revisou, testou e fez a revisão de UI; falta a revisão de código e o QA independentes. Divergências do desenho: o hook novo substitui o `use-save-cell-report.ts` (o E2.08 já tinha o `src/lib/cells/changes.ts`, "sem mudança" e a mensagem de conexão na célula, então ali só entrou o `updated_at`); os textos opcionais vazios do relatório (tema, observações, motivo) vão como nulo, para a edição não marcar o campo como alterado (o banco compara estritamente); o 23514 de `CHECK` de tabela vira a mensagem de conexão, e só o do trigger da semana continua com o texto da semana; o `saveFailed` do membro ("Tente de novo.") saiu: todo erro sem regra mostra a mensagem de conexão do E2.04.
@@ -2231,3 +2234,22 @@ _Seção do `qa`. PR 1 escrito e rodado pelo `architect` em 2026-11-26, na pista
 - **Vitest:** 153 arquivos e 2.225 testes; 1 falha que já existe na `main` desta máquina (`password-policy-cases-sync`, o SQL gerado difere só no ambiente; sem relação). `tsc` e build verdes; lint com os mesmos 11 problemas de antes.
 - **Playwright** (`--workers=1`): as specs afetadas pelo diff e o *smoke* de login (`login`, `acesso-*`, `cadastro-*`, `celulas-*`, `excluidos-membros`, `exclusao-*`, `hierarquia-gravacao`, `membro-validacoes-*`, `membros-escopo`, `relatorio-celula-excluida`, `autoria-banco`, `autoria-gravacao`): 225 passam e 3 pulados na primeira rodada; das 3 falhas, a do contrato antigo de participantes foi corrigida (e a spec passa inteira depois), a UX-19 de `excluidos-membros` é a de antes (PR 1) e a UX-24 de `celulas-relatorios-escopo` é instável também na `main` (4 de 8 repetições falham lá: mede a posição durante a animação do diálogo).
 - **Revisão de UI (T5)**, feita pelo `architect` com capturas em 320, 360 e 1280 px, claro e escuro, e axe no relatório em 360 px: a mensagem fica logo acima dos botões e legível nos dois temas; o aviso "Nenhuma alteração para salvar." aparece no toast. O axe só acusa o contraste do botão primário no escuro (token `--primary`, problema conhecido). O relatório continua num `Dialog` comum no celular (problema conhecido, E2.11).
+
+**PRs 3 e 4 (autoria na tela e Auditoria nova)**, rodados pelo `architect` em 2026-11-26, na pista A (stack `mci-e104-be` montada do zero com as migrations da `main` `deff10d`), **sem a ferramenta `Agent`: faltam o QA e a revisão de UI independentes.**
+
+| RN / UX | Testes (PRs 3 e 4, front) | Resultado |
+|---|---|---|
+| UX-01, UX-02, RN-09 a RN-11 | `authorship.test.ts` (tabela: verbos, Sistema, legado, AdminUser, sem autor, sem data, os dois) e `authorship.timezone.test.ts` (Tóquio) | passa |
+| UX-03, UX-05 a UX-07 | `RecordAuthorship.test.tsx`; posição nos testes de `MemberForm`, `CellForm`, `CellReportForm` e `CellReportSheet`; E2E `autoria-tela` (RN-01, RN-02, RN-07, RN-08 com o autor renomeado e excluído, RN-10, "Descartar as alterações?" e o voltar) | passa |
+| UX-04 | E2E `autoria-tela` (só "Enviado por" com 8 participantes; "Alterado por" depois de incluir um) | passa |
+| UX-10, RN-11 | `deleted-lists.test.ts`, `CellReportsDeleted.test.tsx`, E2E `autoria-tela` | passa |
+| UX-11 a UX-17, RN-18 | `url-params.test.ts`; `Events.audit.test.tsx`; E2E `auditoria-tela` (12 mil eventos, última página, "otavio" além dos 500, período de Brasília, celular em 360 e 320 px, tabela pelo teclado) | passa |
+| UX-18 a UX-21, RN-15, RN-20 | `events.test.ts`, `fields.test.ts` (× `audit-fields.json`), `Events.audit.test.tsx`, E2E `auditoria-tela` (evento real e função) | passa |
+| UX-22 a UX-27, RN-17, RN-19 | `Events.audit.test.tsx`; E2E `auditoria-tela` (histórico com exclusão e restauração, recarregar, Bruno sem acesso e sem consulta a `events_view`) | passa |
+| UX-28 | E2E `autoria-tela` (320 px, fonte em 200%) e `auditoria-tela` (320 e 360 px sem rolagem lateral) | passa |
+| UX-29 | axe (360 e 1280 px, claro e escuro) na lista, no painel e no cadastro: o painel tinha `dl` aninhado (corrigido); sobra só o `--primary` do botão no escuro (problema conhecido) | passa, com o conhecido |
+
+- **Vitest:** 160 arquivos e 2.348 testes; 1 falha que já existe na `main` (`password-policy-cases-sync`). `tsc` e build verdes; lint com os mesmos 11 problemas de antes.
+- **pgTAP** (inteiro): 57 arquivos e 4.884 testes, PASS.
+- **Playwright** (suíte inteira, `--workers=1`): 403 passam, 8 pulados, 2 falham: a de `relatorio-celula-excluida` era do link novo "Ver histórico" no painel (ajustada; a spec passa inteira) e a UX-19 de `excluidos-membros` é a conhecida (depende da massa). O *placeholder* novo da busca entrou em `excluidos-*`.
+

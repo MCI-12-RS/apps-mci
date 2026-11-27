@@ -1,11 +1,13 @@
 # E2.11: Lançamento de relatório numa RPC atômica
 
-> Status: desenho pronto, sem implementação. Negócio, Experiência (UX), Solução técnica e Tarefas prontos.
+> Status: **aceito em 2026-11-27** pelo `product-owner`. Em produção: PR 1 (banco: retrato e visibilidade; mci-connect#54, squash `3506a5d`, "Deploy: banco" run 45917973610), PR 2 (banco: lançamento e edição numa chamada; mci-connect#57, squash `cb29883`) e PRs 3 e 4 (front, num PR só; mci-connect#58, squash `423ca91`), estes com o "Deploy: banco" run 45997835737 (migrations até `20261130100100`) e o promote run 45998090478.
+> **Conferido em produção depois do deploy:** as RPCs novas existem, a `set_cell_report_participants` e os triggers de semana saíram e `authenticated` não tem INSERT em `cell_reports`. Divergências do desenho em [PR 1](#divergências-do-pr-1-implementado), [PR 2](#divergências-do-pr-2-implementado) e [PRs 3 e 4](#divergências-dos-prs-3-e-4-implementado). Testes: pgTAP 5.313, Vitest 2.521 na combinação final, Playwright inteiro só com as falhas conhecidas.
+> **Fica para outros passos:** a `save_cell_report(NULL, …)` (DA-12) sai no E2.12; tema ou oferta nulos do legado na edição de relatório realizado, no E4.06 (Dependências); o `e211_03_submit` falha no primeiro minuto da semana (Problemas conhecidos do `CLAUDE.md`).
 > - Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar".
 > - Experiência (UX) escrita no mesmo dia pelo `ux-designer`. As pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-REL-21 a P-REL-31.
 > - Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-11. Nenhuma RN voltou ao PO.
 > - Ficam para o usuário revisar no PR os padrões P-REL-01 a P-REL-31, as perguntas Q-1 a Q-8 e os pontos "definidos pelo architect" (DA-1 a DA-12). Nenhum bloqueia: cada um já tem um padrão adotado.
-> - A implementação começa depois do E2.01 inteiro, do PR 1 do E2.02, do banco do E2.05, do PR 1 do E2.06, dos PRs 1 e 2 do E2.08 e do banco do E2.09 em produção ([Implantação](#implantação)). Falta só Testes.
+> - A implementação começa depois do E2.01 inteiro, do PR 1 do E2.02, do banco do E2.05, do PR 1 do E2.06, dos PRs 1 e 2 do E2.08 e do banco do E2.09 em produção ([Implantação](#implantação)).
 > Slug: `e2-11-lancamento-relatorio` · Paridade com o legado: sim (REL-01 a REL-12 e REL-15, com a D3). Regras novas:
 > - o que pode mudar na edição (célula fixa, data só dentro da semana do relatório);
 > - "Não houve célula" sem participantes;
@@ -709,7 +711,7 @@ Vocabulário de referência. O `ux-designer` pode ajustar o tom, mas não o sent
 | participantes automáticos | O líder, o timóteo e o anfitrião entram automaticamente. · no seletor: Já entra automaticamente. · Participantes: {N} |
 | participante inativo (aviso, não impede o envio) | {Nome} (inativo) · {Nome} (inativa) |
 | "Não houve célula" | Não houve célula · Reunião prevista: {dia}, {dd/mm/aaaa}, às {HH:mm} · Motivo * · dica: Por exemplo: feriado, chuva forte, viagem do anfitrião. |
-| o que sai ao trocar a situação | Ao enviar, {itens} não serão enviados. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. |
+| o que sai ao trocar a situação | Ao enviar, não será enviado: {item}. · Ao enviar, não serão enviados: {itens}. · Ao salvar, sai do relatório: {item}. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. |
 | oferta (dica) | Se não houve oferta, informe 0,00. |
 | botões | Enviar relatório (lançamento) · Salvar alterações (edição) · Enviando… · Salvando… · Cancelar · Fechar · Editar relatório (no aviso de "já foi enviado") · Adicionar visitante |
 | sucesso | Relatório enviado. · Relatório atualizado. |
@@ -1350,7 +1352,7 @@ Caio marca "Não houve célula"            Ao enviar sem o motivo
   - Data, Horário, Tema e os grupos e campos abaixo saem do DOM;
   - aparece, como texto, "Reunião prevista: {dia}, {dd/mm/aaaa}, às {HH:mm}" (Textos de tela). No lançamento, é a reunião da semana; na edição, a data e o horário gravados (RN-16);
   - **Motivo *:** `Textarea` com `text-base md:text-sm`, `rows={3}`, sem altura fixa e sem placeholder, com a dica "Por exemplo: feriado, chuva forte, viagem do anfitrião." † entre o rótulo e o campo;
-  - **o que sai (P20):** se algo da célula realizada estava preenchido, o aviso `(i)` embaixo das opções, com `role="status"`, diz o que não vai: "Ao enviar, {itens} não serão enviados." †, com os itens preenchidos ("o tema", "{N} participantes escolhidos", "{N} visitantes", "a oferta (R$ {valor})", "as observações"). Voltar para "Célula realizada" devolve tudo e tira o aviso. A edição tem textos próprios (T9);
+  - **o que sai (P20):** se algo da célula realizada estava preenchido, o aviso `(i)` embaixo das opções, com `role="status"`, diz o que não vai: "Ao enviar, não serão enviados: {itens}." † ("não será enviado: {item}" com um item só), com os itens preenchidos ("o tema", "{N} participantes escolhidos", "{N} visitantes", "a oferta (R$ {valor})", "as observações"). Voltar para "Célula realizada" devolve tudo e tira o aviso. A edição tem textos próprios (T9);
   - ao enviar, o formulário não manda tema, participantes, visitantes, oferta nem observações.
 
 #### T5. Participantes
@@ -1697,7 +1699,7 @@ R3 passa para célula realizada           R3, como está (só leitura na data)
   - os de cadastro excluído ficam na linha da T8 do E2.01, sem ✕. A pessoa registrada que foi excluída fica na lista das registradas, só pelo nome, e não se repete nessa linha;
   - o total conta todos, uma vez cada.
 - **Célula realizada → "Não houve célula" (P20):**
-  - o aviso `(i)`, com `role="status"`, diz o que sai: "Ao salvar, saem do relatório: {itens}." †, com os itens que o relatório tem ("o tema", "{N} participantes", "{N} visitantes", "a oferta (R$ {valor})", "as observações");
+  - o aviso `(i)`, com `role="status"`, diz o que sai: "Ao salvar, saem do relatório: {itens}." † ("sai do relatório: {item}" com um item só), com os itens que o relatório tem ("o tema", "{N} participantes", "{N} visitantes", "a oferta (R$ {valor})", "as observações");
   - a data e o horário ficam como estão e aparecem como texto ("Reunião prevista: …");
   - o Motivo é obrigatório;
   - voltar para "Célula realizada" devolve tudo e tira o aviso.
@@ -1836,7 +1838,7 @@ Complementam os "Textos de tela" do Negócio, sem mudar os termos. As mensagens 
 | Opções de data † | {Dia}, {dd/mm/aaaa} · {Dia}, {dd/mm/aaaa} (hoje) |
 | Dicas † | Entre {dia}, {dd/mm/aaaa}, às {HH:mm}, e agora. · Dentro da semana do relatório, de {dd/mm/aaaa} a {dd/mm/aaaa}. · Por exemplo: feriado, chuva forte, viagem do anfitrião. · Um nome por campo. · Se não houve oferta, informe 0,00. |
 | Troca de célula † | Data e horário trocados pela reunião desta célula. |
-| O que sai (P20) † | Ao enviar, {itens} não serão enviados. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. · itens: o tema · {N} participantes escolhidos (no lançamento) · {N} participantes (na edição) · {N} visitantes · a oferta (R$ {valor}) · as observações (no singular com 1) |
+| O que sai (P20) † | Ao enviar, não será enviado: {item}. · Ao enviar, não serão enviados: {itens}. · Ao salvar, sai do relatório: {item}. · Ao salvar, saem do relatório: {itens}. · Ao salvar, o motivo sai do relatório, e o líder, o timóteo e o anfitrião registrados entram como participantes. · itens: o tema · {N} participantes escolhidos (no lançamento) · {N} participantes (na edição) · {N} visitantes · a oferta (R$ {valor}) · as observações (no singular com 1) |
 | Participantes | Participantes · O líder, o timóteo e o anfitrião entram automaticamente. · na edição: O líder, o timóteo e o anfitrião registrados no relatório não podem ser retirados dos participantes. · Outros participantes † · Buscar membros… · Já entra automaticamente. † · Participantes: {N} · {Nome} (inativo) · {Nome} (inativa) · Retirar {Nome} † · as linhas do E2.01 e do E2.02 |
 | Visitantes | Visitantes · Nome do visitante † (placeholder) · Nome do visitante {n} † (nome acessível) · Retirar o visitante {Nome} † · Retirar o visitante {n} † · Adicionar visitante · Visitantes: {N} † |
 | Oferta | Oferta * · R$ · 0,00 (placeholder) · as mensagens do Negócio |
@@ -2058,6 +2060,42 @@ _Conferido em 2026-11-24:_
 - _no `mci-connect` (`origin/main`, `4595daa`): `CellReportForm.tsx`, `use-save-cell-report.ts`, `report-form.ts`, `src/lib/cell-reports/fields.ts`, `use-cell-options.ts`, `src/lib/cells/fields.ts`, as massas de `e2e/exclusao-*.spec.ts` e a lista de pgTAP que gravam em relatório; e, na branch `feat/E2.01-pr4-ver-relatorio`, o `CellReportSheet` e o `use-cell-report`;_
 - _no legado: `Domain/Model/Report.cs` (`LeadershipId`, `HostId` e `TimothyId` são `int`, nunca nulos; `CellType` é anulável);_
 - _nos specs: E2.01 (DT-09, DT-15, RN-13, formato `app_error`, ordem das travas), E2.02 (funções de linha, `can_submit_report`, predicados canônicos, DA-5, DA-12), E2.05 (`current_actor`, `zz_stamp_authorship`, `save_cell_report`, `audit_fields`), E2.06 (`private.member_hierarchy`), E2.08 (`ac_enforce_cell_report_active`, `cell_types`, `normalize_meeting_time`, `is_valid_meeting_time`, `TimeInput`), E2.09 (`sp_local`, `sp_instant`, `refreshAfterReportWrite`), E2.10 (`cell_recent_reports`, `cell_identity`) e o Negócio do E2.12 (sem commit, só lido)._
+
+### Divergências do PR 1 (implementado)
+Registradas em 2026-11-27, depois do PR 1 em produção. Valem sobre o desenho abaixo; o PR 2 parte delas.
+1. **Trigger do retrato `ENABLE ALWAYS`** (DT-02, "Trigger do retrato"): dispara também em `replica` (carga do E4.06 e massas com datas passadas), mas ali só completa pela célula, no INSERT, as colunas `snapshot_*` que vieram nulas (o retrato do legado fica) e, no UPDATE, não faz nada (a carga pode corrigir o retrato). Fora de `replica`, segue a DT-02. O "tipo vazio → o da célula" do E4.06 passa a ser feito por ele.
+2. **`viewer_can_insert_cell_report_participant` também pelo retrato** (DT-04): até o PR 2 remover a escrita direta (DT-11), a inclusão de participante segue a mesma visibilidade do relatório.
+3. **Políticas com os `viewer_has` num *InitPlan*** (DT-04): as permissões são lidas uma vez por consulta, antes da função de linha `viewer_sees_report_people`; o resultado é o mesmo, por desempenho.
+4. **`snapshot_*` em `audit-fields.json` já no PR 1**, na lista `not_data` de `cell_reports` (o retrato não entra nos eventos, como diz a Escrita; a lista de campos do E2.05 exige decisão para toda coluna nova).
+5. **`e208_concurrency.sh`, cenário 3b**: passou a esperar a recusa (`report_cell_immutable`), porque a troca da célula do relatório deixou de existir.
+
+### Divergências do PR 2 (implementado)
+Registradas em 2026-11-27, no PR 2 (migrations `20261130100000_e211_02_rules` e `20261130100100_e211_03_write`). Valem sobre o desenho abaixo; o PR 4 (front) parte delas.
+1. **Portão antes de tudo:** as quatro RPCs chamam `viewer_member_id()` logo depois de `current_actor()`, antes da repetição (DT-06). Conta com a marca do E2.03 ou sessão encerrada não recebe nem o `replayed`.
+2. **Códigos técnicos a mais**, fora da tabela de erros (a tela nunca os provoca): `was_held_invalid` (`field: "was_held"`, situação ilegível pela API) e `participant_not_found` (`field: "participant_ids"`, `member_id`: id que não é de ninguém). A tabela de mensagens está em `private.report_message`.
+3. **Limite de participantes antes da trava:** o `too_many_participants` é conferido pelo tamanho do conjunto (escolhidos sem repetição mais os automáticos, ou o conjunto final da edição) antes de travar e ler os membros. Muda só a ordem entre recusas do mesmo campo e evita travar milhares de linhas.
+4. **Ordem da edição igual à do lançamento:** reunião (9) → participantes (10) → visitantes, oferta e observações (11). A tabela da edição punha os participantes depois de todos os campos.
+5. **`private.report_launch_status(now, meeting, has)`** (pura) decide `already_sent`/`not_yet`/`can_submit`; a conferência e a tabela de casos usam a mesma.
+6. **Marca devolvida, não apagada:** as RPCs guardam o valor anterior de `mci.cell_report_write` e o devolvem no fim (passo 17), para não desligar a marca de uma manutenção que chame a RPC.
+7. **Guarda dos participantes também no UPDATE** (o desenho: INSERT e DELETE); o `REVOKE` inclui `anon`; as políticas de escrita saem por laço em `pg_policies` (`cmd <> 'SELECT'`), o que cobre as antigas do E1.01; `enforce_insert_permission` fica só com o ramo de `cells`.
+8. **Entrada (`private.report_input`):** `was_held` nulo vale como ausente; data, horário e oferta vazios ou só com espaços valem como ausentes (obrigatórios); oferta `NaN`/`Infinity` é inválida; nulos dentro de `visitors` são descartados como vazios.
+9. **`cell_report_edit_context`** devolve a linha para quem vê o relatório, sem exigir "Editar Relatórios de Células" (só datas). A service role recebe `existing_*` na conferência.
+10. **Testes dos passos anteriores adaptados** (leitura técnica 8): massas com a marca e o lançamento e a edição pelas RPCs. Duas expectativas do E2.02 mudam pela DA-7: célula excluída que quem lança não vê dá `not_found_or_deleted` (antes `cell_deleted`). O `e201_07` passou a conferir a permissão dentro das RPCs; o `e211_migrations.sh` roda de novo a cadeia das três migrations.
+11. **Forma da data e do horário pela API** (ajuste da revisão do PR 2): `private.report_input` só aceita data `AAAA-MM-DD` e horário `HH:MM`, `HH:MM:SS` ou com fração de segundo antes do cast; o resto (`today`, `yesterday`, `now`, `25/11/2026`, `9:30`) é `report_date_invalid`/`report_time_invalid`. O cast de texto livre dependia do `DateStyle` e aceitava palavras relativas numa função `IMMUTABLE`. Casos `api_input` (I01 a I16) na tabela de casos.
+12. **`TRUNCATE` revogado** de `cell_reports` e `cell_report_participants` para `authenticated`, `anon` e `service_role` (ele não passa pelo RLS nem pela guarda de linha), com a pós-condição e o pgTAP `e211_05`.
+
+### Divergências dos PRs 3 e 4 (implementado)
+Registradas em 2026-11-27 (mci-connect#58). Valem sobre o [Front](#front) e a UX.
+1. **Um diálogo só** (`ReportFormDialog` + `useReportShell`, `src/components/cell-reports/report-shell.ts`): o conteúdo (lançamento, carregando, edição) informa à casca o título, o rodapé e o "Fechar". A troca para a edição pelo aviso (UXD-13) e o fim do carregando não remontam o `Dialog`, e o foco volta a quem abriu (UX-13).
+2. **Chaves fora de `["cell_reports"]`** (AQ-9): a conferência e a edição usam `["cell_report_form", …]`, sem cache (`gcTime: 0`). A gravação desatualiza `["cell_reports"]` com o formulário ainda aberto, e a conferência não deve ser relida nesse instante. Cada abertura e cada escolha de célula conferem de novo.
+3. **Edição só depois de tudo carregado:** a linha, o `cell_report_edit_context` e os participantes chegam antes dos campos (sem o `Skeleton` só dos participantes da tabela de Estados).
+4. **Repetição (AQ-4):** `replayed` com `same_content` é o sucesso normal ("Relatório enviado."); sem `same_content`, o toast de P-REL-29. O P107 ficou para o "já foi enviado" depois de uma queda neste formulário (outro caminho que grava a semana).
+5. **Sem célula, só o erro dela** (`validateReportForm`): os outros campos não estão na tela (UXD-2), e o resumo conta 1.
+6. **Gravação sem rede:** as mutações usam `networkMode: "always"` (sem isso, o TanStack Query pausa o envio offline e o botão fica em "Enviando…") e um tempo-limite de 20 s que cobre também a espera da sessão.
+7. **Bloco da célula no "Ver relatório"** sem a marca "(inativo)" (só nomes): a marca é do formulário (P63).
+8. **Detalhe da célula (E2.10):** ainda sem tela; o `CellReportDialog` é o que ele deve abrir.
+9. **`PaginatedSelect`** ganhou `description` (segunda linha da opção, P5 da opção de célula) e `removeLabel` ("Retirar {Nome}").
+10. **Massa dos E2E** que lança pela tela: `CellsWorld.meetingAlreadyHappened` põe a reunião hoje à 00:00, para o lançamento não depender da hora (RN-06).
 
 ### Revisão das regras
 Nenhuma RN voltou ao PO. As lacunas técnicas foram resolvidas pela leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr).
@@ -2807,7 +2845,7 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 | E2.14 | "Relatórios enviados" continua contando "Não houve célula"; os números de participantes incluem os automáticos. |
 | E4.02 | As colunas do retrato já existem com o nome `snapshot_*`; o E4.02 só cria `legacy_id`. |
 | E4.04 | O saneamento lista: relatórios sem tipo; "Não houve célula" com tema, oferta maior que zero ou visitantes; realizada sem tema; oferta negativa ou acima de R$ 999.999,99; textos acima do teto (informação); pessoas do retrato que não migram. |
-| E4.06 | Em `replica`: o retrato pelo `legacy_id`; tipo vazio → o tipo da célula, contado no relatório de carga. A marca de manutenção não é usada. |
+| E4.06 | Em `replica`: o retrato pelo `legacy_id`; tipo vazio → o tipo da célula, contado no relatório de carga. A marca de manutenção não é usada. **Pendência (achado da revisão do PR 2, 2026-11-27):** na edição de um relatório de célula realizada, tema ou oferta nulos no gravado (legado) disparam `theme_required` ou `offering_required` mesmo sem o campo ser tocado (a regra confere o conjunto final). A carga confere quantos relatórios realizados têm tema ou oferta nulos (o E4.04 lista) e decide com o PO: corrigir no legado, preencher na carga ou aceitar que a primeira edição peça o campo. |
 | E4.09 | Confere: retrato sem nulos e com as FKs válidas; participantes = `NumMembers`; visitantes = `NumVisitors`; a contagem dos relatórios com o tipo da célula. |
 
 **Mudanças nos documentos, no aceite** (o `product-owner` atualiza a matriz, a seção 3 e o Progresso; o `architect` atualiza o resto do `CLAUDE.md` na revisão final):
@@ -2851,6 +2889,8 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 
 ### Conferência em produção (tarefa 1)
 
+> **Resultado em 2026-11-27, antes do PR 2 (`architect`, Management API, só leitura):** nenhuma linha `a` (nenhuma oferta fora de 0 a R$ 999.999,99). `info`: 4 relatórios excluídos. `infra`: as quatro colunas `snapshot_*` "já existem" (criadas pelo PR 1, em produção; esperado depois dele).
+>
 > **Resultado em 2026-11-24 (sessão principal, só leitura, com o E2.01 PR 2 em produção):** só dados de teste. `a` · RN-21: 1 relatório numa célula sem timóteo (as células de teste já apontadas no E2.08, a corrigir antes do PR 2 de lá). `infra`: os pré-requisitos do E2.02, E2.05, E2.06, E2.08 e E2.09 ainda não estão em produção (esperado).
 Só leitura. O usuário roda no SQL Editor de produção (papel `postgres`), antes do "Deploy: banco" do PR 1 e de novo antes do PR 2.
 - A saída traz só o tipo, o problema, o tratamento e os ids dos relatórios. Não traz nome de pessoa, tema nem valor de oferta.
@@ -3089,7 +3129,19 @@ Quatro PRs no `mci-connect`. **O PR 1 começa depois dos pré-requisitos da [Imp
 6. **Tarefas 9 e 13:** o `ux-designer` dá o veredito e lista os ajustes, que voltam ao `frontend-developer` antes de o QA fechar o PR.
 
 ## Testes
-_Seção do `qa`._
+_Seção do `qa`. No PR 2, escrita pelo `architect`, que implementou e testou sozinho (sessão sem a ferramenta `Agent`)._
 
 | RN | Testes | Resultado |
 |---|---|---|
+| 04, 05, 06, 12, 13, 16, 18, 19 (regras puras) | pgTAP `e211_02_cases` (gerado de `report-rules-cases.json`: 24 lançamentos e 7 edições em UTC, Brasília e Tóquio, 13 ofertas, 7 visitantes, 19 horários do E2.08); Vitest `report-rules-cases-sync` | PR 2: passa (126 + 3) |
+| 01, 02, 04 a 13, 15, 20 (lançamento) | pgTAP `e211_03_submit` (ordem da DA-8 e da RN-20, campos, participantes, datas, retrato e automáticos, Auditoria, repetição, service role, DA-12) | PR 2: passa (89) |
+| 03, 05, 08 a 11, 15, 16 (edição) | pgTAP `e211_04_edit` (quem edita, semana do relatório, DA-3, DA-4, trocas da RN-09, registrados fixos, contexto da edição) | PR 2: passa (54) |
+| 01, 13, 19 (escrita fechada e conferência) | pgTAP `e211_05_write_closed` (privilégios, guarda e marca, catálogo, oferta, conferência por persona) | PR 2: passa (71) |
+| 07, 11, 14, 15, 16 (concorrência) | `e211_concurrency.sh` (11 cenários) e os do E2.01, E2.05 e E2.08 adaptados | PR 2: passa |
+| 01 (passos anteriores) | pgTAP inteiro (62 arquivos, 5.291 testes; 5.313 depois dos ajustes do PR 2 de 2026-11-27, com o `e211_migrations.sh`); Playwright inteiro (421: 410 passam, 8 pulados; falham só o UX-19 de `excluidos-membros` e o axe de `sign-in`, conhecidos, e o UX-24 de `celulas-relatorios-escopo`, intermitente: passa sozinho); Vitest (163 arquivos, 2.365); tsc e build | PR 2: passa |
+| Risco 9 (volume) | `e211_volume.psql`: conferência 7 ms; lançamento com 30 escolhidos 110 ms; edição com 30 mudanças 72 ms; página da `cell_reports_view` 187 ms (Administrador) e 214 ms (G12); `dashboard_summary` 266 a 272 ms | PR 2: metas atendidas |
+| 04 a 09, 12, 13, 16, 18 (regras da tela) | Vitest `dates.test.ts` (os 24 lançamentos e 7 edições do `report-rules-cases.json`, Lisboa e Manaus, relógio do servidor) e `report-form-rules.test.ts` (oferta da T6, visitantes, conferência, chamada e PATCH, P20, automáticos, recusas, conferência antes de preencher, bloco) | PRs 3 e 4: passa (79) |
+| UX-04, UX-07 a UX-09, UX-12, UX-26, UX-31 | Vitest `CellReportDialog.test.tsx` | PRs 3 e 4: passa (6) |
+| UX-01, UX-03, UX-09, UX-13, UX-18 a UX-21, UX-23 a UX-25, UX-28, UX-29, UX-32 a UX-34, UX-38 | Playwright `relatorio-lancamento.spec.ts` (8) e `relatorios-retrato.spec.ts` (1); specs do E2.01, E2.02, E2.05, E2.08 e E2.09 adaptadas ao formulário novo | PRs 3 e 4: passa |
+| 01 (passos anteriores) | Vitest inteiro (163 arquivos, 2.381), tsc, lint (sem problema novo), build; Playwright inteiro (430: 420 passam, 8 pulados; falham só o UX-19 de `excluidos-membros` e o axe de `sign-in`, conhecidos) | PRs 3 e 4: passa |
+| UX-28, UX-12, RN-09, RN-11, T9 (lacunas dos PRs 3 e 4) | Vitest `CellReportDialog.qa.test.tsx` (27: mesmo id na nova tentativa e seletor travado, id novo na troca de célula, `replayed` igual e diferente, conferência offline, automáticos fixos e contados, P20 singular e plural, recusas de data e horário, edição: sem mudança, PATCH, P20, offline, `report_gone`, semana); Playwright `relatorios-retrato-escopo.spec.ts` (RN-14 b e d) | PRs 3 e 4 (QA, 2026-11-27): Vitest inteiro 164 arquivos, 2.448; tsc e build verdes; pgTAP 62 arquivos, 5.313, falha só `e205_03_write` (11, depende da hora, ver relatório); Playwright inteiro 430: 419 passam, 8 pulados, 3 conhecidos |

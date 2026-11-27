@@ -11,8 +11,10 @@
     "copy": "node src/copy-raw.mjs",
     "report": "node src/sanitation-report.mjs",
     "clean": "node src/clean-legacy.mjs",
+    "load": "node src/load.mjs",
     "test:unit": "node --test test/unit/*.test.mjs",
-    "test:local": "bash test/run-local.sh"
+    "test:local": "bash test/run-local.sh",
+    "test:qa": "bash test/qa/run-qa.sh"
   },
   "dependencies": {
     "mysql2": "3.12.0",
