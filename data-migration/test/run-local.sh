@@ -438,7 +438,7 @@ if [ "$ACCOUNTS" != 0 ]; then
 
   step "Limpeza do ensaio: --dry-run não apaga nada"
   $UNLOAD --dry-run >"$WORK/unload-dry.log" 2>&1 || { cat "$WORK/unload-dry.log"; echo "FALHA: limpeza --dry-run"; exit 1; }
-  grep -E '^(Sai|Volta|Número|Contas)' "$WORK/unload-dry.log"
+  grep -E '^(Sai|Volta|Código|Contas)' "$WORK/unload-dry.log"
   check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
   check "nenhum relatório de limpeza gravado" test ! -e "$WORK/unload-reports"
   for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail Ensaio Novo '@'; do
@@ -448,9 +448,10 @@ if [ "$ACCOUNTS" != 0 ]; then
   PLANNED="$(sed -n 's/^Volta à linha de antes: .* contas a apagar no Auth: \([0-9.]*\).*/\1/p' "$WORK/unload-dry.log")"
   check "previsão das contas igual à do plano ($PLANNED)" grep -q "^Contas a apagar no Auth (com as pendentes de limpezas anteriores): $PLANNED\$" "$WORK/unload-dry.log"
   check "previsão com contas" test "$PLANNED" != 0
-  CONFIRM="$(sed -n 's/^Número de confirmação: //p' "$WORK/unload-dry.log")"
-  check "número de confirmação mostrado ($CONFIRM)" test -n "$CONFIRM"
-  expect_fail "--confirm diferente do --dry-run para sem apagar" "número de confirmação mudou" $UNLOAD --confirm 1
+  CONFIRM="$(sed -n 's/^Código de confirmação: //p' "$WORK/unload-dry.log")"
+  check "código de confirmação mostrado ($CONFIRM)" test -n "$CONFIRM"
+  WRONG="0000-0000"; [ "$CONFIRM" = "$WRONG" ] && WRONG="0000-0001"
+  expect_fail "--confirm diferente do --dry-run para sem apagar" "código de confirmação mudou" $UNLOAD --confirm "$WRONG"
   check "nada mudou no destino" test "$($U fingerprint)" = "$FPR"
 
   step "Limpeza do ensaio: cadastro e célula anteriores à carga que apontam para ela param a limpeza"

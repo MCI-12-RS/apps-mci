@@ -23,8 +23,8 @@
 // limpeza não rodam juntas.
 //
 // --dry-run: roda o banco inteiro e desfaz (ROLLBACK); nada é apagado no Auth e nenhum arquivo
-// é gravado. Mostra o número de confirmação (registros que a limpeza mexe). Fora da stack local,
-// gravar exige --yes e --confirm <esse número>.
+// é gravado. Mostra o código de confirmação (um hash do que sai, do que volta e das contas que
+// serão apagadas). Fora da stack local, gravar exige --yes e --confirm <esse código>.
 // Nada de nome, e-mail, CPF ou telefone no terminal ou no relatório: só Ids do legado, ids de
 // registros do novo, códigos e contagens.
 
@@ -38,21 +38,21 @@ import { LEGACY_SCHEMA, qPg } from './lib/legacy-schema.mjs';
 import { createAuthAdmin, ensureAccountDeleted, runPool, AuthAdminError } from './lib/auth-admin.mjs';
 import { parseIntOption } from './lib/account-codes.mjs';
 import {
-  UNLOAD_CATEGORIES, unloadCodeInfo, blockingUnloadIssues, confirmationCount, parseConfirm,
+  UNLOAD_CATEGORIES, unloadCodeInfo, blockingUnloadIssues, plannedTotal, confirmationCode, idsDigest, parseConfirm,
 } from './lib/unload-codes.mjs';
 import { assertSessionPinned } from './accounts.mjs';
 import { LOAD_LOCK_KEY, LOAD_TABLES } from './load.mjs';
 
 const USAGE = `
-Uso: node src/unload.mjs [--config <arquivo>] [--dry-run] [--yes] [--confirm <n>] [--undo-final]
+Uso: node src/unload.mjs [--config <arquivo>] [--dry-run] [--yes] [--confirm <código>] [--undo-final]
                           [--concurrency 4] [--out-dir <pasta>]
 
   --config       arquivo de configuração (padrão: MCI_LOCAL_CONFIG ou <raiz>/local.config)
   --dry-run      roda a limpeza no banco e desfaz no fim; nada é apagado (nem no Auth) e nenhum
-                 arquivo é gravado. Mostra o número de confirmação
+                 arquivo é gravado. Mostra o código de confirmação
   --yes          confirma a gravação num destino que não é a stack local (sem --dry-run, é obrigatório)
-  --confirm      o número de confirmação do --dry-run (obrigatório fora da stack local): se o plano
-                 mudou desde o --dry-run, a limpeza para sem apagar nada
+  --confirm      o código de confirmação do --dry-run (obrigatório fora da stack local): se o que
+                 sai, o que volta ou as contas mudaram desde o --dry-run, a limpeza para sem apagar nada
   --undo-final   desfaz mesmo depois de uma carga --final (cutover) não desfeita. Só com ordem
                  expressa: apaga dados que já são usados em produção
   --concurrency  contas apagadas no Auth ao mesmo tempo (1 a 8; padrão 4)
@@ -182,6 +182,45 @@ async function readIssues(client) {
   return rows;
 }
 
+/**
+ * Partes do código de confirmação, calculadas sobre o plano (antes de gravar): os ids que saem, os
+ * pares dos participantes, os adotados que voltam e as contas que serão apagadas = as do plano
+ * (ul_accounts, que já tem as com Id do legado sem cadastro) mais as pendentes de limpezas
+ * anteriores que existem e que nenhum cadastro que fica aponta. Devolve também essas contas.
+ */
+async function planDigests(client, unloadRunsExist) {
+  const prev = unloadRunsExist ? `
+      UNION
+      SELECT p.a FROM (SELECT DISTINCT unnest(pending_accounts) AS a FROM ${RUNS}
+                        WHERE status IN ('auth_pending', 'failed')) p
+       WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.a)
+         AND NOT EXISTS (SELECT 1 FROM ul_eff s WHERE s.auth_user_id = p.a
+                          AND NOT EXISTS (SELECT 1 FROM ul_members t WHERE t.id = s.id))` : '';
+  const agg = (sel, from) => `md5(coalesce((SELECT string_agg(${sel}) FROM ${from}), ''))`;
+  const { rows: [r] } = await client.query(`
+    WITH acc AS (SELECT id FROM ul_accounts${prev})
+    SELECT ${agg("id::text, ',' ORDER BY id", 'ul_members')} AS members,
+           ${agg("id::text, ',' ORDER BY id", 'ul_cells')} AS cells,
+           ${agg("id::text, ',' ORDER BY id", 'ul_reports')} AS reports,
+           ${agg("p.report_id::text || ':' || p.member_id::text, ',' ORDER BY p.report_id, p.member_id",
+    `public.cell_report_participants p
+      WHERE p.report_id IN (SELECT id FROM ul_reports) OR p.member_id IN (SELECT id FROM ul_members)`)} AS participants,
+           ${agg("id::text, ',' ORDER BY id", 'ul_adopted WHERE exists_')} AS adopted,
+           ${agg("id::text, ',' ORDER BY id", 'acc')} AS accounts,
+           (SELECT count(*) FROM acc)::int AS accounts_total`);
+  const { accounts_total: accountsTotal, ...digests } = r;
+  return { digests, accountsTotal };
+}
+
+function checkConfirm(code, confirm) {
+  log('');
+  log(`Código de confirmação: ${code}`);
+  if (confirm != null && confirm !== code) {
+    throw new Error(`O código de confirmação mudou (--confirm ${confirm}, agora ${code}): o destino mudou desde o --dry-run. `
+      + 'Nada foi apagado; rode o --dry-run de novo.');
+  }
+}
+
 const itemLabel = (i) => {
   const who = i.id != null ? `${i.id}` : (i.ref ?? '');
   return i.info ? `${who} (${i.info})` : who;
@@ -295,6 +334,8 @@ async function main() {
   let status = 'failed';
   let state;
   let toDelete = [];
+  let codeChecked = false;
+  let forecast = null;
   const done = new Set();
   const authIssues = { account_delete_failed: [], account_kept_linked: [] };
   try {
@@ -357,15 +398,13 @@ async function main() {
           log('');
           throw new Error(`Limpeza interrompida antes de apagar: ${blocking.map((b) => b.code).join(', ')}. Nada foi apagado.`);
         }
-        const number = confirmationCount(p);
-        log('');
-        log(`Número de confirmação: ${number}`);
-        if (confirm != null && confirm !== number) {
-          throw new Error(`O número de confirmação mudou (--confirm ${confirm}, agora ${number}): o destino mudou desde o --dry-run. `
-            + 'Nada foi apagado; rode o --dry-run de novo.');
-        }
+        const { digests, accountsTotal } = await planDigests(client, state.unload_runs);
+        forecast = accountsTotal;
+        checkConfirm(confirmationCode(digests), confirm);
+        codeChecked = true;
+        const total = plannedTotal(p);
 
-        if (number > 0) {
+        if (total > 0) {
           for (const f of WRITE_FILES) await client.query(readSql(f));
           lap('gravação e recálculos');
           const { rows: problems } = await client.query(`${readSql(VALIDATE_FILE).replace(/ORDER BY 1, 2;\s*$/, '')}
@@ -384,7 +423,7 @@ async function main() {
           pendingThisRun = (await client.query('SELECT id FROM ul_accounts ORDER BY id')).rows.map((r) => r.id);
         }
 
-        if (dryRun || number === 0) {
+        if (dryRun || total === 0) {
           await client.query('ROLLBACK');
         } else {
           await ensureRunsTable(client);
@@ -409,10 +448,13 @@ async function main() {
 
     // 2. Auth.
     if (dryRun) {
-      // O --dry-run desfez o banco: os cadastros que saem ainda apontam para as contas deles. A
-      // previsão = as do plano + as pendentes de limpezas anteriores e as com Id do legado sem cadastro.
-      const other = await accountsToDelete(client, [], state.unload_runs);
-      const forecast = new Set([...pendingThisRun, ...other.ids]).size;
+      // Previsão = as do plano + as pendentes de limpezas anteriores e as com Id do legado sem
+      // cadastro (calculada no plano; sem carga, pelas contas que existem agora).
+      if (!codeChecked) {
+        const other = await accountsToDelete(client, [], state.unload_runs);
+        forecast = other.ids.length;
+        checkConfirm(confirmationCode({ accounts: idsDigest(other.ids) }), confirm);
+      }
       log(`Contas a apagar no Auth (com as pendentes de limpezas anteriores): ${formatInt(forecast)}`);
       log('');
       log(`Tempo: ${timings.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
@@ -423,9 +465,27 @@ async function main() {
     const found = await accountsToDelete(client, pendingThisRun, state.unload_runs);
     toDelete = found.ids;
     authIssues.account_kept_linked = found.kept.map((id) => ({ id: null, ref: id, info: null }));
+    if (!codeChecked) checkConfirm(confirmationCode({ accounts: idsDigest(toDelete) }), confirm);
     if (!dbDone && !toDelete.length) {
+      // Nada a apagar. As pendentes de limpezas anteriores que sobravam já não existem no Auth (apagadas
+      // à mão) ou voltaram a ter cadastro ligado (ficam): a execução anterior é fechada aqui, senão o
+      // clean recusaria para sempre (QA-U1).
+      const kept = authIssues.account_kept_linked;
+      const closed = state.unload_runs
+        ? (await client.query(`UPDATE ${RUNS} SET status = 'superseded', pending_accounts = '{}',
+                                      finished_at = coalesce(finished_at, clock_timestamp()),
+                                      lists = lists || jsonb_build_object('account_kept_linked', $1::text[])
+                                WHERE status IN ('auth_pending', 'failed') RETURNING id`,
+        [kept.map((k) => k.ref)])).rows.map((r) => Number(r.id)).sort((a, b) => a - b)
+        : [];
       log('');
-      log('Nada a desfazer: não há carga, ensaio nem contas da carga no destino.');
+      if (kept.length) { printIssues([{ code: 'account_kept_linked', n: kept.length, items: kept }]); log(''); }
+      if (closed.length) {
+        log(`Nada a apagar: as contas pendentes de limpezas anteriores já não existem no Auth${kept.length ? ' ou voltaram a ter cadastro ligado (ficam)' : ''}. `
+          + `Execução ${closed.map((id) => `#${id}`).join(', ')} fechada.`);
+      } else {
+        log('Nada a desfazer: não há carga, ensaio nem contas da carga no destino.');
+      }
       status = 'ok';
       return;
     }

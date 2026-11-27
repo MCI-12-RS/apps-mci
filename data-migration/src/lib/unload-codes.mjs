@@ -9,6 +9,8 @@
 //   failure  a parte do Auth falhou depois do commit (o banco já está limpo; rodar de novo completa)
 //   info     só informativo
 
+import { createHash } from 'node:crypto';
+
 export const UNLOAD_CATEGORIES = [
   ['block', 'Para a limpeza (nada foi apagado)'],
   ['failure', 'Falhou (rode de novo para completar)'],
@@ -45,15 +47,41 @@ export const unloadCodeInfo = (code) => {
 /** Ocorrências que impedem a limpeza (código desconhecido também para). */
 export const blockingUnloadIssues = (issues) => issues.filter((i) => (unloadCodeInfo(i.code)?.category ?? 'block') === 'block');
 
-/** Quantidade de registros que a limpeza mexe: o número que confirma a execução (--confirm). */
-export function confirmationCount(plan) {
+/** Quantidade de registros que a limpeza mexe (só decide se há o que gravar no banco). */
+export function plannedTotal(plan) {
   const k = ['members', 'cells', 'reports', 'participants', 'adopted', 'accounts'];
   return k.reduce((s, key) => s + Number(plan[key] ?? 0), 0);
 }
 
-/** --confirm: inteiro não negativo. */
+/**
+ * Partes do conjunto planejado que entram no código de confirmação, em ordem fixa: os ids que
+ * saem (membros, células, relatórios e os pares relatório:membro dos participantes), os adotados
+ * que voltam e as contas que serão apagadas (as do plano, as pendentes de limpezas anteriores e
+ * as com o Id do legado sem cadastro).
+ */
+export const CONFIRMATION_PARTS = ['members', 'cells', 'reports', 'participants', 'adopted', 'accounts'];
+
+/** md5 dos ids em ordem crescente, separados por vírgula (o mesmo que o SQL do plano calcula). */
+export function idsDigest(ids) {
+  return createHash('md5').update([...ids].map((x) => String(x).toLowerCase()).sort().join(',')).digest('hex');
+}
+
+/**
+ * Código de confirmação (--confirm): os 8 primeiros dígitos do SHA-256 das partes (cada uma um md5
+ * da lista ordenada), no formato XXXX-XXXX. Muda quando muda o que sai, o que volta ou as contas,
+ * mesmo com as mesmas quantidades.
+ */
+export function confirmationCode(digests) {
+  const h = createHash('sha256');
+  for (const k of CONFIRMATION_PARTS) h.update(`${k}:${digests[k] ?? idsDigest([])}\n`);
+  const hex = h.digest('hex').slice(0, 8).toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4)}`;
+}
+
+/** --confirm: o código do --dry-run (maiúsculas ou minúsculas, com ou sem o hífen). */
 export function parseConfirm(value) {
   if (value === undefined) return null;
-  if (!/^\d{1,9}$/.test(String(value))) throw new Error('--confirm precisa ser o número que o --dry-run mostrou.');
-  return Number(value);
+  const v = String(value).trim().toUpperCase().replace(/-/g, '');
+  if (!/^[0-9A-F]{8}$/.test(v)) throw new Error('--confirm precisa ser o código de confirmação que o --dry-run mostrou (XXXX-XXXX).');
+  return `${v.slice(0, 4)}-${v.slice(4)}`;
 }

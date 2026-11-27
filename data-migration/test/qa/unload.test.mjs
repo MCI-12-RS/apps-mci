@@ -399,9 +399,9 @@ describe('Auth recusa uma conta no meio e a repetição completa', () => {
     assert.equal(st.n, 0);
   });
 
-  // QA-U1 (bug): a repetição que acha as contas pendentes já apagadas (à mão no painel do Auth) ou religadas a um cadastro
-  // sai com "Nada a desfazer" antes de fechar a execução anterior (src/unload.mjs, o `return` do trecho "Nada a desfazer"):
-  // a `legacy._unload_runs` fica 'failed' com `pending_accounts`, e o `npm run clean` recusa para sempre.
+  // QA-U1 (corrigido): a repetição que acha as contas pendentes já apagadas (à mão no painel do Auth) ou religadas a um
+  // cadastro fecha a execução anterior (antes, saía com "Nada a desfazer" e a `legacy._unload_runs` ficava 'failed' com
+  // `pending_accounts`: o `npm run clean` recusava para sempre).
   const pendingThenResolve = async (resolveFn) => {
     await seedPre();
     legacy(legacyData());
@@ -418,44 +418,53 @@ describe('Auth recusa uma conta no meio e a repetição completa', () => {
     const r = unload();
     assert.equal(r.status, 0, r.out);
     const [st] = await q(`SELECT coalesce(sum(cardinality(pending_accounts)), 0)::int AS n FROM legacy._unload_runs WHERE status IN ('auth_pending', 'failed')`);
-    return st.n;
+    return { n: st.n, out: r.out };
   };
-  test('QA-U1a: conta pendente apagada à mão no Auth: a repetição fecha a execução anterior', { todo: 'bug QA-U1: fica pendente para sempre' }, async () => {
-    const n = await pendingThenResolve(async (id) => { await q('DELETE FROM auth.users WHERE id = $1', [id]); });
+  test('QA-U1a: conta pendente apagada à mão no Auth: a repetição fecha a execução anterior', async () => {
+    const { n, out } = await pendingThenResolve(async (id) => { await q('DELETE FROM auth.users WHERE id = $1', [id]); });
     assert.equal(n, 0, 'a execução anterior continua com contas pendentes');
+    assert.match(out, /Execução #\d+ fechada/);
   });
-  test('QA-U1b: conta pendente religada a um cadastro que fica: a repetição a poupa e fecha a execução anterior (account_kept_linked)', { todo: 'bug QA-U1: fica pendente para sempre' }, async () => {
-    const n = await pendingThenResolve(async (id) => {
+  test('QA-U1b: conta pendente religada a um cadastro que fica: a repetição a poupa e fecha a execução anterior (account_kept_linked)', async () => {
+    const { n, out } = await pendingThenResolve(async (id) => {
       await addMember(U(900), { leader: ID.G1 });
       await q('UPDATE public.members SET auth_user_id = $2 WHERE id = $1', [U(900), id]);
     });
     const [u] = await q('SELECT count(*)::int AS n FROM auth.users WHERE id = $1', [(await q('SELECT auth_user_id AS id FROM public.members WHERE id = $1', [U(900)]))[0].id]);
     assert.equal(u.n, 1, 'a conta religada não pode ser apagada');
     assert.equal(n, 0, 'a execução anterior continua com contas pendentes');
+    assert.match(out, /account_kept_linked/, 'a conta poupada aparece na saída');
   });
 });
 
 describe('Confirmação e --dry-run', () => {
-  test('o número do --dry-run é o da execução real; destino que mudou desde o dry-run para sem apagar', async () => {
+  test('o código do --dry-run é o da execução real; trocar um cadastro do ensaio por outro (mesmas quantidades) muda o código e para sem apagar', async () => {
     await seedPre();
     legacy(legacyData());
     assert.equal(load(ADMINS).status, 0);
     assert.equal(accounts().status, 0);
     await addMember(AD.N1, { leader: await mid(6) });
+    const codeOf = (r) => { assert.equal(r.status, 0, r.out); return /^Código de confirmação: ([0-9A-F]{4}-[0-9A-F]{4})$/m.exec(r.out)[1]; };
+    const leaving = (r) => /^Sai: .*$/m.exec(r.out)[0];
     const d1 = unload(['--dry-run']);
-    const n1 = /^Número de confirmação: (\d+)/m.exec(d1.out)[1];
-    const d1b = unload(['--dry-run']);
-    assert.equal(/^Número de confirmação: (\d+)/m.exec(d1b.out)[1], n1, 'estável');
-    await addMember(AD.C1, { leader: AD.N1 }); // o destino muda depois do dry-run
-    const before = await rawSnap();
-    const r = unload(['--confirm', n1]);
-    assert.notEqual(r.status, 0, r.out);
-    assert.match(r.out, /número de confirmação mudou/);
-    assert.deepEqual(diffSnap(before, await rawSnap()), {}, 'nada apagado');
+    const c1 = codeOf(d1);
+    assert.equal(codeOf(unload(['--dry-run'])), c1, 'estável');
+    // o destino muda depois do dry-run sem mudar as quantidades: N1 sai de baixo da carga (fica) e C1 entra (sai)
+    await q('UPDATE public.members SET leader_id = $2 WHERE id = $1', [AD.N1, ID.G1]);
+    await addMember(AD.C1, { leader: await mid(6) });
     const d2 = unload(['--dry-run']);
-    const n2 = /^Número de confirmação: (\d+)/m.exec(d2.out)[1];
-    assert.equal(Number(n2), Number(n1) + 1);
-    const ok = unload(['--confirm', n2]);
+    const c2 = codeOf(d2);
+    assert.equal(leaving(d2), leaving(d1), 'as mesmas quantidades');
+    assert.notEqual(c2, c1, 'o código muda com o conjunto, não só com a soma');
+    const before = await rawSnap();
+    const r = unload(['--confirm', c1]);
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /código de confirmação mudou/);
+    assert.deepEqual(diffSnap(before, await rawSnap()), {}, 'nada apagado');
+    const bad = unload(['--confirm', '12']);
+    assert.notEqual(bad.status, 0, bad.out);
+    assert.match(bad.out, /código de confirmação que o --dry-run mostrou/);
+    const ok = unload(['--confirm', c2.toLowerCase()]);
     assert.equal(ok.status, 0, ok.out);
     const [run] = await q(`SELECT counts FROM legacy._unload_runs ORDER BY id DESC LIMIT 1`);
     const { plan, write } = run.counts;
@@ -463,8 +472,9 @@ describe('Confirmação e --dry-run', () => {
     assert.equal(plan.cells, write.cells_deleted);
     assert.equal(plan.reports, write.reports_deleted);
     assert.equal(plan.participants, write.participants_deleted);
-    assert.equal(plan.members + plan.cells + plan.reports + plan.participants + plan.adopted + plan.accounts, Number(n2));
+    assert.deepEqual((await q('SELECT id FROM public.members WHERE id = ANY($1::uuid[])', [[AD.N1, AD.C1]])).map((x) => x.id), [AD.N1], 'N1 fica, C1 sai');
   });
+
 });
 
 describe('Leitura como usuário do novo depois da limpeza', () => {

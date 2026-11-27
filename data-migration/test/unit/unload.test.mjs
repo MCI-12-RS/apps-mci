@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SQL_DIR, PLAN_FILE, WRITE_FILES, VALIDATE_FILE } from '../../src/unload.mjs';
 import {
-  UNLOAD_CODES, UNLOAD_CATEGORIES, blockingUnloadIssues, confirmationCount, parseConfirm, unloadCodeInfo,
+  UNLOAD_CODES, UNLOAD_CATEGORIES, blockingUnloadIssues, plannedTotal, confirmationCode, idsDigest, parseConfirm, unloadCodeInfo,
 } from '../../src/lib/unload-codes.mjs';
 import { AuthAdminError, ensureAccountDeleted } from '../../src/lib/auth-admin.mjs';
 
@@ -57,13 +57,25 @@ test('nada de dado pessoal nas ocorrências do plano: só legacy_id, id do regis
   assert.doesNotMatch(planSql, /INSERT INTO ul_issues[^;]*\b(name|email|cpf|mobile_whatsapp|phone)\b/);
 });
 
-test('número de confirmação e --confirm', () => {
-  assert.equal(confirmationCount({ members: 3, cells: 1, reports: 2, participants: 5, adopted: 1, accounts: 2, t0: 'x' }), 14);
-  assert.equal(confirmationCount({}), 0);
+test('código de confirmação e --confirm', () => {
+  assert.equal(plannedTotal({ members: 3, cells: 1, reports: 2, participants: 5, adopted: 1, accounts: 2, t0: 'x' }), 14);
+  assert.equal(plannedTotal({}), 0);
+  const u = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  // o mesmo md5 que o SQL do plano calcula: ids em ordem crescente, separados por vírgula
+  assert.equal(idsDigest([]), 'd41d8cd98f00b204e9800998ecf8427e');
+  assert.equal(idsDigest([u(2), u(1)]), idsDigest([u(1), u(2)]));
+  const base = { members: idsDigest([u(1), u(2)]), accounts: idsDigest([u(1)]) };
+  const code = confirmationCode(base);
+  assert.match(code, /^[0-9A-F]{4}-[0-9A-F]{4}$/);
+  assert.equal(confirmationCode({ ...base }), code, 'estável');
+  assert.notEqual(confirmationCode({ ...base, members: idsDigest([u(1), u(3)]) }), code, 'mesma quantidade, outro cadastro');
+  assert.notEqual(confirmationCode({ ...base, accounts: idsDigest([u(1), u(9)]) }), code, 'uma conta pendente a mais');
+  assert.notEqual(confirmationCode({ cells: base.members, accounts: base.accounts }), code, 'a parte conta');
+  assert.equal(confirmationCode({}), confirmationCode({ members: idsDigest([]) }), 'parte vazia = lista vazia');
   assert.equal(parseConfirm(undefined), null);
-  assert.equal(parseConfirm('0'), 0);
-  assert.equal(parseConfirm('123'), 123);
-  for (const bad of ['', '-1', '1.5', 'abc', '1234567890']) assert.throws(() => parseConfirm(bad));
+  assert.equal(parseConfirm(code), code);
+  assert.equal(parseConfirm(code.toLowerCase().replace('-', '')), code);
+  for (const bad of ['', '1', '-1', '123', 'ABCD-EFGH', 'ABCD-1234-5', 'ABC-1234']) assert.throws(() => parseConfirm(bad));
 });
 
 const fakeAdmin = (script) => {

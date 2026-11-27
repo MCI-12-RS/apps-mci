@@ -24,10 +24,17 @@ INSERT INTO ul_counts SELECT 'cell_periods_deleted', count(*) FROM d;
 WITH d AS (DELETE FROM public.cells x USING ul_cells c WHERE x.id = c.id RETURNING 1)
 INSERT INTO ul_counts SELECT 'cells_deleted', count(*) FROM d;
 
--- O que é de quem sai (e do adotado) nas tabelas privadas.
+-- O que é de quem sai nas tabelas privadas. Do adotado, a credencial legada só sai junto com a
+-- conta (o que não tinha conta antes da carga: before.auth_user_id nulo, ou a conta atual dele
+-- em ul_accounts; PR3-2/PR4-3); a do adotado que fica com a conta não é tocada.
 WITH d AS (
   DELETE FROM private.legacy_credentials c
-   WHERE c.member_id IN (SELECT id FROM ul_members) OR c.member_id IN (SELECT id FROM ul_adopted)
+   WHERE c.member_id IN (SELECT id FROM ul_members)
+      OR c.member_id IN (SELECT a.member_id
+                           FROM legacy._load_adopted a
+                           JOIN public.members m ON m.id = a.member_id
+                          WHERE a.before->>'auth_user_id' IS NULL
+                             OR m.auth_user_id IN (SELECT id FROM ul_accounts))
   RETURNING 1
 )
 INSERT INTO ul_counts SELECT 'legacy_credentials_deleted', count(*) FROM d;
