@@ -12,7 +12,8 @@
 -- "Conta do membro" = auth.users com id = id do membro, o e-mail técnico
 -- member_account_email(id) e app_metadata.legacy_member_id = o Id do legado.
 -- Ocorrências em acc_issues (código, Id do legado, observação sem dado pessoal).
--- A senha do legado é lida só para a previsão (formato), nunca sai daqui.
+-- A senha do legado é lida só para a previsão (formato, pw_usable e pw_normalized): o MD5
+-- não é gravado em acc_plan nem sai daqui.
 
 DROP TABLE IF EXISTS pg_temp.acc_plan, pg_temp.acc_issues, pg_temp.acc_auth;
 CREATE TEMP TABLE acc_issues (code text NOT NULL, legacy_id integer, info text);
@@ -44,8 +45,9 @@ SELECT m.*,
        EXISTS (SELECT 1 FROM acc_auth e WHERE e.email = m.tech_email AND e.id <> m.id) AS email_taken,
        EXISTS (SELECT 1 FROM acc_auth o WHERE o.marker = m.legacy_id::text AND o.id <> m.id) AS legacy_id_taken,
        l."Id" IS NOT NULL AS legacy_row,
-       lower(btrim(l."Password")) AS pw,
-       l."Password" IS DISTINCT FROM lower(btrim(l."Password")) AS pw_normalized,
+       -- Só o formato; o MD5 não é guardado em acc_plan.
+       coalesce(n.md5 ~ '^[0-9a-f]{32}$' AND n.md5 <> 'd41d8cd98f00b204e9800998ecf8427e', false) AS pw_usable,
+       l."Password" IS DISTINCT FROM n.md5 AS pw_normalized,
        v.password_hash IS NOT NULL AS has_password,
        c.member_id IS NOT NULL AS has_credential,
        c.legacy_hash IS NOT NULL AND c.used_at IS NULL AS credential_pending,
@@ -53,11 +55,11 @@ SELECT m.*,
   FROM m
   LEFT JOIN acc_auth u ON u.id = m.id
   LEFT JOIN legacy."Members" l ON l."Id" = m.legacy_id
+  -- O mesmo critério de 30_credentials.sql: minúsculas e sem os espaços das pontas
+  -- ([[:space:]] e o NBSP, como a pg_temp.trim_space da carga; o btrim só tira o espaço comum).
+ CROSS JOIN LATERAL (SELECT lower(regexp_replace(l."Password", '^[[:space:]\u00a0]+|[[:space:]\u00a0]+$', '', 'g')) AS md5) n
   LEFT JOIN private.account_passwords v ON v.auth_user_id = m.auth_user_id
   LEFT JOIN private.legacy_credentials c ON c.member_id = m.id;
-
-ALTER TABLE acc_plan ADD COLUMN pw_usable boolean;
-UPDATE acc_plan SET pw_usable = coalesce(pw ~ '^[0-9a-f]{32}$' AND pw <> 'd41d8cd98f00b204e9800998ecf8427e', false);
 
 UPDATE acc_plan SET action = CASE
     WHEN del THEN 'deleted'
@@ -97,6 +99,10 @@ UNION ALL
 SELECT 'member_without_identifier_with_account', legacy_id, NULL FROM acc_plan WHERE action = 'no_identifier' AND auth_user_id IS NOT NULL
 UNION ALL
 SELECT 'member_deleted_with_account', legacy_id, NULL FROM acc_plan WHERE action = 'deleted' AND auth_user_id IS NOT NULL
+UNION ALL
+-- Excluído entre a criação da conta e a ligação: a conta dele (id, e-mail técnico e Id do
+-- legado) existe, mas o cadastro não está ligado. Fica como está (PR4-8).
+SELECT 'account_unlinked_deleted_member', legacy_id, NULL FROM acc_plan WHERE action = 'deleted' AND auth_user_id IS NULL AND u_mine
 UNION ALL
 SELECT 'account_adopted_kept', legacy_id, NULL FROM acc_plan WHERE action = 'adopted'
 UNION ALL

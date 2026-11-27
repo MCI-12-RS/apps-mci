@@ -80,7 +80,7 @@ async function clean() {
 const PW = {
   1: 'Pastor Senha Forte 1!',
   2: 'Sénha-Ação 🔥 Forte 42', // acento e emoji (MD5 do UTF-8)
-  3: 'Senha Maiuscula 77!', // MD5 maiúsculo com espaços (lower(btrim))
+  3: 'Senha Maiuscula 77!', // MD5 maiúsculo com espaços (minúsculas e sem os espaços das pontas)
   4: 'Celular Senha 9876!',
   5: '123456', // fora da política: entra e recebe a marca
   6: 'Cpf Senha Forte 66!',
@@ -386,7 +386,7 @@ describe('Processo morto no meio de cada fase e refazer', () => {
 });
 
 describe('MD5 do legado fora do formato', () => {
-  test('o que não é um MD5 minúsculo de 32 hexadecimais (com lower(btrim)) vai para unusable_md5 e não cria credencial; o que é, entra', async () => {
+  test('o que não é um MD5 minúsculo de 32 hexadecimais (depois de minúsculas e sem os espaços das pontas, como a carga) vai para unusable_md5 e não cria credencial; o que é, entra', async () => {
     const cases = {
       20: { pw: md5('Maiuscula 20!').toUpperCase(), usable: true, sees: 'Maiuscula 20!' },
       21: { pw: `  ${md5('Espacos 21!')}  `, usable: true, sees: 'Espacos 21!' },
@@ -395,9 +395,10 @@ describe('MD5 do legado fora do formato', () => {
       24: { pw: md5('x').slice(0, 31), usable: false },
       25: { pw: `${md5('x')}0`, usable: false },
       26: { pw: 'g'.repeat(32), usable: false },
-      27: { pw: `\t${md5('Tab 27!')}`, usable: false, note: 'tab nas pontas: btrim só tira espaço' },
-      28: { pw: `${md5('Nl 28!')}\n`, usable: false, note: 'quebra de linha final' },
-      29: { pw: ` ${md5('Nbsp 29!')}`, usable: false, note: 'NBSP' },
+      27: { pw: `\t${md5('Tab 27!')}`, usable: true, sees: 'Tab 27!', note: 'tab nas pontas: [[:space:]], como a pg_temp.trim_space da carga' },
+      28: { pw: `${md5('Nl 28!')}\r\n`, usable: true, sees: 'Nl 28!', note: 'quebra de linha final (CR LF)' },
+      29: { pw: ` ${md5('Nbsp 29!').toUpperCase()} `, usable: true, sees: 'Nbsp 29!', note: 'NBSP nas pontas e maiúsculo' },
+      33: { pw: `${md5('Meio 33!').slice(0, 16)} ${md5('Meio 33!').slice(16)}`, usable: false, note: 'espaço no meio não sai' },
       30: { pw: null, usable: false },
       31: { pw: 'é'.repeat(32), usable: false },
       32: { pw: `${md5('x').slice(0, 30)}ａｂ`, usable: false }, // letras de largura total
@@ -413,7 +414,9 @@ describe('MD5 do legado fora do formato', () => {
     const list = (await q(`SELECT lists->'credential_unusable_md5' AS l FROM legacy._accounts_runs ORDER BY id DESC LIMIT 1`))[0].l;
     assert.deepEqual([...list].sort((a, b) => a - b), Object.entries(cases).filter(([, c]) => !c.usable).map(([id]) => Number(id)));
     const [norm] = await q(`SELECT counts->'credentials'->>'md5_normalized' AS n FROM legacy._accounts_runs ORDER BY id DESC LIMIT 1`);
-    assert.equal(norm.n, '2', 'só 20 e 21 passaram pelo lower(btrim)');
+    assert.equal(norm.n, '5', 'só 20, 21, 27, 28 e 29 passaram pela normalização');
+    const [prev] = await q(`SELECT counts->'plan'->>'forecast_md5_normalized' AS n FROM legacy._accounts_runs ORDER BY id DESC LIMIT 1`);
+    assert.equal(prev.n, '5', 'a previsão do plano usa o mesmo critério');
     for (const [id, c] of Object.entries(cases).filter(([, x]) => x.sees)) {
       assert.equal((await signIn(`qa${id}@exemplo.org`, c.sees)).status, 200, `login do ${id}`);
     }
@@ -446,6 +449,9 @@ describe('Configuração, --dry-run, saída e vazamento', () => {
     const remote = cfgWith('remote.config', `SUPABASE_HOST="aws-0-sa-east-1.pooler.supabase.com"\nSUPABASE_USER="postgres.gkhnjhmgeceoaqeynhrj"\nSUPABASE_URL="https://gkhnjhmgeceoaqeynhrj.supabase.co"\nSUPABASE_SECRET_KEY="${SECRET}"`);
     let r = accounts([], { cfg: remote, timeout: 30000 });
     assert.notEqual(r.status, 0); assert.match(r.out, /--yes/);
+    const txPooler = cfgWith('tx.config', `SUPABASE_HOST="aws-0-sa-east-1.pooler.supabase.com"\nSUPABASE_PORT="6543"\nSUPABASE_USER="postgres.gkhnjhmgeceoaqeynhrj"\nSUPABASE_URL="https://gkhnjhmgeceoaqeynhrj.supabase.co"\nSUPABASE_SECRET_KEY="${SECRET}"`);
+    r = accounts(['--dry-run'], { cfg: txPooler, timeout: 30000 });
+    assert.notEqual(r.status, 0); assert.match(r.out, /modo transação/); assert.ok(!r.out.includes(SECRET));
     const mixed = cfgWith('mixed.config', `SUPABASE_URL="https://gkhnjhmgeceoaqeynhrj.supabase.co"\nSUPABASE_SECRET_KEY="${SECRET}"`);
     r = accounts([], { cfg: mixed }); assert.notEqual(r.status, 0); assert.match(r.out, /mesmo destino/);
     const otherRef = cfgWith('ref.config', `SUPABASE_PROJECT_REF="clfgjnwtzasdsrgcxmmd"\nSUPABASE_URL="${API}"\nSUPABASE_SECRET_KEY="${SECRET}"`);

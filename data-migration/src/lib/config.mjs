@@ -187,6 +187,11 @@ export function postgresOptions(values) {
     if (pooler && user !== `postgres.${ref}`) {
       throw new ConfigError(`No pooler, SUPABASE_USER precisa ser postgres.${ref}.`);
     }
+    // A porta 6543 é o pooler em modo transação: cada comando pode cair noutra conexão, e a
+    // trava consultiva por sessão, as tabelas pg_temp e os SET de sessão se perdem.
+    if (port === 6543) {
+      throw new ConfigError('SUPABASE_PORT 6543 é o pooler em modo transação; use o Session pooler (porta 5432).');
+    }
   }
   const caPath = values.get('SUPABASE_SSL_CA');
   let ssl = false;

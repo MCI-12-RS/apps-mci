@@ -281,7 +281,7 @@ if [ "$ACCOUNTS" != 0 ]; then
   grep -E '^(Membros|Credenciais)' "$WORK/acc-dry.log"
   check "nada mudou (contas, cofre, credenciais, membros)" test "$($ACC fingerprint)" = "$FPA0"
   check "nenhum relatório de contas gravado" test ! -e "$WORK/acc-reports"
-  check "previsão: 4 sem senha utilizável e 2 só depois do lower(btrim())" grep -q 'sem senha utilizável 4 (só depois do lower(btrim()): 2)' "$WORK/acc-dry.log"
+  check "previsão: 4 sem senha utilizável e 2 só depois da normalização" grep -q 'sem senha utilizável 4 (só depois de passar para minúsculas e tirar os espaços das pontas: 2)' "$WORK/acc-dry.log"
   for pii in Ficticio exemplo.org 52998224725 99999-0002 mci12fakemail '@'; do
     if grep -q -- "$pii" "$WORK/acc-dry.log"; then echo "FALHA: saída das contas contém dado pessoal ($pii)"; exit 1; fi
   done
@@ -359,6 +359,48 @@ if [ "$ACCOUNTS" != 0 ]; then
   step "Contas: a carga refeita não mexe nas contas"
   $LOAD >/dev/null 2>&1 || { echo "FALHA: carga depois das contas"; exit 1; }
   $L unchanged
+  $ACC problems-empty
+
+  step "Contas: membro excluído entre a criação da conta e a ligação"
+  $ACC unlink 22
+  M22="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 22")"
+  # Assim que o Auth grava a conta do 22, o cadastro é excluído (em replica, como supabase_admin; só teste).
+  auth_trap "CREATE FUNCTION public.qa_auth_trap() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS \$f\$ BEGIN
+               IF NEW.id = '${M22}' THEN
+                 PERFORM set_config('session_replication_role', 'replica', true);
+                 UPDATE public.members SET deleted_at = now() WHERE id = NEW.id;
+                 PERFORM set_config('session_replication_role', 'origin', true);
+               END IF; RETURN NEW; END \$f\$;
+             CREATE TRIGGER qa_auth_trap AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.qa_auth_trap();"
+  $ACCOUNTS_RUN >"$WORK/acc4.log" 2>&1 || { auth_trap_drop; cat "$WORK/acc4.log"; echo "FALHA: contas 4"; exit 1; }
+  auth_trap_drop
+  check "listado na saída" grep -q 'account_unlinked_deleted_member: 22' "$WORK/acc4.log"
+  $ACC unlinked-deleted 22
+  $ACCOUNTS_RUN >"$WORK/acc5.log" 2>&1 || { cat "$WORK/acc5.log"; echo "FALHA: contas 5"; exit 1; }
+  check "o plano da execução seguinte lista o mesmo caso" grep -q 'account_unlinked_deleted_member: 22' "$WORK/acc5.log"
+  $ACC unlinked-deleted 22
+  $ACC undelete 22
+  $ACCOUNTS_RUN >"$WORK/acc6.log" 2>&1 || { cat "$WORK/acc6.log"; echo "FALHA: contas 6"; exit 1; }
+  check "sem a exclusão, a conta é religada" grep -qE '^Contas: 0 criadas, 1 religadas, 1 ligadas' "$WORK/acc6.log"
+  $ACC problems-empty
+
+  step "Contas: lote lento avisa e reduz os seguintes; lote no teto é dividido"
+  M30="$($PSQL -Atc "SELECT id FROM public.members WHERE legacy_id = 30")"
+  $PSQL -c "CREATE FUNCTION public.qa_cred_trap() RETURNS trigger LANGUAGE plpgsql AS \$f\$ BEGIN
+              IF NEW.member_id = '${M30}' THEN PERFORM pg_sleep(1.5); END IF; RETURN NEW; END \$f\$;
+            CREATE TRIGGER qa_cred_trap BEFORE UPDATE ON private.legacy_credentials FOR EACH ROW EXECUTE FUNCTION public.qa_cred_trap();"
+  $PSQL -c "UPDATE legacy.\"Members\" SET \"Password\" = md5('Lenta ' || \"Id\") WHERE \"Id\" = 30"
+  ACCOUNTS_TEST_SLOW_MS=1000 ACCOUNTS_TEST_TIMEOUT_MS=60000 $ACCOUNTS_RUN --batch-size 8 --concurrency 1 >"$WORK/acc7.log" 2>&1 \
+    || { cat "$WORK/acc7.log"; echo "FALHA: contas 7"; exit 1; }
+  check "aviso do lote lento, os próximos com 4" grep -q 'lote de 8 credenciais lento (.*); os próximos com 4' "$WORK/acc7.log"
+  check "listado em credential_batch_slow" grep -q 'credential_batch_slow' "$WORK/acc7.log"
+  $PSQL -c "UPDATE legacy.\"Members\" SET \"Password\" = md5('No teto ' || \"Id\") WHERE \"Id\" = 30"
+  ACCOUNTS_TEST_SLOW_MS=60000 ACCOUNTS_TEST_TIMEOUT_MS=1000 $ACCOUNTS_RUN --batch-size 8 --concurrency 1 >"$WORK/acc8.log" 2>&1 \
+    && { cat "$WORK/acc8.log"; echo "FALHA: contas 8 deveria falhar no lote de 1"; exit 1; }
+  check "o lote no teto foi dividido até 1 e só então falhou" grep -q 'credential_batch_failed.*57014 (lote de 1)' "$WORK/acc8.log"
+  check "cada divisão avisada" grep -q 'cancelado no teto' "$WORK/acc8.log"
+  $PSQL -c "DROP TRIGGER qa_cred_trap ON private.legacy_credentials; DROP FUNCTION public.qa_cred_trap();"
+  $ACCOUNTS_RUN >"$WORK/acc9.log" 2>&1 || { cat "$WORK/acc9.log"; echo "FALHA: contas 9"; exit 1; }
   $ACC problems-empty
 fi
 

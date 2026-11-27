@@ -12,9 +12,11 @@
 //      (a senha mora só no cofre, E2.03). Até --concurrency ao mesmo tempo. Já existe e é do
 //      membro: só religa; de outro dono: para;
 //   3. ligação auth_user_id = id em replica (sem Auditoria), em lotes (20_link.sql);
-//   4. credenciais: private.add_legacy_credential(id, lower(btrim("Password"))) direto do
-//      legacy."Members", --batch-size membros por comando, --concurrency conexões
-//      (30_credentials.sql). O MD5 nunca é parâmetro nem sai do banco;
+//   4. credenciais: private.add_legacy_credential(id, MD5 em minúsculas e sem os espaços das
+//      pontas) direto do legacy."Members", --batch-size membros por comando, --concurrency
+//      conexões (30_credentials.sql). O MD5 nunca é parâmetro nem sai do banco. Cada lote é
+//      medido: passou de 6 s, avisa e os seguintes ficam com a metade; estourou o teto de 9 s
+//      (longe dos 10 s do auto_explain), o lote é dividido e refeito;
 //   5. validação (90_validate.sql): private.legacy_credential_problems() vazia e todo
 //      elegível com a conta dele ligada.
 // Não é uma transação só (a Admin API fica fora do banco): cada passo é idempotente, e
@@ -43,7 +45,8 @@ Uso: node src/accounts.mjs [--config <arquivo>] [--dry-run] [--yes] [--concurren
   --dry-run      só o plano e a previsão das credenciais (nada é criado; nenhum arquivo)
   --yes          confirma a gravação num destino que não é a stack local (sem --dry-run, é obrigatório)
   --concurrency  contas criadas e lotes de credenciais ao mesmo tempo (1 a 8; padrão 4)
-  --batch-size   membros por comando de credenciais (1 a 100; padrão 50, cerca de 3 s por comando)
+  --batch-size   membros por comando de credenciais (1 a 100; padrão 50 na stack local e 25 fora dela).
+                 Lote que passa de 6 s reduz os seguintes à metade; o teto do comando é 9 s.
   --out-dir      pasta do relatório (padrão: data-migration/reports)
 
 Precisa, além do banco: SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY) e, na stack local,
@@ -61,9 +64,17 @@ const LOAD_RUNS = `${qPg(LEGACY_SCHEMA)}._load_runs`;
 // duas criações de contas no mesmo destino. Aqui por sessão (a execução tem vários passos).
 export const LOAD_LOCK_KEY = 'mci.e4.load';
 const LINK_BATCH = 500;
+// Credenciais (DT-19 do E1.04): o auto_explain de produção registra plano e parâmetros de todo
+// comando de 10 s ou mais. O comando de credenciais só leva ids, mas fica longe disso: lote
+// acima de SLOW_BATCH_MS reduz os seguintes à metade, e o teto CREDENTIAL_TIMEOUT_MS cancela
+// antes dos 10 s (o comando cancelado não chega ao auto_explain) e divide o lote.
+export const SLOW_BATCH_MS = 6000;
+export const CREDENTIAL_TIMEOUT_MS = 9000;
+const DEFAULT_BATCH_LOCAL = 50;
+const DEFAULT_BATCH_REMOTE = 25;
 const OPEN_LIST_LIMIT = 30;
 const AFTER_RUN_LISTS = new Set(['credential_unusable_md5', 'credential_md5_normalized', 'credential_has_password',
-  'credential_kept_used']);
+  'credential_kept_used', 'credential_batch_slow', 'account_unlinked_deleted_member']);
 
 const readSql = (name) => readFileSync(resolve(SQL_DIR, name), 'utf8');
 
@@ -84,6 +95,20 @@ async function precheck(client) {
   if (!s.loaded || !s.adopted_tbl) throw new Error('Nenhuma carga gravada (e não desfeita) no destino. Rode antes: npm run load.');
   if (!s.add_fn || !s.problems_fn) throw new Error('O destino não tem as credenciais legadas do E3 (private.add_legacy_credential).');
   if (!s.email_fn || !s.ident_fn) throw new Error('O destino não tem as funções de conta do E2.04 (member_account_email).');
+}
+
+/**
+ * A execução depende da sessão (trava consultiva por sessão, tabelas pg_temp.acc_*, SET): pega
+ * e solta uma trava de teste em dois comandos. Num pooler em modo transação o segundo cai
+ * noutra conexão, e o unlock volta falso (ou o pid muda).
+ */
+export async function assertSessionPinned(client) {
+  const key = `mci.e4.session-probe:${process.pid}:${Date.now()}:${Math.random()}`;
+  const { rows: [a] } = await client.query('SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS ok, pg_backend_pid() AS pid', [key]);
+  const { rows: [b] } = await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS ok, pg_backend_pid() AS pid', [key]);
+  if (!a.ok || !b.ok || a.pid !== b.pid) {
+    throw new Error('A conexão não mantém a sessão entre comandos (pooler em modo transação?). Use o Session pooler (porta 5432).');
+  }
 }
 
 async function takeLock(client) {
@@ -212,40 +237,89 @@ async function linkAccounts(client, memberIds) {
   return linked;
 }
 
-/** Credenciais em lotes, com `concurrency` conexões. Devolve { rows, failures }. */
-async function loadCredentials(pgOptions, memberIds, { concurrency, batchSize }) {
-  const batches = chunk(memberIds, batchSize);
+/**
+ * Credenciais em lotes, com `concurrency` conexões. Cada lote é medido: acima de `slowMs`, entra
+ * em `slow` e os lotes seguintes ficam com a metade do tamanho; o comando que estoura
+ * `timeoutMs` (57014) é dividido ao meio e refeito (a add_legacy_credential é idempotente e o
+ * comando cancelado não gravou nada). Lote de 1 que estoura, ou qualquer outro erro, é falha.
+ * Devolve { rows, failures, slow, stats }.
+ */
+export async function loadCredentials(pgOptions, memberIds, {
+  concurrency, batchSize, slowMs = SLOW_BATCH_MS, timeoutMs = CREDENTIAL_TIMEOUT_MS,
+  connect = connectPostgres, now = Date.now, onSlow = () => {},
+}) {
   const rows = [];
   const failures = [];
-  if (!batches.length) return { rows, failures };
-  const n = Math.min(concurrency, batches.length);
+  const slow = [];
+  const stats = { batches: 0, max_ms: 0, timeouts: 0, initial_size: batchSize, final_size: batchSize };
+  if (!memberIds.length) return { rows, failures, slow, stats };
+  let size = batchSize;
+  let pos = 0;
+  const retry = [];
+  const take = () => {
+    if (retry.length) return retry.shift();
+    if (pos >= memberIds.length) return null;
+    const b = memberIds.slice(pos, pos + size);
+    pos += b.length;
+    return b;
+  };
+  const shrink = (from) => { size = Math.min(size, Math.max(1, Math.floor(from / 2))); stats.final_size = size; };
+  const n = Math.min(concurrency, Math.ceil(memberIds.length / batchSize));
   const clients = [];
   try {
     for (let i = 0; i < n; i++) {
-      const c = await connectPostgres(pgOptions);
+      const c = await connect(pgOptions);
       clients.push(c);
-      // 50 bcrypts de custo 10 ≈ 3 s; o teto fica longe dos 10 s do auto_explain e o comando
-      // não leva o MD5 como parâmetro de qualquer jeito (só ids).
-      await c.query(`SET statement_timeout = '60s'`);
+      await c.query(`SET statement_timeout = '${Math.trunc(timeoutMs)}ms'`);
       await c.query(`SET lock_timeout = '5s'`);
     }
     const sql = readSql(CREDENTIALS_FILE);
-    let next = 0;
     await Promise.all(clients.map(async (c) => {
-      while (next < batches.length && !failures.length) {
-        const batch = batches[next++];
+      while (!failures.length) {
+        const batch = take();
+        if (!batch) break;
+        const t = now();
         try {
           const r = await c.query(sql, [batch]);
+          const ms = now() - t;
+          stats.batches += 1;
+          stats.max_ms = Math.max(stats.max_ms, ms);
           rows.push(...r.rows);
+          if (ms > slowMs) {
+            slow.push({ id: null, info: `${ms} ms, lote de ${batch.length}` });
+            shrink(batch.length);
+            onSlow({ ms, size: batch.length, next: size, timedOut: false });
+          }
         } catch (err) {
-          failures.push({ id: null, info: `${err.code ?? 'erro'} (lote de ${batch.length})` });
+          if (err?.code === '57014' && batch.length > 1) {
+            const ms = now() - t;
+            stats.timeouts += 1;
+            slow.push({ id: null, info: `${ms} ms, lote de ${batch.length} (cancelado e dividido)` });
+            const half = Math.ceil(batch.length / 2);
+            retry.unshift(batch.slice(0, half), batch.slice(half));
+            shrink(batch.length);
+            onSlow({ ms, size: batch.length, next: size, timedOut: true });
+            continue;
+          }
+          failures.push({ id: null, info: `${err?.code ?? 'erro'} (lote de ${batch.length})` });
         }
       }
     }));
   } finally {
     await Promise.all(clients.map((c) => c.end().catch(() => {})));
   }
-  return { rows, failures };
+  return { rows, failures, slow, stats };
+}
+
+/** Limites das credenciais; na stack local, os testes podem baixá-los por variável de ambiente. */
+function credentialLimits(local) {
+  const fromEnv = (name, fallback) => {
+    const v = process.env[name];
+    if (!local || v === undefined) return fallback;
+    if (!/^\d+$/.test(v) || Number(v) < 1) throw new Error(`${name} precisa ser um inteiro positivo.`);
+    return Number(v);
+  };
+  return { slowMs: fromEnv('ACCOUNTS_TEST_SLOW_MS', SLOW_BATCH_MS), timeoutMs: fromEnv('ACCOUNTS_TEST_TIMEOUT_MS', CREDENTIAL_TIMEOUT_MS) };
 }
 
 async function main() {
@@ -257,9 +331,10 @@ async function main() {
   }, USAGE);
   const dryRun = args['dry-run'];
   const concurrency = parseIntOption(args.concurrency, '--concurrency', { min: 1, max: 8, fallback: 4 });
-  const batchSize = parseIntOption(args['batch-size'], '--batch-size', { min: 1, max: 100, fallback: 50 });
   const config = loadConfig(args.config);
   const pgo = postgresOptions(config.values);
+  const batchSize = parseIntOption(args['batch-size'], '--batch-size', {
+    min: 1, max: 100, fallback: pgo.describe.local ? DEFAULT_BATCH_LOCAL : DEFAULT_BATCH_REMOTE });
   const auth = authAdminOptions(config.values, pgo.describe);
 
   log(`Contas e credenciais legadas${dryRun ? ' (--dry-run: nada é criado nem gravado)' : ''}`);
@@ -282,6 +357,7 @@ async function main() {
   let status = 'failed';
   let failure = null;
   try {
+    await assertSessionPinned(client);
     await client.query(`SET lock_timeout = '5s'`);
     await precheck(client);
     await takeLock(client);
@@ -308,7 +384,7 @@ async function main() {
     const f = counts.plan.forecast;
     log(`Credenciais (previsão): novas ${formatInt(f.created ?? 0)}, pendentes a conferir ${formatInt(f.pending_recheck ?? 0)}, `
       + `já usadas ${formatInt(f.kept_used ?? 0)}, com senha no novo ${formatInt(f.has_password ?? 0)}, `
-      + `sem senha utilizável ${formatInt(f.unusable_md5 ?? 0)} (só depois do lower(btrim()): ${formatInt(counts.plan.forecast_md5_normalized)})`);
+      + `sem senha utilizável ${formatInt(f.unusable_md5 ?? 0)} (só depois de passar para minúsculas e tirar os espaços das pontas: ${formatInt(counts.plan.forecast_md5_normalized)})`);
     log('');
     printIssues(issues);
 
@@ -353,6 +429,13 @@ async function main() {
 
     // 3. Ligação (inclusive das criadas antes de uma falha: refazer acha as contas e só religa).
     const linked = await linkAccounts(client, [...created, ...relinked]);
+    // Conta criada (ou achada) de quem foi excluído antes da ligação: a ligação o pula; fica
+    // como está e é listada (PR4-8). Nas próximas execuções, o plano lista o mesmo caso.
+    const { rows: unlinkedDeleted } = await client.query(`
+      SELECT m.legacy_id FROM public.members m
+       WHERE m.id = ANY ($1::uuid[]) AND m.deleted_at IS NOT NULL AND m.auth_user_id IS NULL
+       ORDER BY 1`, [[...created, ...relinked]]);
+    extra.account_unlinked_deleted_member = unlinkedDeleted.map((r) => ({ id: r.legacy_id, info: 'excluído durante a execução' }));
     lap('ligação');
     counts.accounts = {
       created: created.length, relinked: relinked.length, failed: createFailed.length, linked: linked.length,
@@ -369,8 +452,13 @@ async function main() {
       SELECT p.id FROM acc_plan p JOIN public.members m ON m.id = p.id
        WHERE p.action IN ('create', 'relink', 'linked') AND m.auth_user_id = m.id AND m.deleted_at IS NULL
        ORDER BY p.legacy_id`);
-    const { rows: credRows, failures } = await loadCredentials(pgo.options, targets.map((t) => t.id), { concurrency, batchSize });
+    const { rows: credRows, failures, slow, stats: batchStats } = await loadCredentials(pgo.options, targets.map((t) => t.id), {
+      concurrency, batchSize, ...credentialLimits(pgo.describe.local),
+      onSlow: ({ ms, size, next, timedOut }) => warn(`lote de ${size} credenciais ${timedOut ? 'cancelado no teto' : 'lento'} `
+        + `(${(ms / 1000).toFixed(1)} s); os próximos com ${next}. Use um --batch-size menor.`),
+    });
     lap('credenciais');
+    extra.credential_batch_slow = slow;
     const byResult = Object.fromEntries(CREDENTIAL_RESULTS.map((k) => [k, 0]));
     for (const k of CREDENTIAL_RESULTS) extra[`credential_${k}`] = [];
     extra.credential_md5_normalized = [];
@@ -384,9 +472,9 @@ async function main() {
     }
     extra.credential_batch_failed = failures;
     counts.credentials = { ...byResult, md5_normalized: extra.credential_md5_normalized.length,
-      processed: credRows.length, targets: targets.length };
+      processed: credRows.length, targets: targets.length, batches: batchStats };
     log(`Credenciais: ${CREDENTIAL_RESULTS.map((k) => `${k} ${formatInt(byResult[k])}`).join(', ')}`
-      + ` (só depois do lower(btrim()): ${formatInt(counts.credentials.md5_normalized)})`);
+      + ` (só depois de passar para minúsculas e tirar os espaços das pontas: ${formatInt(counts.credentials.md5_normalized)})`);
     if (failures.length) {
       throw new Error(`Lote(s) de credenciais falharam (${failures.map((x) => x.info).join('; ')}). `
         + 'O que já foi feito ficou; rode de novo para completar.');

@@ -22,6 +22,7 @@ export const ACCOUNT_CODES = {
   account_legacy_id_taken: ['block', 'Outra conta (de outro id) já leva este Id do legado no app_metadata: sobra de uma carga anterior; rode a limpeza do ensaio'],
   account_link_unexpected: ['block', 'Membro carregado (não adotado) ligado a uma conta que não é a dele (id diferente, sem a conta ou sem o Id do legado): conferir antes'],
   member_without_identifier: ['info', 'Não excluído sem e-mail, celular ou CPF válido: fica sem conta (6.2)'],
+  account_unlinked_deleted_member: ['info', 'Excluído entre a criação da conta e a ligação: a conta dele existe, mas o cadastro não foi ligado; fica como está (PR4-8)'],
   member_deleted_with_account: ['info', 'Excluído (no legado ou no novo) com conta ligada: a conta fica como está (a exclusão do novo a suspende)'],
   member_without_identifier_with_account: ['info', 'Sem identificador de login, mas com conta ligada (de uma execução anterior): a conta fica'],
   account_adopted_kept: ['info', 'Adotado que já tinha conta no novo: fica com ela e com a senha do novo, sem credencial legada (RN-16 a do E3)'],
@@ -39,7 +40,8 @@ export const ACCOUNT_CODES = {
   credential_kept_used: ['info', 'Credencial já usada ou descartada (primeiro acesso ou redefinição): nunca é recriada (RN-03 do E3)'],
   credential_has_password: ['info', 'A conta já tem senha no novo: sem credencial legada (RN-03, RN-16 a do E3)'],
   credential_unusable_md5: ['info', 'Sem senha utilizável no legado (vazia, MD5 do texto vazio ou fora do formato): a lista "sem senha" da 5.4; entra pela redefinição (RN-08 do E3)'],
-  credential_md5_normalized: ['info', 'MD5 do legado com maiúsculas ou espaços nas pontas: só passou depois do lower(btrim()) (já contado no resultado acima)'],
+  credential_md5_normalized: ['info', 'MD5 do legado com maiúsculas ou espaços nas pontas (inclusive tab, quebra de linha e NBSP): só passou depois de normalizado (já contado no resultado acima)'],
+  credential_batch_slow: ['info', 'Lote de credenciais acima de 6 s (ou cancelado no teto de 9 s e dividido): os seguintes ficaram com a metade (info = tempo e tamanho)'],
   credential_not_eligible: ['failure', 'A private.add_legacy_credential recusou o membro (excluído ou sem conta) depois da ligação: conferir'],
   credential_batch_failed: ['failure', 'Um lote de credenciais falhou (info = código do erro): refazer completa sem duplicar'],
 

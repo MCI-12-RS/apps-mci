@@ -16,6 +16,10 @@
 //   updated-check      as duas senhas mudadas foram regravadas, sem duplicar
 //   problems-empty     private.legacy_credential_problems() vazia e todo elegível com conta
 //   volume-check       volume: todo elegível com conta e credencial
+//   unlink <lid>       desfaz a conta e a credencial do membro <lid> (volta a ser "criar conta")
+//   unlinked-deleted <lid>  a última execução terminou bem e listou <lid> em account_unlinked_deleted_member;
+//                      o membro está excluído, sem auth_user_id, com a conta dele no Auth e sem credencial
+//   undelete <lid>     tira a exclusão do membro <lid> (em replica, só teste)
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { loadConfig, postgresOptions, authAdminOptions } from '../src/lib/config.mjs';
@@ -208,6 +212,34 @@ try {
                                     AND m.auth_user_id IS NULL)::int AS without_account`);
     assert.deepEqual(r, { problems: 0, without_account: 0 });
     console.log('ok: legacy_credential_problems vazia; todo elegível com conta');
+  } else if (mode === 'unlink') {
+    const id = await memberId(Number(arg));
+    await client.query('BEGIN');
+    await client.query('SET LOCAL session_replication_role = replica');
+    await q('UPDATE public.members SET auth_user_id = NULL WHERE id = $1', [id]);
+    await q('DELETE FROM private.legacy_credentials WHERE member_id = $1', [id]);
+    await client.query('COMMIT');
+    await admin.deleteAccount(id);
+    assert.equal(await admin.getAccount(id), null);
+    console.log(`ok: conta e credencial do ${arg} desfeitas`);
+  } else if (mode === 'unlinked-deleted') {
+    const run = await lastRun();
+    assert.equal(run.status, 'ok', 'a execução termina bem (o excluído não é elegível)');
+    assert.deepEqual(run.lists.account_unlinked_deleted_member, [Number(arg)]);
+    const id = await memberId(Number(arg));
+    const [m] = await q(`SELECT m.deleted_at IS NOT NULL AS del, m.auth_user_id,
+                                (SELECT count(*) FROM private.legacy_credentials c WHERE c.member_id = m.id)::int AS cred
+                           FROM public.members m WHERE m.id = $1`, [id]);
+    assert.deepEqual(m, { del: true, auth_user_id: null, cred: 0 });
+    const acc = await admin.getAccount(id);
+    assert.equal(String(acc?.legacyId), arg, 'a conta dele ficou, com o Id do legado');
+    console.log(`ok: ${arg}, excluído antes da ligação, listado em account_unlinked_deleted_member, sem ligação nem credencial`);
+  } else if (mode === 'undelete') {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL session_replication_role = replica');
+    await q('UPDATE public.members SET deleted_at = NULL, deleted_by = NULL WHERE legacy_id = $1', [Number(arg)]);
+    await client.query('COMMIT');
+    console.log(`ok: ${arg} sem exclusão`);
   } else if (mode === 'volume-check') {
     const [r] = await q(`SELECT count(*) FILTER (WHERE m.auth_user_id = m.id)::int AS accounts,
                                 count(c.member_id)::int AS credentials,

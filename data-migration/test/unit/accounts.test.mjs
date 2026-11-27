@@ -9,7 +9,10 @@ import {
 } from '../../src/lib/account-codes.mjs';
 import { AuthAdminError, authErrorCode, createAuthAdmin, ensureAccount, runPool } from '../../src/lib/auth-admin.mjs';
 import { authAdminOptions, ConfigError } from '../../src/lib/config.mjs';
-import { SQL_DIR, PLAN_FILE, LINK_FILE, CREDENTIALS_FILE, VALIDATE_FILE } from '../../src/accounts.mjs';
+import {
+  SQL_DIR, PLAN_FILE, LINK_FILE, CREDENTIALS_FILE, VALIDATE_FILE, loadCredentials, assertSessionPinned, SLOW_BATCH_MS,
+  CREDENTIAL_TIMEOUT_MS,
+} from '../../src/accounts.mjs';
 
 const sqlFiles = readdirSync(SQL_DIR).filter((f) => f.endsWith('.sql')).sort();
 const sql = Object.fromEntries(sqlFiles.map((f) => [f, readFileSync(resolve(SQL_DIR, f), 'utf8')]));
@@ -98,11 +101,15 @@ test('Admin API: o erro sai só com o status e o código, nunca com o corpo nem 
   assert.deepEqual(JSON.parse(calls[0].init.body), { id: 'i', email: 'i@x', email_confirm: true, app_metadata: { legacy_member_id: 7 } });
   assert.equal(calls[0].init.headers.apikey, 'sb_secret_K');
   assert.ok(!('password' in JSON.parse(calls[0].init.body)), 'sem senha (RN-08 do E2.03)');
-  // ping: 404 numa conta inexistente = chave aceita; 401/403 = recusada.
-  const ping = (status) => createAuthAdmin({ baseUrl: 'http://h', key: 'k' }, {
-    fetchImpl: async () => ({ ok: false, status, json: async () => ({ error_code: 'x' }) }) }).ping();
-  await ping(404);
-  await assert.rejects(ping(403), /403/);
+  // ping: 404 user_not_found numa conta inexistente = chave aceita; 401/403 = recusada; 404 sem
+  // o código (outro serviço, rota errada) e 200 também são recusados.
+  const ping = (status, code) => createAuthAdmin({ baseUrl: 'http://h', key: 'k' }, {
+    fetchImpl: async () => ({ ok: status < 300, status, json: async () => (code ? { error_code: code } : {}) }) }).ping();
+  await ping(404, 'user_not_found');
+  await assert.rejects(ping(403, 'x'), /403/);
+  await assert.rejects(ping(404, 'x'), /404 \(x\)/);
+  await assert.rejects(ping(404), /404/);
+  await assert.rejects(ping(200), /200 \(unexpected_user\)/);
 });
 
 /** Auth falso em memória para a ensureAccount. */
@@ -159,6 +166,13 @@ test('ensureAccount: o Auth não aceitou o id: a conta criada é apagada e a exe
   assert.equal(a.existing.size, 0);
 });
 
+test('ensureAccount: o Auth não aceitou o id e a limpeza falhou: id_not_accepted_cleanup_failed', async () => {
+  const a = fakeAdmin({ returnId: 'outro-id' });
+  a.deleteAccount = async (id) => { a.log.push(['delete', id]); throw new AuthAdminError(500, null); };
+  assert.deepEqual(await ensureAccount(a, ACC, { sleep: noSleep }), { outcome: 'failed', info: 'id_not_accepted_cleanup_failed' });
+  assert.deepEqual(a.log.at(-1), ['delete', 'outro-id']);
+});
+
 test('runPool: no máximo `limit` ao mesmo tempo, todos os itens', async () => {
   let running = 0; let peak = 0; const seen = [];
   await runPool([1, 2, 3, 4, 5, 6, 7], 3, async (x) => {
@@ -170,9 +184,19 @@ test('runPool: no máximo `limit` ao mesmo tempo, todos os itens', async () => {
   assert.deepEqual(seen.sort(), [1, 2, 3, 4, 5, 6, 7]);
 });
 
-test('SQL: o MD5 nunca é parâmetro; o lower(btrim()) vem antes da add_legacy_credential', () => {
+test('SQL: o MD5 nunca é parâmetro; a normalização (a mesma da carga) vem antes da add_legacy_credential', () => {
   const cred = noComments(sql[CREDENTIALS_FILE]);
-  assert.match(cred, /lower\(btrim\(l\."Password"\)\)/);
+  const plan = noComments(sql[PLAN_FILE]);
+  const trim = `lower(regexp_replace(l."Password", '^[[:space:]\\u00a0]+|[[:space:]\\u00a0]+$', '', 'g')) AS md5`;
+  assert.ok(cred.includes(trim), 'credenciais: [[:space:]] e NBSP');
+  assert.ok(plan.includes(trim), 'plano: o mesmo critério');
+  // O mesmo padrão da pg_temp.trim_space da carga.
+  const loadTrim = readFileSync(resolve(SQL_DIR, '..', 'load', '10_members.sql'), 'utf8').match(/regexp_replace\(_v, ('[^']+')/)[1];
+  assert.ok(cred.includes(`regexp_replace(l."Password", ${loadTrim}`));
+  assert.doesNotMatch(`${cred}\n${plan}`, /btrim\(/, 'btrim só tira o espaço comum');
+  // O plano não materializa o MD5: acc_plan só tem pw_usable e pw_normalized.
+  assert.doesNotMatch(plan, /AS pw\b|AS md5,|n\.md5 AS (?!pw_normalized)/);
+  assert.match(plan, /AS pw_usable/);
   assert.match(cred, /private\.add_legacy_credential\(m\.id, n\.md5\)/);
   assert.deepEqual([...cred.matchAll(/\$\d+(::[a-z\[\]]+)?/g)].map((m) => m[0]), ['$1::uuid[]'], 'só os ids como parâmetro');
   assert.deepEqual([...noComments(sql[LINK_FILE]).matchAll(/\$\d+(::[a-z\[\]]+)?/g)].map((m) => m[0]), ['$1::uuid[]']);
@@ -181,4 +205,72 @@ test('SQL: o MD5 nunca é parâmetro; o lower(btrim()) vem antes da add_legacy_c
   assert.match(sql[VALIDATE_FILE], /private\.legacy_credential_problems\(\)/);
   // O resultado do lote não devolve o MD5 nem o hash.
   assert.doesNotMatch(cred.split(/\n\s*FROM public\.members/)[0], /AS md5\b|legacy_hash AS|"Password" AS/);
+});
+
+/** Conexão falsa para a loadCredentials: cada membro custa `msPerId` no relógio falso. */
+function fakeCredentialDb({ msPerId = 100, timeoutAbove = Infinity, failOn = null } = {}) {
+  let clock = 0;
+  const seen = [];
+  const sets = [];
+  const connect = async () => ({
+    async query(text, params) {
+      if (text.startsWith('SET')) { sets.push(text); return { rows: [] }; }
+      const ids = params[0];
+      if (ids.length > timeoutAbove) { clock += 9000; const e = new Error('canceled'); e.code = '57014'; throw e; }
+      if (failOn && ids.includes(failOn)) { const e = new Error('x'); e.code = 'P0001'; throw e; }
+      clock += ids.length * msPerId;
+      seen.push(ids.length);
+      return { rows: ids.map((id) => ({ legacy_id: id, result: 'created', normalized: false })) };
+    },
+    async end() {},
+  });
+  return { connect, now: () => clock, seen, sets };
+}
+const ids = (n) => Array.from({ length: n }, (_, i) => i + 1);
+
+test('credenciais: o teto do comando fica abaixo dos 10 s do auto_explain e o aviso, em 6 s', async () => {
+  assert.ok(CREDENTIAL_TIMEOUT_MS < 10000);
+  assert.equal(SLOW_BATCH_MS, 6000);
+  const db = fakeCredentialDb({ msPerId: 10 });
+  const r = await loadCredentials({}, ids(120), { concurrency: 2, batchSize: 50, connect: db.connect, now: db.now });
+  assert.deepEqual(db.sets.filter((x) => x.includes('statement_timeout')), ["SET statement_timeout = '9000ms'", "SET statement_timeout = '9000ms'"]);
+  assert.equal(r.rows.length, 120);
+  assert.deepEqual([r.slow.length, r.stats.final_size, r.stats.batches], [0, 50, 3]);
+});
+
+test('credenciais: lote acima de 6 s avisa e os seguintes ficam com a metade', async () => {
+  const db = fakeCredentialDb({ msPerId: 150 }); // 50 × 150 ms = 7,5 s
+  const warned = [];
+  const r = await loadCredentials({}, ids(130), {
+    concurrency: 1, batchSize: 50, connect: db.connect, now: db.now, onSlow: (x) => warned.push(x) });
+  assert.deepEqual(db.seen, [50, 25, 25, 25, 5]);
+  assert.deepEqual(r.rows.map((x) => x.legacy_id).sort((a, b) => a - b), ids(130), 'todos, uma vez');
+  assert.deepEqual(warned, [{ ms: 7500, size: 50, next: 25, timedOut: false }]);
+  assert.deepEqual(r.slow, [{ id: null, info: '7500 ms, lote de 50' }]);
+  assert.equal(r.stats.final_size, 25);
+});
+
+test('credenciais: o comando cancelado no teto é dividido e refeito; o lote de 1 que estoura é falha', async () => {
+  const db = fakeCredentialDb({ msPerId: 10, timeoutAbove: 12 });
+  const r = await loadCredentials({}, ids(50), { concurrency: 1, batchSize: 50, connect: db.connect, now: db.now });
+  assert.deepEqual(r.failures, []);
+  assert.deepEqual(r.rows.map((x) => x.legacy_id).sort((a, b) => a - b), ids(50), 'todos, uma vez');
+  assert.ok(r.stats.timeouts >= 2 && r.stats.final_size <= 12, JSON.stringify(r.stats));
+  assert.ok(r.slow.every((x) => x.id === null && /cancelado e dividido/.test(x.info)));
+  const one = fakeCredentialDb({ timeoutAbove: 0 });
+  const f = await loadCredentials({}, ids(3), { concurrency: 1, batchSize: 3, connect: one.connect, now: one.now });
+  assert.deepEqual(f.failures, [{ id: null, info: '57014 (lote de 1)' }]);
+  const bad = fakeCredentialDb({ failOn: 7 });
+  const g = await loadCredentials({}, ids(20), { concurrency: 1, batchSize: 5, connect: bad.connect, now: bad.now });
+  assert.deepEqual(g.failures, [{ id: null, info: 'P0001 (lote de 5)' }], 'outro erro não é refeito');
+});
+
+test('sessão: o unlock noutra conexão (pooler em modo transação) é recusado', async () => {
+  const fake = (unlockOk, pids) => {
+    let i = 0;
+    return { async query(text) { const pid = pids[i++]; return { rows: [{ ok: text.includes('unlock') ? unlockOk : true, pid }] }; } };
+  };
+  await assertSessionPinned(fake(true, [10, 10]));
+  await assert.rejects(assertSessionPinned(fake(false, [10, 11])), /Session pooler/);
+  await assert.rejects(assertSessionPinned(fake(true, [10, 11])), /modo transação/);
 });

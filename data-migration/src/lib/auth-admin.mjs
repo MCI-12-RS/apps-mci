@@ -46,16 +46,20 @@ export function createAuthAdmin({ baseUrl, key }, { fetchImpl = globalThis.fetch
 
   return {
     /**
-     * A chave vale para a Admin API: lê uma conta que não existe (404 = chave aceita). Não
-     * lista contas (a lista quebra no Auth com uma linha de auth.users gravada fora dele).
+     * A chave vale para a Admin API: lê uma conta que não existe (404 com o error_code
+     * user_not_found = chave aceita; um 404 sem ele é outro endereço, um proxy ou a rota
+     * errada, e é recusado). Não lista contas (a lista quebra no Auth com uma linha de
+     * auth.users gravada fora dele).
      */
     async ping() {
       try {
         await call('GET', '/admin/users/00000000-0000-4000-8000-000000000000');
       } catch (err) {
-        if (err instanceof AuthAdminError && err.status === 404) return;
+        if (err instanceof AuthAdminError && err.status === 404 && err.authCode === 'user_not_found') return;
         throw err;
       }
+      // 200 numa conta que não pode existir: não é o Auth esperado.
+      throw new AuthAdminError(200, 'unexpected_user');
     },
     /** Conta sem senha (RN-08 do E2.03), com o e-mail confirmado e o Id do legado no app_metadata (6.2). */
     async createAccount({ id, email, legacyId }) {
@@ -96,8 +100,17 @@ export async function ensureAccount(admin, { id, email, legacyId }, { retries = 
     try {
       const acc = await admin.createAccount({ id, email, legacyId });
       if (acc.id !== id) {
-        // Risco 4 do E2.04: o Auth não aceitou o id. Não deixa a conta sobrando.
-        if (acc.id) await admin.deleteAccount(acc.id).catch(() => {});
+        // Risco 4 do E2.04: o Auth não aceitou o id. Não deixa a conta sobrando; se a
+        // limpeza falhar, diz (a conta com o Id do legado fica e aparece como account_orphan
+        // ou account_legacy_id_taken na próxima execução).
+        if (acc.id) {
+          try {
+            await admin.deleteAccount(acc.id);
+          } catch (delErr) {
+            if (!(delErr instanceof AuthAdminError)) throw delErr;
+            return { outcome: 'failed', info: 'id_not_accepted_cleanup_failed' };
+          }
+        }
         return { outcome: 'failed', info: 'id_not_accepted' };
       }
       return { outcome: 'created' };

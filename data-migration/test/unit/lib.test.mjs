@@ -53,6 +53,13 @@ test('destino: recusa outro projeto, outro host e usuário errado no pooler', ()
   assert.equal(postgresOptions(pgBase({ SUPABASE_HOST: `db.${EXPECTED_PROJECT_REF}.supabase.co`, SUPABASE_USER: 'postgres' })).describe.ssl, true);
 });
 
+test('destino: recusa a porta 6543 (pooler em modo transação) fora da stack local', () => {
+  assert.throws(() => postgresOptions(pgBase({ SUPABASE_PORT: '6543' })), /modo transação/);
+  assert.throws(() => postgresOptions(pgBase({
+    SUPABASE_HOST: `db.${EXPECTED_PROJECT_REF}.supabase.co`, SUPABASE_USER: 'postgres', SUPABASE_PORT: '6543' })), ConfigError);
+  assert.equal(postgresOptions(pgBase({ SUPABASE_HOST: '127.0.0.1', SUPABASE_USER: 'postgres', SUPABASE_PORT: '6543' })).describe.local, true);
+});
+
 test('erros de configuração não citam a senha', () => {
   try {
     postgresOptions(pgBase({ SUPABASE_PROJECT_REF: 'outro', SUPABASE_PASS: 'segredo-123' }));
