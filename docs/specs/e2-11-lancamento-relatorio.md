@@ -1,6 +1,7 @@
 # E2.11: Lançamento de relatório numa RPC atômica
 
-> Status: desenho pronto, sem implementação. Negócio, Experiência (UX), Solução técnica e Tarefas prontos.
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos. **PR 1 (banco: retrato e visibilidade) em produção em 2026-11-27**; faltam os PRs 2 a 4 e Testes.
+> **PR 1 em produção (2026-11-27):** mci-connect#54, squash `3506a5d`, "Deploy: banco" run 45917973610 (migration `20261129100000`). Retrato `snapshot_*` gravado em `cell_reports` (os 5 relatórios de produção preenchidos), visibilidade pelo retrato (views, view de excluídos, políticas e `viewer_sees_report_people`), troca de célula recusada (`report_cell_immutable`) e `cell_in_viewer_ministry` removida. `code-reviewer` APROVADO; pgTAP 4.951 testes. Divergências do desenho em [Divergências do PR 1](#divergências-do-pr-1-implementado).
 > - Negócio escrito em 2026-11-24 pelo `product-owner`, sem regras "a confirmar".
 > - Experiência (UX) escrita no mesmo dia pelo `ux-designer`. As pendências PO-UX-1 a PO-UX-11 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-REL-21 a P-REL-31.
 > - Solução técnica e Tarefas escritas no mesmo dia pelo `architect`, com as respostas às AQ-1 a AQ-11. Nenhuma RN voltou ao PO.
@@ -2058,6 +2059,14 @@ _Conferido em 2026-11-24:_
 - _no `mci-connect` (`origin/main`, `4595daa`): `CellReportForm.tsx`, `use-save-cell-report.ts`, `report-form.ts`, `src/lib/cell-reports/fields.ts`, `use-cell-options.ts`, `src/lib/cells/fields.ts`, as massas de `e2e/exclusao-*.spec.ts` e a lista de pgTAP que gravam em relatório; e, na branch `feat/E2.01-pr4-ver-relatorio`, o `CellReportSheet` e o `use-cell-report`;_
 - _no legado: `Domain/Model/Report.cs` (`LeadershipId`, `HostId` e `TimothyId` são `int`, nunca nulos; `CellType` é anulável);_
 - _nos specs: E2.01 (DT-09, DT-15, RN-13, formato `app_error`, ordem das travas), E2.02 (funções de linha, `can_submit_report`, predicados canônicos, DA-5, DA-12), E2.05 (`current_actor`, `zz_stamp_authorship`, `save_cell_report`, `audit_fields`), E2.06 (`private.member_hierarchy`), E2.08 (`ac_enforce_cell_report_active`, `cell_types`, `normalize_meeting_time`, `is_valid_meeting_time`, `TimeInput`), E2.09 (`sp_local`, `sp_instant`, `refreshAfterReportWrite`), E2.10 (`cell_recent_reports`, `cell_identity`) e o Negócio do E2.12 (sem commit, só lido)._
+
+### Divergências do PR 1 (implementado)
+Registradas em 2026-11-27, depois do PR 1 em produção. Valem sobre o desenho abaixo; o PR 2 parte delas.
+1. **Trigger do retrato `ENABLE ALWAYS`** (DT-02, "Trigger do retrato"): dispara também em `replica` (carga do E4.06 e massas com datas passadas), mas ali só completa pela célula, no INSERT, as colunas `snapshot_*` que vieram nulas (o retrato do legado fica) e, no UPDATE, não faz nada (a carga pode corrigir o retrato). Fora de `replica`, segue a DT-02. O "tipo vazio → o da célula" do E4.06 passa a ser feito por ele.
+2. **`viewer_can_insert_cell_report_participant` também pelo retrato** (DT-04): até o PR 2 remover a escrita direta (DT-11), a inclusão de participante segue a mesma visibilidade do relatório.
+3. **Políticas com os `viewer_has` num *InitPlan*** (DT-04): as permissões são lidas uma vez por consulta, antes da função de linha `viewer_sees_report_people`; o resultado é o mesmo, por desempenho.
+4. **`snapshot_*` em `audit-fields.json` já no PR 1**, na lista `not_data` de `cell_reports` (o retrato não entra nos eventos, como diz a Escrita; a lista de campos do E2.05 exige decisão para toda coluna nova).
+5. **`e208_concurrency.sh`, cenário 3b**: passou a esperar a recusa (`report_cell_immutable`), porque a troca da célula do relatório deixou de existir.
 
 ### Revisão das regras
 Nenhuma RN voltou ao PO. As lacunas técnicas foram resolvidas pela leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr).
