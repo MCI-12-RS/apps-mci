@@ -2081,6 +2081,8 @@ Registradas em 2026-11-27, no PR 2 (migrations `20261130100000_e211_02_rules` e 
 8. **Entrada (`private.report_input`):** `was_held` nulo vale como ausente; data, horário e oferta vazios ou só com espaços valem como ausentes (obrigatórios); oferta `NaN`/`Infinity` é inválida; nulos dentro de `visitors` são descartados como vazios.
 9. **`cell_report_edit_context`** devolve a linha para quem vê o relatório, sem exigir "Editar Relatórios de Células" (só datas). A service role recebe `existing_*` na conferência.
 10. **Testes dos passos anteriores adaptados** (leitura técnica 8): massas com a marca e o lançamento e a edição pelas RPCs. Duas expectativas do E2.02 mudam pela DA-7: célula excluída que quem lança não vê dá `not_found_or_deleted` (antes `cell_deleted`). O `e201_07` passou a conferir a permissão dentro das RPCs; o `e211_migrations.sh` roda de novo a cadeia das três migrations.
+11. **Forma da data e do horário pela API** (ajuste da revisão do PR 2): `private.report_input` só aceita data `AAAA-MM-DD` e horário `HH:MM`, `HH:MM:SS` ou com fração de segundo antes do cast; o resto (`today`, `yesterday`, `now`, `25/11/2026`, `9:30`) é `report_date_invalid`/`report_time_invalid`. O cast de texto livre dependia do `DateStyle` e aceitava palavras relativas numa função `IMMUTABLE`. Casos `api_input` (I01 a I16) na tabela de casos.
+12. **`TRUNCATE` revogado** de `cell_reports` e `cell_report_participants` para `authenticated`, `anon` e `service_role` (ele não passa pelo RLS nem pela guarda de linha), com a pós-condição e o pgTAP `e211_05`.
 
 ### Revisão das regras
 Nenhuma RN voltou ao PO. As lacunas técnicas foram resolvidas pela leitura mais conservadora e estão em [Definidas pelo architect](#definidas-pelo-architect-revisar-no-pr).
@@ -2830,7 +2832,7 @@ O desenho segue o padrão do Negócio: nenhuma regra nova. O custo de cada alter
 | E2.14 | "Relatórios enviados" continua contando "Não houve célula"; os números de participantes incluem os automáticos. |
 | E4.02 | As colunas do retrato já existem com o nome `snapshot_*`; o E4.02 só cria `legacy_id`. |
 | E4.04 | O saneamento lista: relatórios sem tipo; "Não houve célula" com tema, oferta maior que zero ou visitantes; realizada sem tema; oferta negativa ou acima de R$ 999.999,99; textos acima do teto (informação); pessoas do retrato que não migram. |
-| E4.06 | Em `replica`: o retrato pelo `legacy_id`; tipo vazio → o tipo da célula, contado no relatório de carga. A marca de manutenção não é usada. |
+| E4.06 | Em `replica`: o retrato pelo `legacy_id`; tipo vazio → o tipo da célula, contado no relatório de carga. A marca de manutenção não é usada. **Pendência (achado da revisão do PR 2, 2026-11-27):** na edição de um relatório de célula realizada, tema ou oferta nulos no gravado (legado) disparam `theme_required` ou `offering_required` mesmo sem o campo ser tocado (a regra confere o conjunto final). A carga confere quantos relatórios realizados têm tema ou oferta nulos (o E4.04 lista) e decide com o PO: corrigir no legado, preencher na carga ou aceitar que a primeira edição peça o campo. |
 | E4.09 | Confere: retrato sem nulos e com as FKs válidas; participantes = `NumMembers`; visitantes = `NumVisitors`; a contagem dos relatórios com o tipo da célula. |
 
 **Mudanças nos documentos, no aceite** (o `product-owner` atualiza a matriz, a seção 3 e o Progresso; o `architect` atualiza o resto do `CLAUDE.md` na revisão final):
