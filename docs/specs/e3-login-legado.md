@@ -1,6 +1,6 @@
 # E3: Login com a senha do legado (E3.01 a E3.05)
 
-> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-27). Negócio: Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário. UX: pendências PO-UX-1 a PO-UX-4 (texto e posição do card), que não bloqueiam. **PR 1 (banco, tarefas 1 a 7) implementado em 2026-11-27** (branch `feat/E3-pr1-login-legado`, pista B; divergências em "Divergências do PR 1"). Próximo: merge, "Deploy: banco" e o PR 2 (front).
+> Status: Negócio, Experiência (UX), Solução técnica e Tarefas prontos (2026-11-27). Negócio: Q-1, Q-3, Q-4 e Q-5 respondidas pelo usuário. UX: pendências PO-UX-1 a PO-UX-4 (texto e posição do card), que não bloqueiam. **PR 1 (banco, tarefas 1 a 7) implementado em 2026-11-27** (mci-connect#60, branch `feat/E3-pr1-login-legado`, pista B; divergências em "Divergências do PR 1"). Próximo: merge, "Deploy: banco" e o PR 2 (front).
 > Slug: `e3-login-legado` · Paridade com o legado: sim (AUT-01, 6.3), sem prazo (D6) · Pendências só da liderança (Q-2, Q-6), que não bloqueiam a implementação.
 
 <!--
@@ -358,3 +358,5 @@ Paralelo: 4 junto com 3 depois da migration 2 pronta na stack; 5 começa com a 3
 | RN-14, risco 1 | `e3_volume.psql`: 20 mil credenciais, `dashboard_first_access` 9,8 ms; carga 62 ms por credencial (cerca de 960 por minuto numa conexão) | PR 1 verde |
 | DA-1, DA-4, RN-06, RN-13 | Vitest do contrato da `sign-in`; `sign-in.edge.test.mjs` (23); `timing.mjs` (casos i e j a menos de 5 ms da referência) | PR 1 verde |
 | RN-02, RN-04, RN-05 | Playwright `login-legado.spec.ts` (Ana pelo celular com máscara, Bruno pelo CPF até a troca, Hugo com 72 letras) | PR 1 verde |
+
+PR 1: pgTAP inteiro (65 arquivos) verde; Vitest 2533, tsc e build verdes, lint só com os 3 erros antigos; Playwright inteiro 454 passaram, 2 falhas já conhecidas (UX-19 de `excluidos-membros`, axe de `sign-in`).
