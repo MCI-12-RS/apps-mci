@@ -317,7 +317,7 @@ async function main() {
   if (!pgo.describe.local && !dryRun) {
     if (!args.yes) throw new Error('O destino não é a stack local: para apagar, rode com --yes (veja antes com --dry-run).');
     if (confirm == null) {
-      throw new Error('O destino não é a stack local: rode antes com --dry-run e passe o número de confirmação em --confirm.');
+      throw new Error('O destino não é a stack local: rode antes com --dry-run e passe o código de confirmação (XXXX-XXXX) em --confirm.');
     }
   }
 
