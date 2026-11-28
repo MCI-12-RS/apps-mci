@@ -5,7 +5,7 @@
 > - Experiência (UX) escrita em 2026-11-24 pelo `ux-designer`: telas T1 a T12, padrões P120 a P123 e critérios UX-01 a UX-20. As pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-EXP-23 a P-EXP-32. As perguntas AQ-1 a AQ-10 são do `architect`.
 > - Ficam para o usuário revisar no PR os padrões P-EXP-01 a P-EXP-32 e as perguntas Q-1 a Q-8. Nenhuma bloqueia: cada uma já tem um padrão adotado.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.08, do E2.09, do E2.11 (retrato do relatório) e do E2.12 (filtros da lista de Relatórios). Entra depois do E2.12.
-> - Faltam Solução técnica, Tarefas e Testes.
+> - Faltam Solução técnica, Tarefas e Testes. Revisto em 2026-11-28 com o E2.12 entregue: Q-1, Q-2, Q-4 e Q-7 precisam de resposta do usuário antes da Solução técnica ([Revisão de 2026-11-28](#revisão-de-2026-11-28-e212-entregue)).
 >
 > Slug: `e2-13-exportacao-excel` · Paridade com o legado: sim (REL-14). Regras novas:
 > - permissão própria para exportar;
@@ -813,7 +813,7 @@ Não são dúvidas de negócio. São pontos em que a regra depende de uma escolh
 12. **Ordem dos passos.** Este passo usa: o E2.01; o escopo e o catálogo de permissões do E2.02; a Auditoria do E2.05; o G12 do E2.06; a célula inativa do E2.08; a situação e as semanas que contam do E2.09; o retrato do E2.11; e os filtros do E2.12. Entra depois do E2.12.
 
 ### Perguntas em aberto
-Nenhuma pergunta bloqueia a implementação. Cada uma já tem um padrão adotado, que vale se o usuário não decidir outra coisa no PR. Os padrões que mais mudam o resultado são:
+Cada pergunta já tem um padrão adotado. **Desde a revisão de 2026-11-28**, Q-1, Q-2, Q-4 e Q-7 (as que se afastam do legado) precisam de resposta do usuário antes da Solução técnica, e a recomendação da Q-4 mudou para os textos do legado (ver [Revisão de 2026-11-28](#revisão-de-2026-11-28-e212-entregue)); as outras valem se o usuário não decidir outra coisa no PR. Os padrões que mais mudam o resultado são:
 - **P-EXP-01:** exportar exige a permissão nova, que a Líder tem e a Membro não.
 - **P-EXP-06:** com várias semanas, a planilha tem uma linha por célula em cada semana.
 - **P-EXP-07:** só entram como "Relatório não enviado" as células que contavam na semana.
@@ -846,6 +846,22 @@ Nenhuma pergunta bloqueia a implementação. Cada uma já tem um padrão adotado
 - **Q-8. Totais na planilha.**
   - **Padrão adotado:** sem totais, como no legado. A planilha permite somar (P-EXP-14).
   - **Alternativa:** uma linha de total por G12 e uma no fim (relatórios enviados, ofertas, participantes e visitantes).
+
+### Revisão de 2026-11-28 (E2.12 entregue)
+_Feita pelo `product-owner` depois do aceite provisório do E2.12. Não muda nenhuma RN; muda o peso de quatro perguntas._
+
+**Conferência com o E2.12 em produção** (mci-connect#64 a #66; divergências nas seções de implementação daquele spec, nenhuma muda regra):
+- os filtros da RN-02 e da RN-07 existem como o Negócio previa: busca (líder registrado e tema), Célula (só por link), Líder e G12 pelo retrato (até 10 cada), Período pelas datas de Brasília, Tipo registrado e Reunião, com o par `private.cell_report_filter_normalize`/`private.cell_report_filter_sql`, que o E2.12 deixou para reuso aqui;
+- "hoje" e as semanas da RN-03 têm fonte no servidor (`server_weeks()`), e os textos dos chips do aviso, da aba "Informações" e do evento já existem no módulo de filtros de Relatórios;
+- o E2.12 manteve o Período por datas (Q-3 de lá): a exportação continua lendo "De" e "Até" aplicados.
+
+**Divergências do legado: precisam de resposta do usuário antes da Solução técnica.** As perguntas abaixo continuam com padrão adotado, mas Q-1, Q-2, Q-4 e Q-7 mudam o resultado em relação ao legado e não seguem para o `architect` sem uma resposta explícita (as demais continuam não bloqueantes):
+- **Q-1 (quem exporta):** recomendação mantida (P-EXP-01). Na prática ela reproduz o legado: só o administrador do legado tinha Relatórios no menu, e ele vira a Líder (6.5 do `docs/migracao.md`).
+- **Q-2 (várias semanas):** falta, entre as alternativas, o **comportamento do legado**: uma linha por célula no período inteiro, com o último relatório dela no período (`ColumnFormatter.cs:23-33`). Recomendação mantida: uma linha por célula em cada semana (P-EXP-06), porque no legado um período de quatro semanas esconde três relatórios de cada célula. Para uma semana só, as duas formas dão a mesma planilha.
+- **Q-4 (textos da Situação):** **recomendação revista: os textos do legado**, "Célula realizada.", "Não houve célula." e "Relatório não entregue.", com o ponto final, no lugar de "Relatório não enviado" (P-EXP-08). Motivos: a homologação (RN-15) compara a Situação célula a célula, e quem tem planilhas próprias que procuram esses textos não precisa mudá-las. "Ainda não ocorreu." continua, só na semana atual, porque o legado chamava de "Relatório não entregue." a célula cuja reunião ainda não tinha acontecido. Se o usuário aceitar, mudam a RN-05, a coluna 7 de [Colunas da planilha](#colunas-da-planilha), o [Resumo das linhas](#resumo-das-linhas-de-uma-semana), a aba "Informações" e as diferenças esperadas do E5.04.
+- **Q-7 (líder e G12 das linhas de relatório):** recomendação mantida, o retrato (P-EXP-10). Com o líder atual, o filtro Líder da planilha daria um resultado diferente do mesmo filtro na lista (RN-12), e o legado já usava o líder registrado na lista e nos filtros. Na homologação, a diferença aparece só nas células que trocaram de líder no período.
+
+**Ponto novo para o `architect`** (complementa o ponto 9): a carga do E4 já criou `cells.legacy_id`, gravada só pela carga (DT-01 e DT-02 do spec E4). O "Célula #" da RN-14 é o `legacy_id` nas células do legado; as cadastradas no novo precisam de um número dado pelo servidor acima de qualquer `legacy_id` possível até o cutover. Como fazer (coluna própria ou a mesma) é decisão técnica.
 
 ## Experiência (UX)
 _Seção do `ux-designer`. Escrita em 2026-11-24 a partir destas fontes:_

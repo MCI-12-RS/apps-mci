@@ -6,7 +6,7 @@
 > - Ficam para o usuário revisar no PR os padrões P-LRE-01 a P-LRE-34 e as perguntas Q-1 a Q-7. Nenhuma bloqueia: cada uma já tem um padrão adotado.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.10 e do E2.11 (retrato do relatório, REL-09). Entra depois do E2.11.
 > - Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho: quatro PRs (banco; lista com filtros e atalhos; consulta; consulta no detalhe da célula, opcional). Ficam para o usuário revisar no PR as definições DA-1 a DA-14. Faltam os Testes (QA).
-> - **Andamento (2026-11-28):** PRs 1 a 3 em produção (mci-connect#64 e #65). PR 4 (T14, DA-14, e a DA-11 que estava pendente) implementado e testado na pista A, branch `claude/e212-pr4`, sem PR aberto; ver [Implementação do PR 4](#implementação-do-pr-4-2026-11-28) e a [Revisão final](#revisão-final-do-passo-2026-11-28). Falta o aceite do PO.
+> - **Aceite provisório do PO (2026-11-28):** PRs 1 a 4 em produção (mci-connect#64, #65 e #66). O PR 4 foi ao ar sem revisão nem testes (política de 2026-11-28); a [Revisão final](#revisão-final-do-passo-2026-11-28) registrada abaixo não vale como a revisão final do passo, que fica para a rodada única do fim da fase 2 (E2.16), sobre o diff acumulado desde o PR 4. Ver [Implementação do PR 4](#implementação-do-pr-4-2026-11-28).
 >
 > Slug: `e2-12-listagem-relatorios` · Paridade com o legado: sim (REL-13). Regras novas:
 > - filtros de múltipla escolha, pessoa indisponível e G12 que inclui os relatórios do próprio G12;
