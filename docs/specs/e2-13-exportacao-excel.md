@@ -5,7 +5,7 @@
 > - Experiência (UX) escrita em 2026-11-24 pelo `ux-designer`: telas T1 a T12, padrões P120 a P123 e critérios UX-01 a UX-20. As pendências PO-UX-1 a PO-UX-10 foram resolvidas pelo PO no mesmo dia e viraram os padrões P-EXP-23 a P-EXP-32. As perguntas AQ-1 a AQ-10 são do `architect`.
 > - Ficam para o usuário revisar no PR os padrões P-EXP-01 a P-EXP-32 e as perguntas Q-1 a Q-8. Nenhuma bloqueia: cada uma já tem um padrão adotado.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.08, do E2.09, do E2.11 (retrato do relatório) e do E2.12 (filtros da lista de Relatórios). Entra depois do E2.12.
-> - Faltam Solução técnica, Tarefas e Testes. Revisto em 2026-11-28 com o E2.12 entregue: Q-1, Q-2, Q-4 e Q-7 precisam de resposta do usuário antes da Solução técnica ([Revisão de 2026-11-28](#revisão-de-2026-11-28-e212-entregue)).
+> - Q-1, Q-2, Q-4 e Q-7 decididas pelo usuário em 2026-11-28. Solução técnica e Tarefas escritas pelo `architect` no mesmo dia; PR 1 (banco) implementado em `claude/e213-pr1`. Faltam o PR 2 (front) e os Testes.
 >
 > Slug: `e2-13-exportacao-excel` · Paridade com o legado: sim (REL-14). Regras novas:
 > - permissão própria para exportar;
@@ -1493,23 +1493,151 @@ Nenhuma bloqueava o desenho. O PO resolveu todas em 2026-11-24, aceitando a opç
   - **Resolvida (P-EXP-32):** aceitos todos, sem ajuste. Os ligados a uma regra foram copiados para os Textos de tela. Os da T12 só valem se a pergunta correspondente for respondida com a alternativa.
 
 ## Solução técnica
-_Seção do `architect`._
+_Seção do `architect`. Escrita em 2026-11-28, com as decisões do usuário (Q-1, Q-2, Q-4 e Q-7; Q-3, Q-5, Q-6 e Q-8 pelas recomendações). Nenhuma dúvida de negócio nova. As regras dos outros passos são citadas pelo ID._
+
+### Revisão das regras
+- As RNs estão coerentes entre si e com o E2.09, o E2.11 e o E2.12. Q-4 decidida: a RN-05 vale como está ("Relatório não enviado", "Ainda não ocorreu"), e a Revisão de 2026-11-28 fica superada nesse ponto.
+- Casos de borda resolvidos pelo desenho, sem mudar regra:
+  - **datas invertidas:** a lista desliga o Período (DA-6 do E2.12), e a exportação recusa como "sem período";
+  - **dia e horário da reunião:** o histórico (`private.cell_active_periods`) guarda só quando a célula contava, e não os dias antigos. A semana passada usa o dia e o horário **atuais**, a mesma limitação do E2.09;
+  - **célula inativa na semana atual:** fica sem situação no E2.09 e não entra (RN-12);
+  - **concorrência:** a exportação só lê e grava um evento. Não há trava nem unicidade, e duas exportações seguidas gravam dois eventos (RN-11).
+
+### Visão geral
+Uma RPC, `cell_reports_export`, faz tudo numa transação: confere o portão e a permissão, calcula as semanas e as linhas (com o escopo das views), monta os textos dos filtros e grava o evento. Depois devolve as linhas num `jsonb`. A planilha é montada no aparelho. Se o evento falha, nada sai; sem linhas, não há evento.
+
+### Decisões técnicas
+- **DT-01. Um caminho só, por RPC `SECURITY DEFINER`, e não por Edge Function.** A RPC lê as views de quem chama (o escopo é o de `auth.uid()`), e a Edge Function só acrescentaria um salto. Além disso, a Edge Function tem limite de CPU por pedido (cerca de 2 s), pouco para montar 19.500 linhas. Ler as views pela API não é exportação (ponto 1).
+- **DT-02. A planilha é montada no aparelho, com um gravador próprio.**
+  - O gravador escreve SpreadsheetML mínimo (`src/lib/xlsx/`) e compacta com o `fflate` (MIT, cerca de 8 KB), carregado por `import()` só na exportação.
+  - Todo texto é *inline string*, que nunca vira fórmula (RN-09). Data/Hora é número de série com o formato `dd/mm/yyyy hh:mm`, e a Oferta é número com `"R$" #,##0.00`.
+  - Atende à AQ-9: painel congelado, `autoFilter`, larguras com limite, `wrapText` em Endereço e Observações e a primeira aba ativa.
+  - Fica fora o SheetJS: a versão comunitária no npm está desatualizada, e estilos e painéis são da versão paga. Plano B: o ExcelJS (MIT), se a abertura falhar em algum aplicativo.
+- **DT-03. A resposta é um `jsonb` só.** O PostgREST corta `SETOF` em 1.000 linhas, e a RPC é `VOLATILE`, porque grava o evento. Cada linha vai como uma lista (a tupla de [Contratos](#contratos-rpc-edge-functions-colunas-novas)), cerca de 40% menor que um objeto. A planilha maior (19.500 linhas) dá cerca de 3 a 4 MB antes do gzip.
+- **DT-04. As semanas** (`private.cell_report_export_weeks`):
+  - a primeira é o domingo do "De"; a última, o domingo do "Até", limitado à semana atual. A semana atual vem de `sp_local(now())`;
+  - as recusas, com `app_error`: `export_period_required` (sem "De", sem "Até" ou datas invertidas), `export_period_not_started` (a primeira semana depois da atual) e `export_period_too_long` (mais de `private.cell_report_export_max_weeks()` = 13, contadas depois do limite da semana atual; `max_weeks` no `DETAIL`);
+  - a tela faz o mesmo cálculo (AQ-1) com o "hoje" da `server_weeks()`, e a tabela de casos é a mesma (`report-export-cases.json`). O servidor confere de novo e vale. O nome do arquivo sai das semanas da **resposta** (AQ-10).
+- **DT-05. As linhas** (`private.cell_report_export_rows`):
+  - **(a)** os relatórios da `cell_reports_view` com data nas semanas: o escopo pelo retrato, sem excluídos, inclusive os de célula excluída;
+  - **(b)** cada célula da `cells_view` (visível, não excluída) em cada semana sem relatório visível:
+    - relatório que quem exporta não vê: o `was_held` lido da tabela, como a situação do E2.09 (P-SIT-12). Nenhum outro dado;
+    - sem relatório, na semana atual: `private.report_situation_rule`, o mesmo cálculo da `cells_view` (RN-12). `not_yet` vira "Ainda não ocorreu", `pending` vira "Relatório não enviado", e o resto não entra;
+    - sem relatório, numa semana passada: entra como "não enviado" se `private.report_week_counts` diz que a semana contava, pelos períodos de `private.cell_active_periods` (RN-06 do E2.09).
+  - A visibilidade é a de agora. As colunas da view que a consulta não pede não são calculadas (conferido no `EXPLAIN`).
+- **DT-06. Os filtros pelo mesmo código do E2.12** (ponto 4):
+  - as partes (a) e (b) são unidas com as colunas que o `WHERE` da lista usa: `search_text`, `cell_id`, `snapshot_leader_id`, `snapshot_g12_leader_id`, `date`, `snapshot_cell_type` e `was_held`, com o alias `v`;
+  - o `private.cell_report_filter_sql` é aplicado **depois** do cálculo, e assim nenhum filtro traz linha nova (RN-07);
+  - na parte (b), essas colunas recebem os valores atuais da célula: o líder, o `g12_id` do líder, o tipo, a busca só no nome do líder e o `was_held` do relatório invisível (nulo sem relatório, e então a Reunião tira a linha);
+  - o Período entra trocado pelas semanas inteiras. Pessoa e célula indisponíveis não trazem nada, como na lista.
+- **DT-07. O G12 e a ordem** (RN-06, RN-08):
+  - o tipo do G12 segue a regra de `cellG12` (`src/lib/cells/labels.ts`): `pastors` (pastor ou nível 0), `none` (nível nulo) ou `name`, com o nome do G12, ou o próprio líder no nível 1;
+  - a ordem é: semana, tipo (`pastors`, `name`, `none`), nome do G12 por `search_normalize(...) COLLATE "C"` (como a DA-4 do E2.12), id do G12, nome do líder, id do líder, número da célula e id da célula. É estável.
+- **DT-08. Os textos dos filtros são montados no servidor** (`private.cell_report_export_labels`), porque o evento registra o que saiu do sistema (RN-11), com os nomes de agora:
+  - a ordem é a dos chips: Célula (pela `cell_identity`), Líder e G12 (pela `cell_report_filter_names`, ou "Pessoa indisponível"), Tipo (na ordem pedida), Reunião e, por último, Busca;
+  - a Busca usa o texto digitado (`_search_label`, até 100 caracteres) e só aparece quando a busca vale (padrões não vazios). Esse texto vem da tela, mas os padrões aplicados também ficam no evento (`metadata.applied`);
+  - o aviso antes de gerar usa os chips da tela, e a aba "Informações" usa os textos da resposta. Os textos estão em três lugares: aqui, `filter-texts.ts` e `report-export-cases.json` (padrão do E2.04).
+- **DT-09. O evento:**
+  - `INSERT` direto em `events`, feito pela RPC: `action = 'export'`, `entity = 'cell_report'`, `entity_id` e `entity_label` nulos (sem "Registro" e fora do "Ver histórico") e autor `member`;
+  - a descrição é montada no servidor ("… (1 linha)", "… (19.500 linhas)");
+  - `metadata = { weeks: {start, end, count}, filters: [textos], rows, applied: {search, cell_id, leader_ids, g12_ids, types, held} }`;
+  - o prazo de 2 anos já é o padrão de `private.audit_retention`.
+- **DT-10. A permissão:**
+  - `export_cell_reports` entra no enum. A `active_permissions()` já a inclui, e a Administrador a recebe sozinha;
+  - a migration dá a permissão à Líder (pelo nome, como no E2.02) e põe a linha de documentação da Administrador (com `app.role_maintenance`). A Membro não recebe;
+  - o servidor exige `viewer_has('export_cell_reports')` e a lista de Relatórios (`private.viewer_sees_reports_list()`, a mesma regra do `MENU_RULES`). Sem as duas, 42501;
+  - a `my_access()` não muda: a tela decide pelas permissões efetivas, com **uma** função em `access.ts` para o menu, o botão e o aviso do P121 (AQ-6).
+- **DT-11. O número da célula** (RN-14):
+  - o nome `number` já é o número do endereço;
+  - `cells.issued_code` (inteiro, `UNIQUE`, `≥ 10001`) vem de `private.cell_code_seq` (`START 10001`). Quem o grava é o trigger `zx_keep_cell_code` (*definer*): no INSERT, a sequência, descartando o valor enviado; no UPDATE, o valor antigo;
+  - `cells.code` é `GENERATED ALWAYS AS (coalesce(legacy_id, issued_code)) STORED`, `UNIQUE`. Se um Id do legado colidir com um número do novo, a carga falha;
+  - as células que já existem recebem número na migration, na ordem de cadastro e em `replica`, sem Auditoria;
+  - em `replica` (a carga) o trigger não roda: a célula do legado usa o `legacy_id`. `private.cell_code_problems()` (`no_code`, `legacy_in_issued_range`) precisa voltar vazia na reconciliação;
+  - fora das views (Q-6), e em `not_data` da Auditoria.
+- **DT-12. Tempo:**
+  - o `statement_timeout` do `authenticated` é de 8 s, então a meta é ficar em até 5 s no servidor, no volume de referência (13 semanas, igreja toda);
+  - na tela, o tempo-limite é de 30 s (AQ-2), com `AbortController` (AQ-5) e `networkMode: "always"`.
+- **DT-13. Entrega ao aparelho** (AQ-3, AQ-4):
+  - um `Blob` e um `a[download]` acionado pela tela;
+  - "Baixar de novo" usa o mesmo `Blob`, sem pedido nem evento, e o `revokeObjectURL` roda quando o resultado sai;
+  - a AQ-4 é conferida nos aparelhos na rodada final. Se o download falhar, a tela mostra "Baixar planilha".
 
 ### Modelo de dados e migrations
+| Migration | Conteúdo |
+|---|---|
+| `20261206100000_e213_01_enums` | `permission_action` + `export_cell_reports`; `event_action` + `export` (enum novo não é usado na mesma transação) |
+| `20261206100100_e213_02_cell_code` | sequência, `issued_code` + preenchimento em `replica`, `code` gerado, `UNIQUE`s, trigger, `cell_code_problems`, pós-condições |
+| `20261206100200_e213_03_export` | permissão na Líder e na Administrador; `viewer_sees_reports_list`, `cell_report_export_{max_weeks,weeks,rows,labels}` (`private`, sem EXECUTE pela API); `public.cell_reports_export` (*definer*, VOLATILE, só `authenticated`); pós-condições |
 
-### Onde cada regra é imposta
-| RN | Banco (constraint, RLS, trigger, RPC) | UI |
-|---|---|---|
+Nenhuma view, política ou tabela muda além de `cells`. As três podem rodar de novo sem erro.
 
 ### Contratos (RPC, Edge Functions, colunas novas)
+`cell_reports_export(_search text[], _search_label text, _cell_id uuid, _leader_ids uuid[], _g12_ids uuid[], _date_from date, _date_to date, _types text[], _held boolean) → jsonb`. Os argumentos são os da `cell_reports_list` (`toCellReportsListArgs`), mais `_search_label`.
+- `{ result: "ok", weeks: {start, end, count}, filters: text[], generated_by, generated_at: "AAAA-MM-DDTHH:MM" (Brasília), row_count, rows }`
+- `{ result: "empty", weeks }`: sem arquivo e sem evento.
+- Recusas: 42501 ("Você não tem permissão para esta ação."); 22023 `app_error` `export_period_required`, `export_period_too_long` (`max_weeks`) ou `export_period_not_started`. Qualquer outro erro é a falha da RN-13.
+- Cada linha de `rows` é a tupla `[semana (domingo), número, g12_kind (pastors|name|none), g12_name, líder, rua, número do endereço, bairro, situação (held|not_held|not_sent|not_yet), data, "HH:MM", oferta, participantes, visitantes, motivo, observações, célula excluída]`. A data, o horário, a oferta e os números vêm só em `held`; o motivo, só em `not_held`; as observações, só em relatório visível. A tela monta o Endereço ("Rua, 100"), as Observações ("motivo · observações") e os textos ("Pastores", "—", os da RN-05).
+- Colunas novas: `cells.issued_code` e `cells.code` (`types.ts`). O front não as lê.
+
+### Front (PR 2)
+- `src/lib/xlsx/` (DT-02): o gravador puro (abas, colunas, tipos de célula e estilos). O teste abre o zip e lê o XML.
+- `src/lib/cell-reports/export.ts` e `export-texts.ts`: semanas e recusas (DT-04), leitura das tuplas, linhas da planilha, aba "Informações", nome do arquivo e textos do resultado. Puro.
+- `src/hooks/use-cell-reports-export.ts`: a chamada (30 s, `AbortController`, `networkMode: "always"`), as respostas da AQ-2 e o `Blob`.
+- `src/components/cell-reports/export/`: o botão (P120), o aviso (P9 e P122) e o resultado (P123), na linha do total de `CellReports.tsx`.
+- `access.ts`: `canSeeReportsList` e `canExportReports` (AQ-6). Funções: o aviso do P121. A permissão já entrou no catálogo no PR 1.
+- Auditoria (`src/lib/audit/events.ts` e o painel): a segunda linha e o detalhe da exportação (RN-11), lidos de `metadata` por *type guard*. "Exportação" já está em `ACTION_LABELS` desde o PR 1.
+
+### Onde cada regra é imposta
+| RN | Banco | UI |
+|---|---|---|
+| RN-01 | `cell_reports_export`: portão, `export_cell_reports` e a lista de Relatórios (42501); a permissão na Líder pela migration | o botão por `canExportReports`; o aviso do P121 |
+| RN-02, RN-07 | os argumentos da lista; o `WHERE` do E2.12 sobre as duas partes (DT-06) | manda os filtros aplicados, não o rascunho |
+| RN-03 | `cell_report_export_weeks` (DT-04) | o mesmo cálculo antes do aviso; as recusas embaixo do botão |
+| RN-04, RN-05, RN-10, RN-12 | `cell_report_export_rows` (DT-05) sobre as views | só formata |
+| RN-06, RN-08 | a tupla e a ordem (DT-07) | os textos e o formato das colunas |
+| RN-09 | — | o gravador (DT-02) |
+| RN-11 | o evento na mesma transação (DT-09); sem linhas, nada | "Baixar de novo" sem pedido |
+| RN-13 | `result: "empty"` | andamento, 30 s, resultado e falha |
+| RN-14 | `issued_code`, `code` e o trigger (DT-11) | só a coluna da planilha |
+| RN-15 | as mesmas regras para o legado; `cell_code_problems` | — |
 
 ### Riscos (concorrência, escala, segurança)
+1. **Tempo:** acima de 8 s, o PostgREST corta o pedido. Os pontos que podem pesar são o `participants_count` por relatório e o `search_normalize` por linha. A medição no volume de referência vai na rodada final. Se passar de 5 s, troque a contagem por um agregado único dos participantes.
+2. **Memória no celular:** o JSON e a planilha de 19.500 linhas cabem em poucos MB. O gravador monta as linhas sem cópias intermediárias.
+3. **Abuso:** quem tem a permissão pode pedir exportações seguidas, cada uma com até 1 s a 2 s de banco e um evento. Não há limite, como nas outras leituras. Se for preciso, um limite por pessoa à moda da `throttle_lock` do E2.03.
+4. **Textos em três lugares** (DT-08): mudou um chip do E2.12, mude a função de textos e a tabela de casos.
+5. **Dia da reunião alterado:** as semanas passadas usam o dia e o horário atuais (como o E2.09).
+6. **Faixa dos números:** antes do cutover, confira no legado que `max(Cells.Id) < 10001`. A pré-checagem da carga (E4.06) e a reconciliação acrescentam `cell_code_problems()`.
+7. **Ordem dos triggers de `cells`:** o `zx_keep_cell_code` entra na lista dos BEFORE. Os pgTAP que conferem a ordem (`e208_02`, `e4_*`) precisam do nome.
+
+### Implantação
+PR 1 (banco) → "Deploy: banco" → PR 2 (front) → promote. O PR 1 já leva ao `types.ts` o rótulo da permissão (Funções) e "Exportação" (Auditoria), que o `tsc` exige; os dois só mostram texto.
+
+### Implementação do PR 1 (2026-11-28)
+Branch `claude/e213-pr1` do `mci-connect` (`aad9ac5`), tarefas 1 a 4, sem PR aberto. Pela política do usuário, sem testes nem revisões.
+- **Migrations:** as três da tabela acima. Aplicadas na stack `mci-b` depois de um `db reset`, e cada uma rodada de novo sem erro.
+- **Conferência manual**, numa transação desfeita: três células e dois relatórios em três semanas, com os nomes, a ordem, as situações (`held`, `not_held`, `not_sent`), os filtros Reunião e Busca, os textos e os dois eventos. Os números foram dados pela sequência e não voltam com o *rollback* (RN-14: nunca reaproveitado).
+- **Front mínimo, que o `tsc` exige com o enum novo:** a permissão no catálogo, no lugar da RN-01, e "Exportação" logo depois de "Restauração" em `ACTION_LABELS`.
+- `tsc` e build verdes. O lint tem os 3 erros que já existem na `main` (`command.tsx`, `textarea.tsx`, `tailwind.config.ts`).
+- **Desvios do desenho:** nenhum. O nome da RPC é `cell_reports_export`, ao lado da `cell_reports_list`.
+- **Ficou para a rodada final** (tarefa 9): o pgTAP `e213_*`, os pgTAP que conferem a ordem dos triggers de `cells` (`e208_02`, `e4_*`: entra o `zx_keep_cell_code`) e os que contam as permissões da Líder (`e202_*`; a Líder passa de 13 para 14, e o "13 permissões" do UX-15 fica desatualizado), a sincronia da `report-export-cases.json` e o volume.
 
 ## Tarefas
-_Seção do `architect`._
+_Seção do `architect`. Política do usuário (2026-11-28): até o fim da fase 2, sem testes nem revisões. A tarefa 9 é da rodada final._
 
 | # | Responsável | Descrição | Arquivos | RNs | Depende de |
 |---|---|---|---|---|---|
+| 1 | backend | Enums novos | `supabase/migrations/20261206100000_e213_01_enums.sql` | RN-01, RN-11 | — |
+| 2 | backend | Número da célula (DT-11); `issued_code` e `code` em `not_data` e o pgTAP do E2.05 regerado | `…100100_e213_02_cell_code.sql`, `supabase/tests/fixtures/audit-fields.json`, `supabase/tests/database/e205_02_audit_fields.test.sql` | RN-14, RN-15 | 1 |
+| 3 | backend | A exportação (DT-01, DT-04 a DT-10) e a tabela de casos | `…100200_e213_03_export.sql`, `supabase/tests/fixtures/report-export-cases.json` | RN-01, RN-03 a RN-08, RN-10 a RN-13 | 1, 2 |
+| 4 | backend | `types.ts` regenerado; a permissão no catálogo (grupo Relatórios, depois das duas "Visualizar Relatórios…") e "Exportação" em `ACTION_LABELS` | `src/integrations/supabase/types.ts`, `src/lib/access/permissions.ts`, `src/lib/audit/events.ts` | RN-01, RN-11 | 3 |
+| — | | **PR 1 (banco):** tarefas 1 a 4. Critério de pronto: as migrations rodam duas vezes; `tsc`, build e lint como na `main` | | | |
+| 5 | frontend | Gravador `xlsx` e `export.ts`/`export-texts.ts` (DT-02, DT-04, Contratos) | `src/lib/xlsx/*`, `src/lib/cell-reports/export*.ts`, `package.json` (`fflate`) | RN-03, RN-06, RN-08, RN-09 | PR 1 |
+| 6 | frontend | A exportação em Relatórios: botão, aviso, andamento, resultado e "Baixar de novo" (T1 a T7; P120, P122, P123; UX-01 a UX-14, UX-17 a UX-19) | `src/hooks/use-cell-reports-export.ts`, `src/components/cell-reports/export/*`, `src/pages/CellReports.tsx`, `src/lib/access/access.ts` | RN-01 a RN-03, RN-11, RN-13 | 5 |
+| 7 | frontend | Funções: o aviso do P121 (T9, UX-15) | `src/components/roles/*`, `src/lib/access/access.ts` | RN-01 | PR 1 (paralela à 5) |
+| 8 | frontend | Auditoria: a segunda linha e o painel da exportação (T10, UX-16) | `src/lib/audit/events.ts`, `src/components/audit/*` | RN-11 | PR 1 (paralela à 5) |
+| — | | **PR 2 (front):** tarefas 5 a 8, num PR só; revisão de UI do passo | | | |
+| 9 | qa | Rodada final: pgTAP `e213_*` (permissão, semanas e casos, linhas por persona da massa, filtros, situação × E2.09, evento e tudo ou nada, número e trigger), ajuste da ordem dos triggers (`e208_02`, `e4_*`), Vitest (gravador, `export.ts`, sincronia de `report-export-cases.json`), E2E (UX-01 a UX-19), volume (13 semanas, igreja toda: até 5 s no servidor) e as migrations rodando duas vezes | `supabase/tests/database/e213_*.test.sql`, `src/**/*.test.ts`, `e2e/e213-*.spec.ts` | todas | 1 a 8 |
 
 ## Testes
 _Seção do `qa`._
