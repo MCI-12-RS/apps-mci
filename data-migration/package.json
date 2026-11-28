@@ -14,6 +14,7 @@
     "load": "node src/load.mjs",
     "accounts": "node src/accounts.mjs",
     "unload": "node src/unload.mjs",
+    "reconcile": "node src/reconcile.mjs",
     "test:unit": "node --test test/unit/*.test.mjs",
     "test:local": "bash test/run-local.sh",
     "test:qa": "bash test/qa/run-qa.sh"

@@ -7,7 +7,8 @@
 # escrita, cópia, idempotência, checksum, privilégios, saneamento, carga
 # (adoção, ambiguidade, --final, --dry-run, idempotência, mudança no legado,
 # conflitos com o novo, volume), contas e credenciais legadas (npm run accounts, E4.08:
-# Auth da stack local), limpeza do ensaio (npm run unload: o destino volta ao retrato de antes
+# Auth da stack local), reconciliação (npm run reconcile, E4.09: limpa, com divergências injetadas e
+# no volume), limpeza do ensaio (npm run unload: o destino volta ao retrato de antes
 # da carga) e limpeza do staging.
 # No fim, tira a carga (só teste), apaga o schema legacy e o contêiner.
 #
@@ -410,6 +411,43 @@ if [ "$ACCOUNTS" != 0 ]; then
   $PSQL -c "DROP TRIGGER qa_cred_trap ON private.legacy_credentials; DROP FUNCTION public.qa_cred_trap();"
   $ACCOUNTS_RUN >"$WORK/acc9.log" 2>&1 || { cat "$WORK/acc9.log"; echo "FALHA: contas 9"; exit 1; }
   $ACC problems-empty
+
+  step "Reconciliação: carga e contas conferidas (só leitura; tudo bate)"
+  R="$N $HERE/assert-reconcile.mjs $CONFIG"
+  RECONCILE="$N $ROOT/src/reconcile.mjs --config $CONFIG --out-dir $WORK/rc-reports --credential-sample 500"
+  $R legacy-levels
+  FPRC="$($L fingerprint)|$($ACC fingerprint)"
+  $RECONCILE --dry-run >"$WORK/rc-dry.log" 2>&1 || { cat "$WORK/rc-dry.log"; echo "FALHA: reconciliação --dry-run"; exit 1; }
+  check "nenhum relatório de reconciliação gravado" test ! -e "$WORK/rc-reports"
+  $RECONCILE >"$WORK/rc1.log" 2>&1 || { cat "$WORK/rc1.log"; echo "FALHA: reconciliação 1"; exit 1; }
+  grep -E '^(Tempo|Código de evidência|Reconciliação):' "$WORK/rc1.log"
+  check "nada mudou no destino (carga, private.*, contas, cofre, credenciais, Auditoria)" test "$($L fingerprint)|$($ACC fingerprint)" = "$FPRC"
+  $R expect-clean "$(ls -t "$WORK"/rc-reports/*.json | head -n 1)"
+  check "relatório em Markdown com o mesmo código de evidência" grep -q "$(sed -n 's/^Código de evidência: //p' "$WORK/rc1.log")" "$(ls -t "$WORK"/rc-reports/*.md | head -n 1)"
+  check "relatório só para o dono" test "$(stat -c %a "$(ls -t "$WORK"/rc-reports/*.md | head -n 1)")" = 600
+  expect_fail "--yes não se aplica (só leitura)" "--yes" $RECONCILE --yes
+
+  step "Reconciliação: divergências injetadas são apontadas com o código certo"
+  $R inject
+  set +e; $RECONCILE >"$WORK/rc2.log" 2>&1; RC=$?; set -e
+  check "código de saída 2 com divergência ($RC)" test "$RC" = 2
+  grep -E '^ *FALHA' "$WORK/rc2.log"
+  $R expect-injected "$(ls -t "$WORK"/rc-reports/*.json | head -n 1)"
+  $R restore
+  $RECONCILE >"$WORK/rc3.log" 2>&1 || { cat "$WORK/rc3.log"; echo "FALHA: reconciliação depois de desfazer"; exit 1; }
+  $R expect-clean "$(ls -t "$WORK"/rc-reports/*.json | head -n 1)"
+  for pii in Ficticio exemplo.org 52998224725 99999-0002 Faltante Trocado Adotado mci12fakemail '@'; do
+    if grep -q -- "$pii" "$WORK"/rc-reports/* "$WORK"/rc-dry.log "$WORK"/rc1.log "$WORK"/rc2.log "$WORK"/rc3.log; then
+      echo "FALHA: saída ou relatório da reconciliação contém dado pessoal ($pii)"; exit 1; fi
+  done
+  echo "ok: saída e relatórios da reconciliação sem dados pessoais"
+
+  step "Reconciliação: trava comum com a carga, as contas e a limpeza"
+  psql "postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres" -X -q -c "SELECT pg_advisory_lock(hashtextextended('mci.e4.load', 0)), pg_sleep(6)" >/dev/null &
+  LOCK_PID=$!
+  sleep 1
+  expect_fail "a reconciliação recusa com a trava ocupada" "em andamento" $RECONCILE --dry-run
+  wait "$LOCK_PID"
 fi
 
 step "Limpeza do staging recusa com carga no destino"
@@ -598,6 +636,15 @@ if [ "${LOAD_VOLUME:-1}" != 0 ]; then
     $ACC unchanged
     $ACC volume-check
     $ACC problems-empty
+    step "Reconciliação: volume"
+    $R legacy-levels
+    FPRV="$($L fingerprint)|$($ACC fingerprint)"
+    $N "$ROOT/src/reconcile.mjs" --config "$CONFIG" --out-dir "$WORK/rc-vol" --pastor-ids 1,2 --admin-ids 1,2 >"$WORK/vol-rc.log" 2>&1 \
+      || { cat "$WORK/vol-rc.log"; echo "FALHA: reconciliação no volume"; exit 1; }
+    echo "reconciliação no volume: $(grep -E '^Tempo:' "$WORK/vol-rc.log")"
+    grep -E '^Reconciliação:' "$WORK/vol-rc.log"
+    $R expect-approved "$(ls -t "$WORK"/rc-vol/*.json | head -n 1)"
+    check "nada mudou no destino" test "$($L fingerprint)|$($ACC fingerprint)" = "$FPRV"
     step "Limpeza do ensaio: volume"
     for run in dry-run 1 2; do
       ARGS=""; [ "$run" = dry-run ] && ARGS="--dry-run"
