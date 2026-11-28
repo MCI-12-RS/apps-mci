@@ -1996,6 +1996,13 @@ SELECT (SELECT count(*) FROM public.members WHERE deleted_at IS NULL)      AS me
 
 **Playwright:** os critérios `UX-` de cada PR com a massa e o *smoke* de login. O relógio do servidor não é controlável: os critérios que dependem da hora comparam a tela com a resposta do servidor (DT-10 do E2.09). No PR 3, para cada persona, cada número abre uma lista cujo total (ou soma de visitantes) é o número; a volta pelo navegador restaura `window.scrollY` e o foco (UX-06, com `timezoneId: "Europe/Lisbon"`); a rede não baixa o Recharts (UX-09); axe nos dois temas (UX-08).
 
+### Implementação do PR 1 (2026-11-28)
+Migration `20261205100000_e214_01_dashboard_numbers.sql`, na `mci-connect` (branch `claude/e214-pr1`), com o `types.ts` regenerado (CLI 2.84.2, `__InternalSupabase` mantido; só as seis colunas e o `g12_ids`, sem ajuste no front).
+- **Conferência do desenho** (na stack local da pista A, com as migrations da `main` até `20261204100100`; itens a, b e d da [conferência](#conferência-em-produção-tarefa-1)): tudo verdadeiro, e nada depende das três funções. O corpo vigente do `dashboard_summary` é o do E2.07 (`20261128100000`), sobre o do E2.09; o do ranking ainda é o do E1.08 (o E2.06 só o confere). `g12_id` de um G12 é ele mesmo, então as células que o próprio G12 lidera entram na linha dele, como no total da subárvore. Nenhuma pergunta de negócio.
+- **Desvios do texto do desenho (sem efeito no contrato):** do corpo vigente ficam `cells_report_situation(coalesce(_at, now()))` e os *casts* dos enums (`'pending'::cell_report_status`, `'no_leadership'::member_leadership_status`); a guarda confere também `members_view.gender` e `cell_reports_view.date`; as duas funções ganharam `COMMENT`.
+- **pgTAP existentes** (ajustados, **não rodados**, pela política de 2026-11-28): `e108_pr3` (visitantes só com `was_held` e os dois retornos com as colunas novas), `e210_01` (RN-21 do ranking pelos `g12_ids`) e `e212_01` (RN-18: soma dos visitantes só das linhas com `was_held`). Ficam para a rodada final: os `e214_01`/`e214_02` novos (tarefa 3), a revisão das outras asserções que leem o Dashboard (`e201_04`, `e201_05`, `e201_02`, `e206_03`, `e108_pr5`, `e202_*`) e as medidas de [Desempenho](#desempenho) com `EXPLAIN ANALYZE`.
+- Conferido: a migration aplicada pela CLI e rodada de novo numa transação sem erro; as duas *invoker*, `search_path=public`, EXECUTE para `authenticated` e `service_role` e não para `anon`; as duas respondem para a sessão de um administrador. A [conferência em produção](#conferência-em-produção-tarefa-1) (tarefa 1) não foi rodada: fica com o usuário, antes do "Deploy: banco".
+
 ## Tarefas
 _Seção do `architect`._
 

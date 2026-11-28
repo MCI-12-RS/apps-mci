@@ -813,6 +813,9 @@ Não são dúvidas de negócio. São pontos em que a regra depende de uma escolh
 12. **Ordem dos passos.** Este passo usa: o E2.01; o escopo e o catálogo de permissões do E2.02; a Auditoria do E2.05; o G12 do E2.06; a célula inativa do E2.08; a situação e as semanas que contam do E2.09; o retrato do E2.11; e os filtros do E2.12. Entra depois do E2.12.
 
 ### Perguntas em aberto
+
+> **Decididas pelo usuário (2026-11-28):** **Q-1** permissão nova "Exportar Relatórios de Células" (Administrador e Líder têm, Membro não; a recomendação). **Q-2** uma linha por célula em cada semana do período (a recomendação). **Q-4** os **textos novos do sistema** (os rótulos das telas novas, como o padrão do spec: "Relatório não enviado"…), e não os do legado: a RN-05 fica como estava, e a homologação (E5.04) trata a Situação como diferença esperada de texto. **Q-7** líder e G12 registrados no relatório (o retrato, como a lista; a recomendação). Q-3, Q-5, Q-6 e Q-8 seguem as recomendações (não bloqueiam).
+
 Cada pergunta já tem um padrão adotado. **Desde a revisão de 2026-11-28**, Q-1, Q-2, Q-4 e Q-7 (as que se afastam do legado) precisam de resposta do usuário antes da Solução técnica, e a recomendação da Q-4 mudou para os textos do legado (ver [Revisão de 2026-11-28](#revisão-de-2026-11-28-e212-entregue)); as outras valem se o usuário não decidir outra coisa no PR. Os padrões que mais mudam o resultado são:
 - **P-EXP-01:** exportar exige a permissão nova, que a Líder tem e a Membro não.
 - **P-EXP-06:** com várias semanas, a planilha tem uma linha por célula em cada semana.
