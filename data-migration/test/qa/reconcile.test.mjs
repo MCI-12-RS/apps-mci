@@ -7,7 +7,8 @@
 // em tudo o que ela escreve.
 //
 // Casos marcados `todo` documentam FALSO APROVADO (bug do runner, relatório do QA): o teste afirma o
-// comportamento correto e falha hoje; o `todo` mantém a suíte verde até a correção.
+// comportamento correto e falha hoje; o `todo` mantém a suíte verde até a correção. QA-RC-1 e QA-RC-2
+// foram corrigidos na rodada de correções do PR 5 e não estão mais marcados.
 //
 // Rodar: bash test/qa/run-qa.sh test/qa/reconcile.test.mjs   (MySQL em Docker + stack local da pista B)
 import { test, describe, before, after } from 'node:test';
@@ -240,7 +241,7 @@ describe('Motivo esperado: só vale se a carga o listou para aquele Id', () => {
         WHERE id = (SELECT max(id) FROM legacy._load_runs)`, { replica: false }));
     flags(v, 'member_field', [14]);
   });
-  test('duplicata: o motivo é aceito por estar na lista, mesmo com a carga ficando com o MAIOR Id (o 17 mantém o e-mail, o 16 perde)', { todo: todo('BUG QA-RC-1: o motivo "repetido: fica só no menor Id" não é conferido contra o legado') }, async () => {
+  test('duplicata: o motivo é aceito por estar na lista, mesmo com a carga ficando com o MAIOR Id (o 17 mantém o e-mail, o 16 perde)', async () => {
     // A carga deveria manter o e-mail no 16 (menor Id) e anular no 17. Aqui o destino faz o contrário e a
     // lista da carga acompanha (como um bug da própria carga faria). Um reconciliador independente reprova.
     await env.setup();
@@ -389,7 +390,7 @@ describe('Contas, credenciais e funções', () => {
 });
 
 describe('Registros só do novo (sem Id do legado)', () => {
-  test('célula e relatório fantasmas sem legacy_id (carga duplicada sem o Id) aparecem como atenção ou falha', { todo: todo('BUG QA-RC-2: registros sem legacy_id nunca são contados nem listados; um duplicado sem o Id passa') }, async () => {
+  test('célula e relatório fantasmas sem legacy_id (carga duplicada sem o Id) aparecem como atenção ou falha', async () => {
     await env.setup();
     await sql(`INSERT INTO public.cells (leader_id, timothy_id, host_id, meeting_day, meeting_time, type)
         SELECT leader_id, timothy_id, host_id, meeting_day, meeting_time, type FROM public.cells WHERE legacy_id = 1;

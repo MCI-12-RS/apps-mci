@@ -64,13 +64,15 @@ cell_dup AS (
     JOIN legacy."Cells" x ON x."Id" = l.legacy_id AND NOT coalesce(x."IsDeleted", false)
    WHERE n.deleted_at IS NULL
 ),
+-- A semana do sem legacy_id calculada uma vez; a do carregado, pela faixa de datas (sem chamar
+-- week_start por par).
+nr_week AS (SELECT n.id, n.cell_id, public.week_start(n.date) AS ws FROM nr n WHERE n.deleted_at IS NULL),
 report_dup AS (
   SELECT l.legacy_id AS lid, n.id
-    FROM nr n
+    FROM nr_week n
     JOIN public.cell_reports l ON l.legacy_id IS NOT NULL AND l.cell_id = n.cell_id
-                              AND public.week_start(l.date) = public.week_start(n.date)
+                              AND l.date BETWEEN n.ws AND n.ws + 6
     JOIN legacy."Reports" x ON x."Id" = l.legacy_id AND NOT coalesce(x."IsDeleted", false)
-   WHERE n.deleted_at IS NULL
 )
 SELECT 'metric'::text AS kind, 'new_only_counts'::text AS code, NULL::bigint AS lid, e.ord || ':' || e.entity AS ref,
        NULL::text AS detail, NULL::text AS expected,

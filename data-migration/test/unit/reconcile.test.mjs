@@ -200,11 +200,11 @@ test('linha de comando: só leitura (sem --yes) e argumentos validados antes de 
   assert.match(bad.stderr, /não encontrado/);
 });
 
-test('amostra de credenciais: 1 a 100000 ou "all", nunca 0; lotes de até CREDENTIAL_BATCH', () => {
+test('amostra de credenciais: 1 a 500 ou "all", nunca 0; lotes de até CREDENTIAL_BATCH', () => {
   assert.equal(parseCredentialSample(undefined), 20);
   assert.equal(parseCredentialSample('500'), 500);
   assert.equal(parseCredentialSample('ALL'), 'all');
-  for (const bad of ['0', '-1', '1.5', 'x', '100001', '']) assert.throws(() => parseCredentialSample(bad), /--credential-sample/);
+  for (const bad of ['0', '-1', '1.5', 'x', '501', '']) assert.throws(() => parseCredentialSample(bad), /--credential-sample/);
   assert.ok(CREDENTIAL_BATCH <= 50);
   const ids = Array.from({ length: 101 }, (_, i) => i + 1);
   const b = credentialBatches(ids);

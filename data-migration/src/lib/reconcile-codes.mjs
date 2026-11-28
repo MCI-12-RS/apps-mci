@@ -168,7 +168,8 @@ export const ZERO_IS_ATTENTION = new Set(['credential_hash_mismatch']);
 // Lote da amostra de credenciais: bcrypts por comando (~60 ms cada), longe dos 10 s do
 // auto_explain de produção (risco 11 do E1.04).
 export const CREDENTIAL_BATCH = 40;
-export const CREDENTIAL_SAMPLE_MAX = 100000;
+// Teto do sorteio (~30 s); acima disso, "all" (o go/no-go), também em lotes.
+export const CREDENTIAL_SAMPLE_MAX = 500;
 
 /** --credential-sample: inteiro de 1 a CREDENTIAL_SAMPLE_MAX (padrão 20) ou "all". */
 export function parseCredentialSample(text) {

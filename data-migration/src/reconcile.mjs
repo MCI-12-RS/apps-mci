@@ -24,7 +24,7 @@ import { LEGACY_TABLES, LEGACY_SCHEMA, qPg } from './lib/legacy-schema.mjs';
 import { parseIdList } from './lib/load-codes.mjs';
 import {
   RECONCILE_SECTIONS, CHECKS, STATUS_LABEL, checkInfo, expectedInfo, docSets, classify, summarize,
-  evidenceCode, parseReferenceInstant, parseCredentialSample, credentialBatches, CREDENTIAL_BATCH,
+  evidenceCode, parseReferenceInstant, parseCredentialSample, credentialBatches, CREDENTIAL_BATCH, CREDENTIAL_SAMPLE_MAX,
 } from './lib/reconcile-codes.mjs';
 
 const USAGE = `
@@ -42,9 +42,10 @@ Só lê o destino (não há --yes: nada é gravado no banco).
   --admin-ids          Ids do legado dos Administradores (padrão: LEGACY_ADMIN_IDS; os mesmos da carga)
   --seed               semente das amostras (padrão: sorteada a cada execução e impressa no relatório;
                        a mesma semente repete a amostra manual e a de credenciais)
-  --credential-sample  quantas credenciais legadas conferir contra o MD5 do legado (padrão 20; ~60 ms
-                       cada, em lotes de até ${CREDENTIAL_BATCH} por comando). "all" confere todas: é o
-                       modo do go/no-go (a amostra é probabilística); o tempo previsto sai no relatório
+  --credential-sample  quantas credenciais legadas sortear e conferir contra o MD5 do legado (1 a
+                       ${CREDENTIAL_SAMPLE_MAX}, padrão 20; ~60 ms cada, em lotes de até ${CREDENTIAL_BATCH} por comando).
+                       "all" confere todas, nos mesmos lotes: é o modo do go/no-go (o sorteio é
+                       probabilístico); o tempo previsto e o medido saem no relatório
   --out-dir            pasta do relatório (padrão: data-migration/reports)
 `;
 
@@ -240,6 +241,11 @@ const mdEscape = (s) => String(s ?? '').replaceAll('|', '\\|').replaceAll('\n', 
 
 function legacyLink(baseUrl, code, i) {
   if (!baseUrl || i.lid == null) return idLabel(i);
+  // new_only_duplicate: o lid é o carregado coincidente; a ref diz a entidade.
+  if (code === 'new_only_duplicate') {
+    const p = /^membro/.test(i.ref ?? '') ? 'members' : /^célula/.test(i.ref ?? '') ? 'cells' : null;
+    return p ? `[${i.lid}](${baseUrl.replace(/\/+$/, '')}/${p}/${i.lid})` : String(i.lid);
+  }
   const path = /^(member|sample_member|account|credential|role|authorship_member)/.test(code) ? 'members'
     : /^(cell|sample_cell|authorship_cell|report_situation)/.test(code) ? 'cells' : null;
   return path ? `[${i.lid}](${baseUrl.replace(/\/+$/, '')}/${path}/${i.lid})` : String(i.lid);
