@@ -6,7 +6,7 @@
 > - Ficam para o usuário revisar no PR os padrões P-LRE-01 a P-LRE-34 e as perguntas Q-1 a Q-7. Nenhuma bloqueia: cada uma já tem um padrão adotado.
 > - Depende do E2.01, do E2.02, do E2.05, do E2.06, do E2.10 e do E2.11 (retrato do relatório, REL-09). Entra depois do E2.11.
 > - Solução técnica e Tarefas escritas em 2026-11-24 pelo `architect`, só como desenho: quatro PRs (banco; lista com filtros e atalhos; consulta; consulta no detalhe da célula, opcional). Ficam para o usuário revisar no PR as definições DA-1 a DA-14. Faltam os Testes (QA).
-> - **Andamento (2026-11-27):** PR 1 (banco, tarefas 1 a 4) implementado e testado na pista A, sem merge nem deploy; divergências em [Implementação do PR 1](#implementação-do-pr-1-2026-11-27). Faltam a conferência em produção, os PRs 2 a 4 e a revisão final.
+> - **Andamento (2026-11-28):** PRs 1 a 3 em produção (mci-connect#64 e #65). PR 4 (T14, DA-14, e a DA-11 que estava pendente) implementado e testado na pista A, branch `claude/e212-pr4`, sem PR aberto; ver [Implementação do PR 4](#implementação-do-pr-4-2026-11-28) e a [Revisão final](#revisão-final-do-passo-2026-11-28). Falta o aceite do PO.
 >
 > Slug: `e2-12-listagem-relatorios` · Paridade com o legado: sim (REL-13). Regras novas:
 > - filtros de múltipla escolha, pessoa indisponível e G12 que inclui os relatórios do próprio G12;
@@ -2684,6 +2684,30 @@ Divergências do desenho, todas sem mudar regra:
 9. A busca continua com a espera de 300 ms do `useListSearchParams`, e a barra invertida já vai escapada pelo `toSearchPatterns` (teste novo em `filters.test.ts`).
 
 Testes: Vitest 180 arquivos / 2.601 testes (novos: `filters`, `weeks`, `report-row`, `report-sheet`, hooks e a tela); `tsc` sem erro; build ok; lint com os 11 problemas antigos. Playwright (`--workers=1`): `relatorios-filtros` (8) e `relatorios-consulta` (6) novos, e `login`, `relatorios-filtro-celula`, `relatorio-lancamento`, `relatorios-retrato`, `relatorios-retrato-escopo`, `relatorio-celula-excluida` (reescrita para a consulta nova), `exclusao-celulas-relatorios`, `excluidos-celulas-relatorios`, `autoria-tela`, `autoria-gravacao`, `celulas-relatorios-escopo` e `celula-detalhe` passando. Revisão de código, revisão de UI (tarefas 6 e 9) e QA (tarefas 7 e 10) ficam com a sessão principal.
+
+### Implementação do PR 4 (2026-11-28)
+Branch `claude/e212-pr4` (mci-connect `aa51460`), a partir da `main` com os PRs 1 a 3. Tarefa 11 (T14, DA-14) e as pendências deixadas pelos PRs 2 e 3: o "Ver todos os relatórios" do detalhe pelo `cellReportListHref`, o badge do detalhe pelo `ReportMeetingBadge` e a DA-11. Publicação: merge → promote (só front).
+
+O que entrou:
+- **Detalhe da célula (T14):** o cabeçalho de cada um dos "Últimos relatórios" é o botão da consulta (P91). No cartão, é um botão esticado, com as ações em `AboveCardLink` e o `ChevronRight`; na tabela, a data é o botão, e o clique na linha é um atalho do mouse. A consulta abre com `?report=<id>` em `/cells/:id` (`useCellReportSheet({ cleanInvalid: true })`, que também tira o `report` sem formato), com `context="cell"`, sem "Ver célula". Ao fechar, o foco volta ao botão do relatório ou, por link, ao título "Últimos relatórios". Excluir pela consulta fecha, tira o relatório dos últimos no cache (`removeReportFromRecentCache`) e as leituras dele, e o foco vai para "Últimos relatórios".
+- **DA-11, nas duas telas:** "Editar relatório" pela consulta cria uma entrada no histórico, no mesmo endereço (`useReportEditEntry`). O voltar do aparelho tira só essa entrada e pede ao formulário para fechar, pela casca (`FormDialog` ganhou `closeRequest` e `onCloseRequestDeclined`, repassados pelo `ReportFormDialog` e pelo `CellReportDialog`). Com alteração, aparece o "Descartar as alterações?"; "Continuar editando", ou o envio em andamento, recria a entrada. Salvar, cancelar e descartar tiram a entrada. Uma entrada que sobra sem o formulário (recarregar, avançar) é tirada na hora. Fecha a divergência 1 dos PRs 2 e 3.
+- `findReportOpenButton` e `REPORT_OPEN_ATTRIBUTE` foram para `src/components/cell-reports/report-open.ts`, usados por Relatórios e pelo detalhe.
+
+Divergências, todas sem mudar regra:
+1. **Nome do botão:** "Ver o relatório de Quarta, 18/11/2026 às 20:00", e não "Ver o relatório de 18/11/2026" (T14). O P91 pede que o nome acessível contenha o texto visível (WCAG 2.5.3), e o texto visível do cabeçalho tem o dia e a hora.
+2. **Prévia no detalhe:** o topo aparece na hora só se o relatório estiver no cache da lista de Relatórios; senão, o carregando da T12. Os últimos relatórios do detalhe não têm os nomes dos visitantes (RN-18 do E2.10), e uma prévia com eles mostraria "nenhum visitante" por um instante.
+3. **Resíduo da DA-11:** com o "Descartar as alterações?" aberto por um voltar, um segundo voltar sai da consulta por baixo do formulário (a entrada da edição já saiu). O formulário e o que foi digitado continuam; fechar o formulário deixa a tela utilizável.
+
+Testes (stack local `mci-e104-be`): Vitest 182 arquivos / 2.615 testes (novos: `FormDialog.test`, `use-report-edit-entry.test`, `report-sheet` e 4 casos da T14 em `CellDetail.test`); `tsc` sem erro; build ok; lint com os 11 problemas antigos. Playwright: `celula-detalhe-consulta` novo (6: abrir pelo cartão e pela linha, o voltar, `Esc`, recarregar, `report=xyz`, Lia sem o detalhe e sem leitura do relatório, DA-11 com e sem alteração, excluir pela consulta) e o teste da divergência 1 de `relatorios-qa` reescrito para a DA-11. Suíte inteira: E2E_PLACEHOLDER. Sem revisão de UI nova: o PR 4 só aplica o P91 e o P92 já revisados nos PRs 2 e 3.
+
+### Revisão final do passo (2026-11-28)
+Sobre o diff acumulado dos PRs 1 a 4 (`024aa8e..aa51460`).
+
+**Veredito: APROVADO.**
+- **Banco:** as quatro RPCs novas são *definer* com `SET search_path = public` e o portão antes de tudo, leem só a `cell_reports_view` (que aplica o escopo de quem consulta) e só têm EXECUTE para `authenticated`; as internas de `private` não têm EXECUTE para os papéis da API. O SQL dinâmico usa só os fragmentos fixos de `private.cell_report_filter_sql`, com os valores por `USING`. A `server_weeks` é só relógio, na lista fechada do portão. A `save_cell_report` recusa sem id. A paridade por persona e as metas de volume estão no PR 1.
+- **Front:** nenhuma leitura direta de tabela; a `cell_reports_view` só por id (consulta e edição); nenhum `.order()` sobre a `cell_reports_list`; nenhum `new Date()`/`Date.now()`, `any` ou asserção de tipo nos módulos do passo; regras em `src/lib/cell-reports/`, textos nos módulos de texto; Líder e G12 sem `member_names`.
+- **Desenho:** as divergências dos PRs 1 a 4 estão registradas nas seções de implementação e nenhuma muda regra. A DA-11, que tinha ficado no plano B, entrou no PR 4.
+- **Fora da revisão:** a conferência em produção da tarefa 1 (já publicada pelo usuário) e o aceite do PO (matriz, seção 3 e Progresso do `docs/migracao.md`).
 
 ## Tarefas
 _Seção do `architect`._
