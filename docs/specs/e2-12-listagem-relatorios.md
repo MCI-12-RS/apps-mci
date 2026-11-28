@@ -2768,3 +2768,16 @@ _Seção do `qa`._
 | Migrations (idempotência, guardas, pós-condições) | `supabase/tests/concurrency/e212_migrations.sh` | 5/5 |
 
 PR 1 (QA, `claude/e212-pr1`): pgTAP inteiro por `psql` na pista A, 71 arquivos, 5.989 asserções, 0 falhas (`e212_02_qa` 95). Sem bug aberto.
+
+**PRs 2 e 3 (QA, `claude/e212-pr2`, mci-connect `afff1f1`):**
+
+| RN / UX | Testes | Resultado |
+|---|---|---|
+| RN-01 a RN-14, RN-16 (paridade da lista pela tela com a `cell_reports_view` na sessão de Rita, Pedro, Lia, Diego e Ester: 18 combinações de filtro, atalhos e busca, ids e ordem; páginas de 10) | `e2e/relatorios-qa.spec.ts` | passa |
+| RN-07, UX-11 (Diego com o líder, o G12 e a célula de C1; Lia com Caio e André) | `relatorios-qa.spec.ts` | passa |
+| RN-10, UX-04, UX-05 (servidor sábado 23:30 e domingo 00:00, fuso e relógio do app adiantados 5 anos só para o `/src/`; `server_weeks` atrasada e com falha) | `relatorios-qa.spec.ts` | passa |
+| Corrida entre respostas; RN-14 (`%`, `_`, `\`, com controle positivo) | `relatorios-qa.spec.ts` | passa |
+| RN-16, RN-17, UX-23 (fora do escopo, excluído, célula excluída, inexistente: mesmo DOM, sem dado nas respostas) | `relatorios-qa.spec.ts` | passa |
+| UX-24 (editar, lançar, excluir e restaurar com lista e total atualizados), divergência 1 (voltar com o formulário aberto), axe nos dois temas, Membros, Células e Auditoria | `relatorios-qa.spec.ts`; desenvolvedor: `relatorios-filtros` (8), `relatorios-consulta` (6) | passa |
+
+Resultados: Vitest 180 arquivos / 2.601 testes; `tsc` e build sem erro; lint com os 11 problemas antigos; Playwright (`--workers=1`) das specs afetadas mais `login`, `membros-filtros`, `celulas-filtros` e `auditoria-tela`: 190 passaram, 5 pulados, 2 falhas de timing do meu próprio teste (corrigidas); `relatorios-qa` 24/24 na última rodada. Sem bug aberto.
