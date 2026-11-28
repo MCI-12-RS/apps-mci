@@ -10,7 +10,7 @@
 --                         utilizável, a lista "sem senha" da 5.4; ou já tem senha no novo)
 --   credential_unexpected credencial ativa de quem não é elegível, de adotado com conta (RN-16 a) ou
 --                         de cadastro sem Id do legado
---   credential_hash_mismatch  amostra (mci.rc_cred_sample): o bcrypt guardado confere com o MD5 do legado
+--   credential_hash_mismatch  em 82_credential_sample.sql (lotes, rodados pelo script)
 --   role_mismatch         função da RN-18 do E3 (Administrador pela lista, Líder para o G12, a padrão
 --                         para os demais); o adotado fica com a dele
 --   admins (metric)       pelo menos 2 Administradores não excluídos, com conta e identificador
@@ -60,23 +60,6 @@ rexp AS (
          roles.sys, roles.lider, roles.dflt
     FROM e CROSS JOIN cfg CROSS JOIN roles
    WHERE NOT e.adopted
-),
--- Primeiro o sorteio (LIMIT), depois o bcrypt (~60 ms cada): só nos sorteados.
-sample_ids AS (
-  SELECT m.legacy_id AS lid, c.legacy_hash, l."Password" AS pw
-    FROM private.legacy_credentials c
-    JOIN public.members m ON m.id = c.member_id AND m.legacy_id IS NOT NULL
-    JOIN legacy."Members" l ON l."Id" = m.legacy_id
-   CROSS JOIN cfg
-   WHERE c.legacy_hash IS NOT NULL
-   ORDER BY md5(cfg.seed || ':' || m.legacy_id)
-   LIMIT (SELECT cred_sample FROM cfg)
-),
-sample AS (
-  SELECT s.lid,
-         extensions.crypt(lower(regexp_replace(s.pw, '^[[:space:]\u00a0]+|[[:space:]\u00a0]+$', '', 'g')), s.legacy_hash)
-           = s.legacy_hash AS ok
-    FROM sample_ids s
 )
 SELECT 'diff'::text AS kind, 'account_missing'::text AS code, e.lid::bigint AS lid, NULL::text AS ref,
        CASE WHEN e.auth_user_id IS NULL THEN 'sem conta ligada'
@@ -121,9 +104,6 @@ SELECT 'diff', 'credential_unexpected', NULL, 'cadastro só do novo ' || c.membe
   FROM private.legacy_credentials c JOIN public.members x ON x.id = c.member_id
  WHERE c.legacy_hash IS NOT NULL AND x.legacy_id IS NULL
 UNION ALL
-SELECT 'diff', 'credential_hash_mismatch', s.lid, NULL, 'o bcrypt não confere com o MD5 do legado', NULL, NULL
-  FROM sample s WHERE NOT s.ok
-UNION ALL
 SELECT 'diff', 'role_mismatch', r.lid, NULL,
        format('função: esperada %s, no novo %s',
               CASE r.exp_role WHEN r.sys THEN 'Administrador' WHEN r.lider THEN 'Líder' ELSE 'a padrão' END,
@@ -139,7 +119,6 @@ SELECT 'compared', c.code, NULL, NULL, NULL, NULL, jsonb_build_object('n', c.n)
                ('account_orphan', (SELECT count(*) FROM auth.users u WHERE u.raw_app_meta_data ? 'legacy_member_id')),
                ('credential_missing', (SELECT count(*) FROM e WHERE e.eligible AND e.account_ok AND NOT e.adopted_account)),
                ('credential_unexpected', (SELECT count(*) FROM private.legacy_credentials WHERE legacy_hash IS NOT NULL)),
-               ('credential_hash_mismatch', (SELECT count(*) FROM sample)),
                ('role_mismatch', (SELECT count(*) FROM rexp))) c(code, n)
 UNION ALL
 SELECT 'metric', 'admins', NULL, NULL, NULL, NULL,

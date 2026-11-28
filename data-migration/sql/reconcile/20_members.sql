@@ -10,8 +10,16 @@
 --   member_spouse   cônjuge diferente; esperada só quando o vínculo foi desfeito (DEL-05)
 -- As regras de leitura (e-mail, celular, CPF, nome) são as funções do próprio banco, as mesmas
 -- da carga; o valor nunca sai daqui.
+-- Os motivos da carga que desfazem um valor (repetido, ciclo, cônjuge) são conferidos aqui contra
+-- o legado, pela regra da carga, e não só pela lista dela (um falso aprovado é o pior erro):
+--   *_duplicate  outro membro do legado não excluído e incluído, com Id menor, tem o mesmo valor
+--                normalizado (o celular pela chave do 9º dígito), e o menor (o que fica) ficou com ele
+--   leader_cycle o líder efetivo do legado (as regras anteriores da carga aplicadas) fecha um ciclo
+--                que volta ao membro, e o membro é o menor Id do ciclo (onde a carga quebra)
+--   spouse_*     o vínculo não é recíproco ou não é entre dois não excluídos que entram (DEL-05), e
+--                o motivo é o que a carga daria
 -- =============================================================================
-WITH /*BASE*/,
+WITH RECURSIVE /*BASE*/,
 n AS (SELECT m.* FROM public.members m WHERE m.legacy_id IS NOT NULL),
 lx AS (
   SELECT b.*,
@@ -48,6 +56,78 @@ p AS (
     JOIN n ON n.legacy_id = l.lid
     LEFT JOIN idmap ld ON ld.id = n.leader_id
     LEFT JOIN idmap sp ON sp.id = n.spouse_id
+),
+-- Repetidos (a regra da carga: só entre não excluídos incluídos, com o valor válido; fica o menor Id).
+inc AS (SELECT l.* FROM lx l WHERE NOT l.del AND l.name IS NOT NULL AND l.gender IS NOT NULL),
+dup_email AS (
+  SELECT g.email, g.keeper,
+         EXISTS (SELECT 1 FROM public.members k WHERE k.legacy_id = g.keeper AND public.normalize_email(k.email) = g.email) AS kept
+    FROM (SELECT i.email, min(i.lid) AS keeper FROM inc i
+           WHERE coalesce(public.is_valid_email(i.email) AND NOT public.is_placeholder_email(i.email), false)
+           GROUP BY i.email HAVING count(*) > 1) g
+),
+dup_cpf AS (
+  SELECT g.cpf, g.keeper,
+         EXISTS (SELECT 1 FROM public.members k WHERE k.legacy_id = g.keeper AND public.normalize_digits(k.cpf) = g.cpf) AS kept
+    FROM (SELECT i.cpf, min(i.lid) AS keeper FROM inc i WHERE coalesce(public.is_valid_cpf(i.cpf), false)
+           GROUP BY i.cpf HAVING count(*) > 1) g
+),
+-- Celular: a chave custa caro por chamada; só para quem perdeu o celular e para quem tem o mesmo
+-- final de 8 dígitos (a chave mantém os 8 últimos).
+mob_cand AS (
+  SELECT p.lid, p.mobile, public.mobile_match_key(p.mobile) AS mkey
+    FROM p WHERE p.n_mobile IS NULL AND p.mobile IS NOT NULL AND NOT p.del
+),
+dup_mobile AS (
+  SELECT c.lid, min(i.lid) AS keeper, c.mkey
+    FROM mob_cand c JOIN inc i ON right(i.mobile, 8) = right(c.mobile, 8)
+   WHERE c.mkey IS NOT NULL AND public.mobile_match_key(i.mobile) = c.mkey
+   GROUP BY c.lid, c.mkey HAVING count(*) > 1
+),
+dup_ok AS (
+  SELECT p.lid,
+         coalesce(NOT p.del AND de.keeper < p.lid AND de.kept, false) AS email_ok,
+         coalesce(dm.keeper < p.lid AND EXISTS (SELECT 1 FROM public.members k WHERE k.legacy_id = dm.keeper
+                                                  AND public.mobile_match_key(k.mobile_whatsapp) = dm.mkey), false) AS mobile_ok,
+         coalesce(NOT p.del AND dc.keeper < p.lid AND dc.kept, false) AS cpf_ok
+    FROM p
+    LEFT JOIN dup_email de ON de.email = p.email AND p.n_email IS NULL
+    LEFT JOIN dup_mobile dm ON dm.lid = p.lid
+    LEFT JOIN dup_cpf dc ON dc.cpf = p.cpf AND p.n_cpf IS NULL
+   WHERE p.n_email IS NULL OR p.n_mobile IS NULL OR p.n_cpf IS NULL
+),
+-- Líder efetivo no legado, com as regras da carga anteriores ao ciclo: "não tem liderança",
+-- líder = a própria pessoa e líder inexistente ou de fora (nome ou sexo inválido) descartam.
+leff AS (
+  SELECT l.lid,
+         CASE WHEN l.no_leadership OR l.leader_raw = l.lid OR k.lid IS NULL OR k.name IS NULL OR k.gender IS NULL
+              THEN NULL ELSE l.leader_raw END AS eff
+    FROM lx l LEFT JOIN lx k ON k.lid = l.leader_raw
+   WHERE l.name IS NOT NULL AND l.gender IS NOT NULL
+),
+-- Só a partir de quem ficou sem líder no novo (poucos): a subida pelo líder efetivo.
+cyc (origin, cur, path) AS (
+  SELECT c.lid, e.eff, ARRAY[c.lid]
+    FROM p c JOIN leff e ON e.lid = c.lid
+   WHERE c.n_leader IS NULL AND c.leader_raw IS NOT NULL AND e.eff IS NOT NULL
+  UNION ALL
+  SELECT w.origin, e.eff, w.path || e.lid
+    FROM cyc w JOIN leff e ON e.lid = w.cur
+   WHERE e.eff IS NOT NULL AND NOT e.lid = ANY (w.path)
+),
+cycle_breakers AS (
+  SELECT DISTINCT w.origin AS lid FROM cyc w
+   WHERE w.cur = w.origin AND w.origin = (SELECT min(v) FROM unnest(w.path) v)
+),
+-- Cônjuge: o motivo que a carga daria para não ligar (nulo = a carga ligaria).
+spouse_why AS (
+  SELECT p.lid,
+         CASE WHEN s."Id" IS NOT NULL AND public.normalize_person_name(s."Name") IS NOT NULL AND s."Gender" IN (0, 1)
+                   AND NOT p.del AND NOT coalesce(s."IsDeleted", false) AND p.spouse_raw <> p.lid
+              THEN CASE WHEN s."SpouseId" IS DISTINCT FROM p.lid THEN 'member_spouse_not_reciprocal' END
+              ELSE 'member_spouse_dropped' END AS why
+    FROM p LEFT JOIN legacy."Members" s ON s."Id" = p.spouse_raw
+   WHERE p.n_spouse IS NULL AND p.spouse_raw IS NOT NULL
 )
 SELECT 'diff'::text AS kind, 'member_missing'::text AS code, l.lid::bigint AS lid, NULL::text AS ref,
        CASE WHEN l.del THEN 'excluído no legado' END AS detail,
@@ -76,6 +156,7 @@ SELECT 'diff', 'member_status', p.lid, NULL,
 UNION ALL
 SELECT 'diff', 'member_field', p.lid, NULL, 'campo: ' || f.field, f.exp, NULL
   FROM p
+  LEFT JOIN dup_ok d ON d.lid = p.lid
  CROSS JOIN LATERAL (VALUES
     ('nome', p.name, p.n_name, NULL::text),
     ('sexo', p.gender, p.n_gender, NULL),
@@ -83,12 +164,12 @@ SELECT 'diff', 'member_field', p.lid, NULL, 'campo: ' || f.field, f.exp, NULL
      CASE WHEN p.n_email IS NULL THEN concat_ws(',',
        CASE WHEN NOT coalesce(public.is_valid_email(p.email) AND NOT public.is_placeholder_email(p.email), false)
             THEN 'member_email_dropped' END,
-       'member_email_duplicate') END),
-    ('celular', p.mobile, p.n_mobile, CASE WHEN p.n_mobile IS NULL THEN 'member_mobile_duplicate' END),
+       CASE WHEN d.email_ok THEN 'member_email_duplicate' END) END),
+    ('celular', p.mobile, p.n_mobile, CASE WHEN p.n_mobile IS NULL AND d.mobile_ok THEN 'member_mobile_duplicate' END),
     ('CPF', p.cpf, p.n_cpf,
      CASE WHEN p.n_cpf IS NULL THEN concat_ws(',',
        CASE WHEN NOT coalesce(public.is_valid_cpf(p.cpf), false) THEN 'member_cpf_dropped' END,
-       'member_cpf_duplicate') END),
+       CASE WHEN d.cpf_ok THEN 'member_cpf_duplicate' END) END),
     ('telefone', p.phone, p.n_phone, NULL),
     ('nascimento', p.birth_date::text, p.n_birth::text, NULL),
     ('batizado', p.is_baptized::text, p.n_baptized::text, NULL),
@@ -106,8 +187,11 @@ SELECT 'diff', 'member_leader', p.lid, NULL,
        CASE WHEN p.n_leader IS NULL AND p.leader_raw IS NOT NULL THEN concat_ws(',',
          CASE WHEN p.no_leadership THEN 'member_no_leadership_with_leader' END,
          CASE WHEN p.leader_raw = p.lid THEN CASE WHEN p.del THEN 'member_leader_self_deleted' ELSE 'member_leader_self' END END,
-         CASE WHEN NOT EXISTS (SELECT 1 FROM public.members x WHERE x.legacy_id = p.leader_raw) THEN 'member_leader_missing' END,
-         'member_leader_cycle') END,
+         -- Inexistente ou de fora pelo legado (nome ou sexo inválido), não pelo novo.
+         CASE WHEN NOT EXISTS (SELECT 1 FROM legacy."Members" x WHERE x."Id" = p.leader_raw
+                                  AND public.normalize_person_name(x."Name") IS NOT NULL AND x."Gender" IN (0, 1))
+              THEN 'member_leader_missing' END,
+         CASE WHEN p.lid IN (SELECT b.lid FROM cycle_breakers b) THEN 'member_leader_cycle' END) END,
        NULL
   FROM p
  WHERE p.leader_raw IS DISTINCT FROM p.n_leader_lid OR (p.n_leader IS NOT NULL AND p.n_leader_lid IS NULL)
@@ -115,8 +199,7 @@ UNION ALL
 SELECT 'diff', 'member_spouse', p.lid, NULL,
        format('cônjuge: legado %s, novo %s', coalesce(p.spouse_raw::text, 'nenhum'),
               coalesce(p.n_spouse_lid::text, CASE WHEN p.n_spouse IS NULL THEN 'nenhum' ELSE 'cadastro só do novo' END)),
-       CASE WHEN p.n_spouse IS NULL AND p.spouse_raw IS NOT NULL
-            THEN 'member_spouse_dropped,member_spouse_not_reciprocal' END,
+       (SELECT w.why FROM spouse_why w WHERE w.lid = p.lid),
        NULL
   FROM p
  WHERE p.spouse_raw IS DISTINCT FROM p.n_spouse_lid OR (p.n_spouse IS NOT NULL AND p.n_spouse_lid IS NULL)

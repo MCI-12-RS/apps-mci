@@ -42,6 +42,9 @@ export const CHECKS = {
   accounts_run: ['preconditions', 'metric', 'Última execução das contas (legacy._accounts_runs)'],
 
   counts: ['counts', 'metric', 'Contagens por entidade e situação: legado − fora da carga ∓ duplicados = novo'],
+  new_only_counts: ['counts', 'metric', 'Registros sem Id do legado no novo (antes da carga e durante ou depois dela)'],
+  new_only_after_load: ['counts', 'attention', 'Registros sem Id do legado criados durante ou depois da carga'],
+  new_only_duplicate: ['counts', 'compare', 'Registro sem Id do legado igual a um carregado (identificador, célula ou semana)'],
   offering_month: ['reports', 'metric', 'Soma das ofertas por mês: legado − fora da carga − duplicados = novo'],
 
   member_missing: ['members', 'compare', 'Membro do legado sem cadastro no novo'],
@@ -89,7 +92,7 @@ export const CHECKS = {
   account_orphan: ['accounts', 'compare', 'Conta com Id do legado sem o cadastro desse Id'],
   credential_missing: ['accounts', 'compare', 'Membro com conta sem credencial legada'],
   credential_unexpected: ['accounts', 'compare', 'Credencial legada de quem não deveria ter'],
-  credential_hash_mismatch: ['accounts', 'compare', 'Amostra de credenciais: o bcrypt confere com o MD5 do legado'],
+  credential_hash_mismatch: ['accounts', 'compare', 'Amostra de credenciais: o bcrypt confere com o MD5 do legado (go/no-go: todas)'],
   role_mismatch: ['accounts', 'compare', 'Função da RN-18 do E3 (Administrador pela lista, Líder para o G12, a padrão para os demais)'],
   admins: ['accounts', 'metric', 'Pelo menos 2 Administradores não excluídos, com conta e identificador'],
   credentials: ['accounts', 'metric', 'Credenciais legadas: membros com conta e senha utilizável'],
@@ -158,6 +161,33 @@ export const EXPECTED = {
   credential_unusable_md5: [null, 'Senha do legado vazia ou ilegível: sem credencial (a lista "sem senha" da 5.4)'],
   credential_has_password: [null, 'Já tem senha no novo: a credencial legada não é criada (RN-03 do E3)'],
 };
+
+// Comparação que, com zero comparados, não prova nada: sai como atenção (e não como ok).
+export const ZERO_IS_ATTENTION = new Set(['credential_hash_mismatch']);
+
+// Lote da amostra de credenciais: bcrypts por comando (~60 ms cada), longe dos 10 s do
+// auto_explain de produção (risco 11 do E1.04).
+export const CREDENTIAL_BATCH = 40;
+export const CREDENTIAL_SAMPLE_MAX = 100000;
+
+/** --credential-sample: inteiro de 1 a CREDENTIAL_SAMPLE_MAX (padrão 20) ou "all". */
+export function parseCredentialSample(text) {
+  if (text == null) return 20;
+  const t = String(text).trim().toLowerCase();
+  if (t === 'all') return 'all';
+  const n = /^\d+$/.test(t) ? Number(t) : NaN;
+  if (!Number.isInteger(n) || n < 1 || n > CREDENTIAL_SAMPLE_MAX) {
+    throw new Error(`--credential-sample precisa ser um número de 1 a ${CREDENTIAL_SAMPLE_MAX} ou "all" (0 não confere nada).`);
+  }
+  return n;
+}
+
+/** Ids em lotes de até CREDENTIAL_BATCH. */
+export function credentialBatches(ids, size = CREDENTIAL_BATCH) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
 
 export const STATUS_LABEL = { ok: 'ok', falha: 'FALHA', atencao: 'atenção', info: 'info' };
 
@@ -236,6 +266,7 @@ export function checkStatus(c) {
     case 'compare':
       if (c.unexpected.length) return 'falha';
       if (c.compared == null) return 'falha'; // o SQL não disse quantos comparou
+      if (c.compared === 0 && ZERO_IS_ATTENTION.has(c.code)) return 'atencao';
       return 'ok';
     case 'metric': {
       if (!c.metrics.length) return 'falha';
@@ -259,7 +290,8 @@ export function summarize(checks) {
     failures: failures.length,
     unexpected: checks.reduce((s, c) => s + c.unexpected.length, 0),
     expected: checks.reduce((s, c) => s + c.expected.length, 0),
-    attention: checks.filter((c) => c.status === 'atencao').reduce((s, c) => s + c.items.length, 0),
+    // Uma comparação em atenção (zero comparados) conta como um item.
+    attention: checks.filter((c) => c.status === 'atencao').reduce((s, c) => s + (c.items.length || 1), 0),
   };
 }
 

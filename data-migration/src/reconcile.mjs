@@ -14,6 +14,7 @@
 // ensaio e do cutover, com o código de evidência).
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, postgresOptions, MIGRATION_ROOT } from './lib/config.mjs';
@@ -23,12 +24,12 @@ import { LEGACY_TABLES, LEGACY_SCHEMA, qPg } from './lib/legacy-schema.mjs';
 import { parseIdList } from './lib/load-codes.mjs';
 import {
   RECONCILE_SECTIONS, CHECKS, STATUS_LABEL, checkInfo, expectedInfo, docSets, classify, summarize,
-  evidenceCode, parseReferenceInstant,
+  evidenceCode, parseReferenceInstant, parseCredentialSample, credentialBatches, CREDENTIAL_BATCH,
 } from './lib/reconcile-codes.mjs';
 
 const USAGE = `
 Uso: node src/reconcile.mjs [--config <arquivo>] [--dry-run] [--at <instante>] [--load-run <n>]
-                            [--pastor-ids 1,2] [--admin-ids 3,4] [--seed <texto>] [--credential-sample <n>]
+                            [--pastor-ids 1,2] [--admin-ids 3,4] [--seed <texto>] [--credential-sample <n|all>]
                             [--out-dir <pasta>]
 
 Só lê o destino (não há --yes: nada é gravado no banco).
@@ -39,17 +40,24 @@ Só lê o destino (não há --yes: nada é gravado no banco).
   --load-run           a carga conferida (padrão: a última gravada e não desfeita em legacy._load_runs)
   --pastor-ids         Ids do legado dos pastores da D9 (padrão: LEGACY_PASTOR_IDS; os mesmos da carga)
   --admin-ids          Ids do legado dos Administradores (padrão: LEGACY_ADMIN_IDS; os mesmos da carga)
-  --seed               semente da amostra para a conferência manual (padrão: a data de hoje)
-  --credential-sample  quantas credenciais legadas conferir contra o MD5 do legado (padrão 20; ~60 ms cada)
+  --seed               semente das amostras (padrão: sorteada a cada execução e impressa no relatório;
+                       a mesma semente repete a amostra manual e a de credenciais)
+  --credential-sample  quantas credenciais legadas conferir contra o MD5 do legado (padrão 20; ~60 ms
+                       cada, em lotes de até ${CREDENTIAL_BATCH} por comando). "all" confere todas: é o
+                       modo do go/no-go (a amostra é probabilística); o tempo previsto sai no relatório
   --out-dir            pasta do relatório (padrão: data-migration/reports)
 `;
 
 export const SQL_DIR = resolve(MIGRATION_ROOT, 'sql', 'reconcile');
 export const BASE_FILE = '00_base.sql';
 export const STEP_FILES = [
-  '10_counts.sql', '20_members.sql', '30_cells.sql', '40_reports.sql', '45_offering.sql', '50_hierarchy.sql',
+  '10_counts.sql', '15_new_only.sql', '20_members.sql', '30_cells.sql', '40_reports.sql', '45_offering.sql', '50_hierarchy.sql',
   '55_db_lists.sql', '60_situation.sql', '70_authorship.sql', '80_accounts.sql', '85_dashboard.sql', '90_samples.sql',
 ];
+// A amostra de credenciais roda à parte, um lote por comando (82_credential_sample.sql).
+export const CREDENTIAL_FILE = '82_credential_sample.sql';
+// Tempo previsto por bcrypt (custo 10), só para a previsão; o relatório traz o medido.
+const BCRYPT_MS = 60;
 // A mesma trava consultiva da carga, das contas e da limpeza (compartilhada aqui: não espera e
 // não deixa nenhuma delas começar enquanto a reconciliação lê).
 export const LOAD_LOCK_KEY = 'mci.e4.load';
@@ -117,10 +125,13 @@ export function preconditionRows({ copyRun, loadRun, latestLoadRunId, accountsRu
     load_started_at: iso(loadRun.started_at),
     ok: Boolean(copyRun?.finished_at) && new Date(copyRun.finished_at) <= new Date(loadRun.started_at),
   } });
+  // As contas conferidas precisam ser posteriores à carga: contas de antes dela não cobrem os
+  // membros que ela trouxe (as credenciais e as ligações seriam as da carga anterior).
   rows.push({ kind: 'metric', code: 'accounts_run', data: accountsRun ? {
     id: Number(accountsRun.id), status: accountsRun.status, finished_at: iso(accountsRun.finished_at),
-    undone: Boolean(accountsRun.undone_at),
-    ok: accountsRun.status === 'ok' && !accountsRun.undone_at,
+    undone: Boolean(accountsRun.undone_at), load_finished_at: iso(loadRun.finished_at),
+    ok: accountsRun.status === 'ok' && !accountsRun.undone_at && Boolean(accountsRun.finished_at)
+      && Boolean(loadRun.finished_at) && new Date(accountsRun.finished_at) >= new Date(loadRun.finished_at),
   } : { id: null, ok: false } });
   return rows;
 }
@@ -197,7 +208,10 @@ export function metricText(code, m) {
     case 'load_after_copy':
       return d.copy_run == null ? 'nenhuma cópia registrada' : `cópia #${d.copy_run} (${d.copy_finished_at}); carga iniciada em ${d.load_started_at}`;
     case 'accounts_run':
-      return d.id == null ? 'nenhuma execução das contas' : `#${d.id}: ${d.status}${d.undone ? ', desfeita' : ''} (${d.finished_at ?? '—'})`;
+      return d.id == null ? 'nenhuma execução das contas' : `#${d.id}: ${d.status}${d.undone ? ', desfeita' : ''} (${d.finished_at ?? '—'})`
+        + (d.ok === false && d.status === 'ok' && !d.undone ? `; anterior ao fim da carga (${d.load_finished_at ?? '—'})` : '');
+    case 'new_only_counts':
+      return `${d.entity}: antes da carga ${fmtNum(d.before_load)}, durante ou depois ${fmtNum(d.after_load)} (excluídos ${fmtNum(d.deleted)})`;
     case 'ranking_g12':
       return `soma dos G12 ${fmtNum(d.g12_sum)}, células sob os G12 ${fmtNum(d.cells_under_g12)} `
         + `(do legado ${fmtNum(d.legacy_cells_under_g12)}, só do novo ${fmtNum(d.new_only_cells_under_g12)})`;
@@ -253,9 +267,13 @@ export function renderMarkdown(ctx) {
   out.push(`- Contas: ${header.accounts}`);
   out.push(`- Instante de referência (semana do painel e da situação do relatório): ${header.at}`);
   out.push(`- Pastores da D9: ${header.pastorIds.join(', ') || '—'} · Administradores: ${header.adminIds.join(', ') || '—'}`);
+  out.push(`- Semente das amostras: \`${header.seed}\` (\`--seed ${header.seed}\` repete a amostra manual e a de credenciais)`);
+  out.push(`- Amostra de credenciais: ${header.credentials}`);
   out.push(`- Tempo: ${header.timings}`, '');
   out.push('Critério (7.1): dois ensaios seguidos sem diferença inesperada. As diferenças esperadas são as que a carga');
-  out.push('trata de propósito (e lista no relatório da carga) ou que o próprio legado já tem; ficam listadas abaixo.', '');
+  out.push('trata de propósito (e lista no relatório da carga) ou que o próprio legado já tem; ficam listadas abaixo.');
+  out.push('A amostra de credenciais é probabilística: o go/no-go roda com `--credential-sample all`. O código de evidência');
+  out.push('não inclui as amostras da conferência manual, mas inclui o instante de referência: sem `--at`, ele muda a cada execução.', '');
 
   out.push('## Resumo', '', '| Seção | Verificação | Situação | Comparados | Esperadas | Inesperadas |', '|---|---|---|---:|---:|---:|');
   for (const [section, label] of RECONCILE_SECTIONS) {
@@ -327,6 +345,46 @@ export function renderMarkdown(ctx) {
   return `${out.join('\n')}\n`;
 }
 
+/**
+ * Amostra de credenciais (credential_hash_mismatch): sorteia os Ids (só Ids, pela semente; "all" =
+ * todos, em ordem de Id) e confere em lotes de até CREDENTIAL_BATCH bcrypts por comando, para nenhum
+ * comando que lê o MD5 chegar perto de 10 s. Devolve as linhas (diferenças e um "compared" com o
+ * total) e o texto do relatório.
+ */
+async function credentialSample(client, base, sample, seed) {
+  const all = sample === 'all';
+  const { rows: [{ total }] } = await client.query(`SELECT count(*)::int AS total FROM private.legacy_credentials c
+      JOIN public.members m ON m.id = c.member_id AND m.legacy_id IS NOT NULL WHERE c.legacy_hash IS NOT NULL`);
+  const { rows: picked } = await client.query(`SELECT m.legacy_id AS lid FROM private.legacy_credentials c
+      JOIN public.members m ON m.id = c.member_id AND m.legacy_id IS NOT NULL
+     WHERE c.legacy_hash IS NOT NULL
+     ORDER BY ${all ? 'm.legacy_id' : "md5($1::text || ':' || m.legacy_id)"} ${all ? '' : 'LIMIT $2::int'}`, all ? [] : [seed, sample]);
+  const ids = picked.map((r) => Number(r.lid));
+  const batches = credentialBatches(ids);
+  const forecast = (ids.length * BCRYPT_MS) / 1000;
+  if (batches.length > 1) {
+    log(`  Credenciais: ${formatInt(ids.length)} de ${formatInt(total)} em ${batches.length} lotes (previsto ~${forecast.toFixed(0)} s)`);
+  }
+  const sql = buildSql(base, readSql(CREDENTIAL_FILE));
+  const rows = [];
+  let compared = 0;
+  const t = Date.now();
+  for (const batch of batches) {
+    await client.query(`SELECT set_config('mci.rc_cred_ids', $1, true)`, [`{${batch.join(',')}}`]);
+    const res = await client.query(sql);
+    for (const r of res.rows) {
+      if (r.kind === 'compared') compared += Number(r.data?.n ?? 0);
+      else rows.push(r);
+    }
+  }
+  rows.push({ kind: 'compared', code: 'credential_hash_mismatch', data: { n: compared } });
+  const took = ((Date.now() - t) / 1000).toFixed(1);
+  const text = `${all ? 'todas (go/no-go)' : `sorteio de ${formatInt(sample)}`}: ${formatInt(compared)} de ${formatInt(total)} `
+    + `credenciais ativas conferidas, em ${batches.length} ${batches.length === 1 ? 'lote' : 'lotes'} de até ${CREDENTIAL_BATCH} `
+    + `(previsto ~${forecast.toFixed(0)} s; medido ${took} s)`;
+  return { rows, text };
+}
+
 async function main() {
   const args = parseCli({
     at: { type: 'string' },
@@ -344,11 +402,8 @@ async function main() {
   const adminIds = parseIdList(args['admin-ids'] ?? config.values.get('LEGACY_ADMIN_IDS'), 'LEGACY_ADMIN_IDS / --admin-ids');
   const atInput = parseReferenceInstant(args.at);
   const loadRunArg = args['load-run'] ? parseIdList(args['load-run'], '--load-run')[0] : null;
-  const credSample = args['credential-sample'] == null ? 20 : Number(args['credential-sample']);
-  if (!Number.isInteger(credSample) || credSample < 0 || credSample > 500) {
-    throw new Error('--credential-sample precisa ser um número de 0 a 500.');
-  }
-  const seed = args.seed ?? spFormat({});
+  const credSample = parseCredentialSample(args['credential-sample']);
+  const seed = args.seed ?? randomBytes(6).toString('hex');
   if (!/^[\w.:-]{1,64}$/.test(seed)) throw new Error('--seed aceita só letras, números, ponto, dois-pontos e hífen (até 64).');
   const legacyUrl = config.values.get('LEGACY_APP_URL') || null;
 
@@ -364,17 +419,22 @@ async function main() {
   let rows = [];
   let pre;
   let at;
+  let cred;
   try {
+    // A trava compartilhada vem ANTES da transação (trava de sessão, fora dela): o snapshot do
+    // REPEATABLE READ nasce na primeira consulta da transação, e assim só depois de garantido que
+    // nenhuma carga, contas ou limpeza está gravando (uma trava pega dentro da transação já
+    // teria o snapshot de antes do commit de quem a soltou). Sai no fim ou ao fechar a conexão.
+    const { rows: [lock] } = await client.query('SELECT pg_try_advisory_lock_shared(hashtextextended($1, 0)) AS ok', [LOAD_LOCK_KEY]);
+    if (!lock.ok) throw new Error('Carga, contas ou limpeza do ensaio em andamento neste destino. Espere terminar e rode de novo.');
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await client.query(`SET LOCAL statement_timeout = '10min'`);
-    const { rows: [lock] } = await client.query('SELECT pg_try_advisory_xact_lock_shared(hashtextextended($1, 0)) AS ok', [LOAD_LOCK_KEY]);
-    if (!lock.ok) throw new Error('Carga, contas ou limpeza do ensaio em andamento neste destino. Espere terminar e rode de novo.');
     pre = await precheck(client, loadRunArg);
     ({ rows: [{ at }] } = await client.query(`SELECT coalesce($1::timestamptz, now()) AS at`, [atInput]));
     await client.query(`SELECT set_config('mci.rc_pastor_ids', $1, true), set_config('mci.rc_admin_ids', $2, true),
                                set_config('mci.rc_at', $3, true), set_config('mci.rc_load_run', $4, true),
-                               set_config('mci.rc_seed', $5, true), set_config('mci.rc_cred_sample', $6, true)`,
-    [`{${pastorIds.join(',')}}`, `{${adminIds.join(',')}}`, new Date(at).toISOString(), String(pre.loadRun.id), seed, String(credSample)]);
+                               set_config('mci.rc_seed', $5, true)`,
+    [`{${pastorIds.join(',')}}`, `{${adminIds.join(',')}}`, new Date(at).toISOString(), String(pre.loadRun.id), seed]);
     rows.push(...preconditionRows(pre));
     for (const f of STEP_FILES) {
       const t = Date.now();
@@ -382,7 +442,12 @@ async function main() {
       rows.push(...res.rows);
       timings.push([f.replace(/^\d+_|\.sql$/g, ''), Date.now() - t]);
     }
+    const t = Date.now();
+    cred = await credentialSample(client, base, credSample, seed);
+    rows.push(...cred.rows);
+    timings.push(['credenciais', Date.now() - t]);
     await client.query('ROLLBACK');
+    await client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [LOAD_LOCK_KEY]);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -397,7 +462,8 @@ async function main() {
   const evidencePayload = {
     load_run: Number(pre.loadRun.id), copy_run: pre.copyRun ? Number(pre.copyRun.id) : null,
     accounts_run: pre.accountsRun ? Number(pre.accountsRun.id) : null, at: new Date(at).toISOString(),
-    checks: checks.map((c) => ({
+    // As amostras da conferência manual (sample_*) ficam fora: dependem da semente, não do resultado.
+    checks: checks.filter((c) => c.type !== 'sample').map((c) => ({
       code: c.code, status: c.status, compared: c.compared,
       unexpected: c.unexpected.map((i) => [i.lid, i.ref, i.detail, i.note]),
       expected: c.expected.map((i) => [i.lid, i.ref, i.reason]),
@@ -411,6 +477,7 @@ async function main() {
   printChecks(checks);
   log('');
   log(`Tempo: ${timingText}`);
+  log(`Semente das amostras: ${seed} · amostra de credenciais: ${cred.text}`);
   log(`Código de evidência: ${evidence}`);
   log(`Reconciliação: ${summary.approved ? 'APROVADA' : 'REPROVADA'} (${summary.failures} verificações com falha; `
     + `${formatInt(summary.unexpected)} diferenças inesperadas, ${formatInt(summary.expected)} esperadas, `
@@ -433,6 +500,7 @@ async function main() {
       accounts: pre.accountsRun ? `#${pre.accountsRun.id}, ${pre.accountsRun.status}${pre.accountsRun.undone_at ? ', desfeita' : ''}, `
         + `terminada em ${iso(pre.accountsRun.finished_at)}` : 'nenhuma execução',
       at: spFormat({ dateStyle: 'short', timeStyle: 'short' }, new Date(at)), pastorIds, adminIds, timings: timingText,
+      seed, credentials: cred.text,
     };
     writeFileSync(`${stem}.md`, renderMarkdown({ header, checks, summary, evidence, legacyUrl }), { mode: 0o600 });
     writeFileSync(`${stem}.json`, `${JSON.stringify({ evidence, summary, header, ...evidencePayload }, null, 2)}\n`, { mode: 0o600 });

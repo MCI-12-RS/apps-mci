@@ -45,9 +45,11 @@ p AS (
          n.observations AS n_obs, n.reason_not_held AS n_reason, n.visitors AS n_visitors, n.offering AS n_offering,
          ml.lid AS n_s_leader_lid, mt.lid AS n_s_timothy_lid, mh.lid AS n_s_host_lid, n.snapshot_cell_type AS n_s_type,
          n.snapshot_leader_id, n.snapshot_timothy_id, n.snapshot_host_id,
-         nc.leader_id AS c_leader, nc.timothy_id AS c_timothy, nc.host_id AS c_host, nc.type AS c_type
+         nc.leader_id AS c_leader, nc.timothy_id AS c_timothy, nc.host_id AS c_host, nc.type AS c_type,
+         d.dup_real
     FROM lx l
     JOIN n ON n.legacy_id = l.lid
+    JOIN lrep d ON d.lid = l.lid
     LEFT JOIN public.cells nc ON nc.id = n.cell_id
     LEFT JOIN idmap ml ON ml.id = n.snapshot_leader_id
     LEFT JOIN idmap mt ON mt.id = n.snapshot_timothy_id
@@ -100,14 +102,17 @@ SELECT 'diff', 'report_status', p.lid, NULL,
        format('excluído: legado %s, novo %s%s', CASE WHEN p.del THEN 'sim' ELSE 'não' END,
               CASE WHEN p.n_del THEN 'sim' ELSE 'não' END,
               CASE WHEN p.n_del AND p.n_del_kind = 'system' THEN ' (pelo sistema)' ELSE '' END),
-       CASE WHEN NOT p.del AND p.n_del AND p.n_del_kind = 'system'
-             AND EXISTS (SELECT 1 FROM p k
-                          WHERE k.cell_lid = p.cell_lid AND NOT k.del AND k.lid > p.lid
-                            AND public.week_start(k.date) = public.week_start(p.date))
+       -- Duplicado real (lrep: semana calculada uma vez, por janela) e excluído pelo sistema.
+       CASE WHEN NOT p.del AND p.n_del AND p.n_del_kind = 'system' AND p.dup_real
             THEN 'report_duplicate_week' END,
        NULL
   FROM p
  WHERE p.del <> p.n_del
+UNION ALL
+-- Duplicado real da semana que ficou ativo no novo (a carga o exclui pelo sistema).
+SELECT 'diff', 'report_status', p.lid, NULL, 'duplicado da semana não excluído no novo', NULL, NULL
+  FROM p
+ WHERE p.dup_real AND NOT p.del AND NOT p.n_del
 UNION ALL
 SELECT 'diff', 'report_field', p.lid, NULL, 'campo: ' || f.field || coalesce(' (' || f.info || ')', ''), NULL, NULL
   FROM p

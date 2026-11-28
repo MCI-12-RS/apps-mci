@@ -7,10 +7,10 @@ import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   CHECKS, EXPECTED, RECONCILE_SECTIONS, checkInfo, expectedInfo, docSets, resolveExpected, classify, summarize,
-  evidenceCode, parseReferenceInstant,
+  evidenceCode, parseReferenceInstant, parseCredentialSample, credentialBatches, CREDENTIAL_BATCH,
 } from '../../src/lib/reconcile-codes.mjs';
 import { LOAD_CODES } from '../../src/lib/load-codes.mjs';
-import { SQL_DIR, BASE_FILE, STEP_FILES, buildSql, preconditionRows, renderMarkdown } from '../../src/reconcile.mjs';
+import { SQL_DIR, BASE_FILE, STEP_FILES, CREDENTIAL_FILE, buildSql, preconditionRows, renderMarkdown } from '../../src/reconcile.mjs';
 import { MIGRATION_ROOT } from '../../src/lib/config.mjs';
 
 const sqlFiles = readdirSync(SQL_DIR).filter((f) => f.endsWith('.sql')).sort();
@@ -19,12 +19,13 @@ const stripComments = (s) => s.replace(/--.*$/gm, '');
 const allSql = stripComments(sqlFiles.map(read).join('\n'));
 
 test('todo arquivo de sql/reconcile é usado, na ordem do nome', () => {
-  assert.deepEqual([BASE_FILE, ...STEP_FILES], sqlFiles);
+  assert.deepEqual([BASE_FILE, ...STEP_FILES, CREDENTIAL_FILE].sort(), sqlFiles);
+  assert.deepEqual([...STEP_FILES].sort(), STEP_FILES, 'STEP_FILES na ordem do nome');
 });
 
 test('cada arquivo recebe os CTEs comuns uma vez', () => {
   const base = read(BASE_FILE);
-  for (const f of STEP_FILES) {
+  for (const f of [...STEP_FILES, CREDENTIAL_FILE]) {
     const body = read(f);
     assert.equal(body.split('/*BASE*/').length, 2, `${f}: um /*BASE*/`);
     const sql = buildSql(base, body);
@@ -49,6 +50,7 @@ test('catálogo: todo código do SQL existe, e todo código do catálogo é usad
     'with_password_in_new', 'g12_sum', 'duplicates', 'expected', 'entity', 'situation', 'legacy', 'new', 'month', 'label',
     'ok', 'n', 'loaded', 'usable', 'active', 'male', 'female', 'created', 'updated', 'deleted', 'other', 'unknown', 'none',
     'system', 'at', 'pending', 'metric', 'diff', 'compared', 'item', 'counts', 'admins', 'credentials', 'dashboard',
+    'before_load', 'after_load', 'dup_real', 'dup_listed',
     'sim', 'excluídos', 'ativos', 'inativos', 'ativas', 'inativas', 'excluídas', 'todos', 'x', 'array', 'mci', 'm', 'f']);
   const used = new Set();
   for (const m of allSql.matchAll(/'([a-z_,0-9]+)'/g)) {
@@ -145,6 +147,9 @@ test('pré-condições: carga mais nova que a cópia, a última carga ativa e as
   assert.equal(ok({ ...base, latestLoadRunId: 6 }).load_run, false);
   assert.equal(ok({ ...base, accountsRun: null }).accounts_run, false);
   assert.equal(ok({ ...base, accountsRun: { ...base.accountsRun, status: 'failed' } }).accounts_run, false);
+  // Contas terminadas antes do fim da carga não cobrem o que ela trouxe.
+  assert.equal(ok({ ...base, accountsRun: { ...base.accountsRun, finished_at: '2026-11-21T10:00:30Z' } }).accounts_run, false);
+  assert.equal(ok({ ...base, accountsRun: { ...base.accountsRun, finished_at: null } }).accounts_run, false);
 });
 
 test('código de evidência: estável, independe da ordem das chaves e muda com o conteúdo', () => {
@@ -193,4 +198,27 @@ test('linha de comando: só leitura (sem --yes) e argumentos validados antes de 
   const bad = run('--config', '/nao/existe');
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /não encontrado/);
+});
+
+test('amostra de credenciais: 1 a 100000 ou "all", nunca 0; lotes de até CREDENTIAL_BATCH', () => {
+  assert.equal(parseCredentialSample(undefined), 20);
+  assert.equal(parseCredentialSample('500'), 500);
+  assert.equal(parseCredentialSample('ALL'), 'all');
+  for (const bad of ['0', '-1', '1.5', 'x', '100001', '']) assert.throws(() => parseCredentialSample(bad), /--credential-sample/);
+  assert.ok(CREDENTIAL_BATCH <= 50);
+  const ids = Array.from({ length: 101 }, (_, i) => i + 1);
+  const b = credentialBatches(ids);
+  assert.equal(b.length, Math.ceil(101 / CREDENTIAL_BATCH));
+  assert.ok(b.every((x) => x.length <= CREDENTIAL_BATCH));
+  assert.deepEqual(b.flat(), ids);
+  assert.deepEqual(credentialBatches([]), []);
+});
+
+test('amostra de credenciais com zero comparados: atenção, não ok', () => {
+  const checks = classify([{ kind: 'compared', code: 'credential_hash_mismatch', data: { n: 0 } }], docSets({}));
+  const c = checks.find((x) => x.code === 'credential_hash_mismatch');
+  assert.equal(c.status, 'atencao');
+  assert.ok(summarize(checks).attention >= 1);
+  const one = classify([{ kind: 'compared', code: 'credential_hash_mismatch', data: { n: 3 } }], docSets({}));
+  assert.equal(one.find((x) => x.code === 'credential_hash_mismatch').status, 'ok');
 });

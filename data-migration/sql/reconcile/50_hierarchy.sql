@@ -5,7 +5,9 @@
 --   member_level        12 ^ g12_level (no máximo 12^6) = MinistryLevel; "sem liderança" = 9999999.
 --                       Esperadas: sem líder e sem "não tem liderança" fora dos pastores da D9 (o legado
 --                       os mostra como Pastores: 1), "sem topo" (líder excluído acima), o líder desfeito
---                       pela carga acima ou no próprio membro, e o MinistryLevel vazio no legado
+--                       pela carga acima ou no próprio membro, e o MinistryLevel vazio no legado. As
+--                       esperadas só explicam a diferença em relação ao legado: o g12_level do novo
+--                       tem de bater com a profundidade na árvore resultante, sem desculpa.
 --   member_totals       discípulos e células (total, masculinas, femininas) recalculados a partir do
 --                       líder de cada membro no legado, sem inativos (D2) e sem excluídos, e comparados
 --                       com private.member_hierarchy; esperada: só o que vem de cadastros e células do
@@ -27,10 +29,10 @@ walk (origin, cur, path) AS (
 cycle_members AS (SELECT DISTINCT w.origin AS id FROM walk w WHERE w.cur = w.origin),
 -- Membros do legado que o novo deixou sem líder (pela carga).
 nulled AS (
-  SELECT m.id FROM public.members m JOIN lmb b ON b.lid = m.legacy_id
+  SELECT m.id, b.lid FROM public.members m JOIN lmb b ON b.lid = m.legacy_id
    WHERE m.leader_id IS NULL AND b.leader_raw IS NOT NULL
 ),
-nulled_arr AS (SELECT coalesce(array_agg(id), '{}') AS ids FROM nulled),
+nulled_arr AS (SELECT coalesce(array_agg(lid), '{}') AS lids FROM nulled),
 lvl AS (
   SELECT m.legacy_id AS lid, m.id, m.leader_id, m.is_pastor, h.g12_level, h.ancestor_ids, b.ministry_level, b.no_leadership,
          CASE WHEN h.g12_level IS NULL THEN 9999999 ELSE (12 ^ least(h.g12_level, 6))::bigint END AS exp_level
@@ -42,14 +44,26 @@ lvl AS (
 -- Árvore do legado (Ids do legado): carregados, não excluídos no legado.
 lt AS (
   SELECT b.lid, b.active, b.gender,
+         (b.lid = ANY (cfg.pastor_ids) AND NOT b.no_leadership AND b.leader_raw IS NULL) AS exp_pastor,
          CASE WHEN m.leader_id IS NULL AND b.leader_raw IS NOT NULL THEN NULL ELSE b.leader_raw END AS eff_leader
-    FROM lmb b JOIN public.members m ON m.legacy_id = b.lid
+    FROM lmb b JOIN public.members m ON m.legacy_id = b.lid CROSS JOIN cfg
    WHERE NOT b.del
 ),
 ltree (lid, anc) AS (
   SELECT lt.lid, '{}'::int[] FROM lt WHERE lt.eff_leader IS NULL
   UNION ALL
   SELECT c.lid, t.anc || t.lid FROM ltree t JOIN lt c ON c.eff_leader = t.lid
+),
+-- Nível esperado no novo pela árvore resultante (a do legado, com os líderes que a carga desfez):
+-- o tamanho da cadeia; no topo, 0 para o pastor da D9 e nulo para o "sem liderança"; nulo para
+-- quem está fora da árvore ("sem topo": líder excluído acima).
+tlevel AS (
+  SELECT lt.lid,
+         CASE WHEN t.lid IS NULL THEN NULL
+              WHEN cardinality(t.anc) = 0 THEN CASE WHEN lt.exp_pastor THEN 0 END
+              ELSE cardinality(t.anc) END AS tree_level,
+         t.lid IS NOT NULL AS in_tree, coalesce(t.anc, '{}') AS anc
+    FROM lt LEFT JOIN ltree t ON t.lid = lt.lid
 ),
 ldisc AS (
   SELECT a AS lid, count(*) AS n
@@ -122,19 +136,28 @@ SELECT 'diff', 'spouse_reciprocal', m.legacy_id, CASE WHEN m.legacy_id IS NULL T
  WHERE m.deleted_at IS NULL AND m.spouse_id IS NOT NULL
    AND (s.id IS NULL OR s.deleted_at IS NOT NULL OR s.spouse_id IS DISTINCT FROM m.id)
 UNION ALL
+-- Duas comparações: (1) o g12_level do novo tem de ser o da árvore resultante (nenhuma desculpa);
+-- (2) o 12^nível contra o MinistryLevel do legado, onde as esperadas valem só se (1) bate: elas
+-- explicam por que o legado difere, nunca uma diferença do novo.
 SELECT 'diff', 'member_level', v.lid, NULL,
-       format('nível: legado %s, esperado %s (g12_level %s)', coalesce(v.ministry_level::text, 'vazio'), v.exp_level,
-              coalesce(v.g12_level::text, 'nulo')),
-       nullif(concat_ws(',',
+       concat_ws('; ',
+         CASE WHEN v.g12_level IS DISTINCT FROM tl.tree_level
+              THEN format('g12_level no novo %s, na árvore resultante %s', coalesce(v.g12_level::text, 'nulo'),
+                          coalesce(tl.tree_level::text, 'nulo')) END,
+         CASE WHEN v.exp_level IS DISTINCT FROM v.ministry_level::bigint
+              THEN format('nível: legado %s, esperado %s (g12_level %s)', coalesce(v.ministry_level::text, 'vazio'),
+                          v.exp_level, coalesce(v.g12_level::text, 'nulo')) END),
+       CASE WHEN v.g12_level IS NOT DISTINCT FROM tl.tree_level THEN nullif(concat_ws(',',
          CASE WHEN v.ministry_level IS NULL THEN 'legacy_level_missing' END,
          CASE WHEN v.leader_id IS NULL AND NOT v.is_pastor AND NOT v.no_leadership AND v.ministry_level = 1
               THEN 'member_no_leader_not_marked' END,
-         CASE WHEN EXISTS (SELECT 1 FROM notop t WHERE t.id = v.id) THEN 'level_no_top' END,
-         CASE WHEN v.id = ANY (na.ids) OR v.ancestor_ids && na.ids THEN 'level_follows_leader_change' END
-       ), ''),
+         CASE WHEN NOT tl.in_tree THEN 'level_no_top' END,
+         -- O líder desfeito pela carga no próprio membro ou acima dele na árvore resultante.
+         CASE WHEN v.lid = ANY (na.lids) OR tl.anc && na.lids THEN 'level_follows_leader_change' END
+       ), '') END,
        NULL
-  FROM lvl v CROSS JOIN nulled_arr na
- WHERE v.exp_level IS DISTINCT FROM v.ministry_level::bigint
+  FROM lvl v JOIN tlevel tl ON tl.lid = v.lid CROSS JOIN nulled_arr na
+ WHERE v.exp_level IS DISTINCT FROM v.ministry_level::bigint OR v.g12_level IS DISTINCT FROM tl.tree_level
 UNION ALL
 SELECT 'diff', 'member_totals', t.lid, NULL,
        concat_ws('; ',

@@ -4,8 +4,15 @@
 -- membros, células e relatórios carregados. O detalhe cita só os campos.
 --   authorship_member, authorship_cell, authorship_report
 --   authorship_kinds (metric)  quantos por tipo de autor (legacy, unknown, system), por tabela
--- A data de exclusão sem data no legado (a hora da carga) e a exclusão dos duplicados da semana
--- (pelo sistema, DT-08) não são comparadas aqui (report_status confere os duplicados).
+-- A exclusão dos duplicados da semana (pelo sistema, DT-08) não é comparada aqui (report_status
+-- confere os duplicados).
+-- Contrato do último parâmetro de private.legacy_authorship (_load_time): só entra em deleted_at,
+-- quando o legado excluiu sem nenhuma data (nem de alteração nem de cadastro). A carga passa o
+-- now() da transação dela (pg_temp.load_cfg.load_time), que não é gravado: o legacy._load_runs
+-- guarda o started_at (clock_timestamp() do INSERT, segundos depois do BEGIN), e a carga refeita
+-- mantém o deleted_at da carga anterior. Por isso a função é chamada aqui com nulo, e esse
+-- deleted_at é conferido à parte: tem de estar no primeiro minuto antes do início de uma carga
+-- (deste destino, até a conferida).
 -- Nenhum carregado tem autor do novo (created_by, updated_by, deleted_by nulos).
 -- =============================================================================
 WITH /*BASE*/,
@@ -43,6 +50,11 @@ cmp AS (
            CASE WHEN s.del AND s.deleted_at IS NOT NULL AND s.deleted_by_kind IS DISTINCT FROM a.deleted_by_kind::text THEN 'deleted_by_kind' END,
            CASE WHEN s.del AND s.deleted_at IS NOT NULL AND s.deleted_by_legacy IS DISTINCT FROM a.deleted_by_legacy THEN 'deleted_by_legacy' END,
            CASE WHEN s.del AND a.deleted_at IS NOT NULL AND s.deleted_at IS DISTINCT FROM a.deleted_at THEN 'deleted_at' END,
+           CASE WHEN s.del AND a.deleted_at IS NULL AND s.deleted_at IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM legacy._load_runs r
+                                  WHERE r.id <= (SELECT cfg.load_run FROM cfg)
+                                    AND s.deleted_at BETWEEN r.started_at - interval '1 minute' AND r.started_at)
+                THEN 'deleted_at (sem data no legado e fora do início de uma carga)' END,
            CASE WHEN s.created_by IS NOT NULL OR s.updated_by IS NOT NULL OR s.deleted_by IS NOT NULL THEN 'autor do novo' END
          ], NULL) AS fields
     FROM src s

@@ -1,8 +1,9 @@
 -- =============================================================================
 -- E4.09: contagens por entidade e situação (5.6, Contagens).
 -- Uma linha metric "counts" por entidade e situação: no legado, fora da carga (sem linha no
--- novo; o motivo de cada um está em *_missing), duplicados da semana (excluídos no novo pelo
--- sistema, DT-08), o esperado no novo e o que está no novo (só o que tem legacy_id).
+-- novo; o motivo de cada um está em *_missing), duplicados da semana (os duplicados reais no
+-- legado que a carga listou, que vão excluídos pelo sistema, DT-08), o esperado no novo e o que
+-- está no novo (só o que tem legacy_id; o que não tem é contado em 15_new_only).
 -- ok = esperado igual ao novo.
 -- =============================================================================
 WITH /*BASE*/,
@@ -25,12 +26,10 @@ nc AS (
     FROM public.cells c WHERE c.legacy_id IS NOT NULL
 ),
 lr AS (
-  SELECT CASE WHEN coalesce(r."IsDeleted", false) THEN 'excluídos' ELSE 'não excluídos' END AS sit,
-         x.id IS NOT NULL AS loaded,
-         -- Duplicado da semana: não excluído no legado, excluído no novo pelo sistema (DT-08).
-         coalesce(NOT coalesce(r."IsDeleted", false) AND x.deleted_at IS NOT NULL AND x.deleted_by_kind = 'system', false) AS dup
-    FROM legacy."Reports" r
-    LEFT JOIN public.cell_reports x ON x.legacy_id = r."Id"
+  -- Duplicado da semana (DT-08): o duplicado real no legado que a carga listou (lrep.dup), pela
+  -- mesma condição do report_status; nunca "qualquer excluído pelo sistema no novo".
+  SELECT CASE WHEN b.del THEN 'excluídos' ELSE 'não excluídos' END AS sit, b.loaded, b.dup
+    FROM lrep b
 ),
 nr AS (
   SELECT CASE WHEN r.deleted_at IS NOT NULL THEN 'excluídos' ELSE 'não excluídos' END AS sit

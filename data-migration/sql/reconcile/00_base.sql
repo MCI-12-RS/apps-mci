@@ -8,7 +8,8 @@
 --
 -- Parâmetros (set_config, só Ids do legado, números e o instante): mci.rc_pastor_ids,
 -- mci.rc_admin_ids, mci.rc_at (instante de referência), mci.rc_load_run (a carga
--- conferida), mci.rc_seed (sorteio das amostras), mci.rc_cred_sample.
+-- conferida), mci.rc_seed (sorteio das amostras). O lote da amostra de credenciais vai em
+-- mci.rc_cred_ids, só no 82_credential_sample.sql.
 --
 -- Todo arquivo devolve as mesmas colunas:
 --   kind      diff (diferença), compared (quantos foram comparados), metric (números),
@@ -27,8 +28,7 @@ cfg AS (
          coalesce(nullif(current_setting('mci.rc_admin_ids', true), ''), '{}')::int[] AS admin_ids,
          current_setting('mci.rc_at')::timestamptz AS at,
          current_setting('mci.rc_load_run')::bigint AS load_run,
-         current_setting('mci.rc_seed') AS seed,
-         current_setting('mci.rc_cred_sample')::int AS cred_sample
+         current_setting('mci.rc_seed') AS seed
 ),
 -- id do novo → Id do legado (nulo para quem é só do novo).
 idmap AS (SELECT m.id, m.legacy_id AS lid FROM public.members m),
@@ -49,4 +49,28 @@ lmb AS (
          CASE x."Gender" WHEN 0 THEN 'M' WHEN 1 THEN 'F' END AS gender,
          x."MinistryLevel" AS ministry_level
     FROM legacy."Members" x
+),
+-- Relatórios do legado com o duplicado da semana (DT-08, Q-E4-4), pela regra da carga e sem
+-- olhar o que o novo fez com ele: não excluído, com data, carregado, e com outro não excluído e
+-- carregado da mesma célula e semana com Id maior (fica o de maior Id). dup = o duplicado real
+-- que a carga também listou em report_duplicate_week (a carga lista o que fica e os que saem;
+-- só os que saem são duplicados). Semana calculada uma vez por relatório (janela, não par a par).
+lrep AS (
+  SELECT w.*, w.dup_real AND w.dup_listed AS dup
+    FROM (
+      SELECT r.*,
+             coalesce(r.loaded AND NOT r.del AND r.week IS NOT NULL
+                      AND r.lid < max(r.lid) FILTER (WHERE r.loaded AND NOT r.del AND r.week IS NOT NULL)
+                                    OVER (PARTITION BY r.cell_lid, r.week), false) AS dup_real
+        FROM (
+          SELECT x."Id" AS lid, coalesce(x."IsDeleted", false) AS del, x."CellId" AS cell_lid,
+                 public.week_start(x."Date"::date) AS week,
+                 coalesce(to_char(x."Date", 'YYYY-MM'), 'sem data') AS month,
+                 round(x."Contribution", 2) AS offering,
+                 n.id IS NOT NULL AS loaded, n.deleted_at IS NOT NULL AS n_del, n.deleted_by_kind::text AS n_del_kind,
+                 x."Id" IN (SELECT d.lid FROM doc d WHERE d.code = 'report_duplicate_week') AS dup_listed
+            FROM legacy."Reports" x
+            LEFT JOIN public.cell_reports n ON n.legacy_id = x."Id"
+        ) r
+    ) w
 )
